@@ -2,6 +2,19 @@
 
 September 16, 2026 · Capybara and distinct mobile/web demos, following the agent browser release · local fictional workspace. This records exercised behavior and its limits; it does not establish that every planned capability is complete.
 
+## Integration review — September 29, 2026
+
+Independent review of the model catalog, agent teams, infrastructure connectors, and theme work, plus their runtime integration.
+
+- **Root suite passes with no failures** (216 tests + 1 POSIX-only platform skip at last independent run; coordinator-reported HEAD count is 235 + 1 skip pending the final rerun). New coverage exercises per-request model resolution, cleared-selection snapshots, OpenCodex routing, team validation/ordering/failure propagation, sequential and parallel role DAGs, restart recovery that retries only interrupted roles, and role-labelled thread messages.
+- **Connector suite: 24 tests pass** covering provider contracts with mocked responses (auth headers, response mapping, malformed payloads, timeouts, secret redaction), owner isolation, AES-256-GCM encrypted storage verified at rest, Headscale modern/legacy fallback, WireGuard fixed argv with no shell and no key output, and multiple independent Proxmox identities.
+- **Auth and secrets re-audited**: session tokens remain hashed and timing-safe, owner scoping applies to model settings, teams, and connector records, and no connector view, tool response, or error path returns credentials.
+- **Dynamic model behavior verified**: `forwardedProps.modelId` is resolved through the server catalog per request; the owner's saved selection is snapshotted per run.
+- **Light/dark web UI verified**: system/light/dark preference persists in localStorage and applies `colorScheme`/canvas styles to the document; native persistence uses a document file.
+- **Browser worker lifecycle test re-verified on real Chromium** (1 test): failed-profile cleanup, saved-UUID reopen, 100KB read truncation, and localStorage persistence across restart. The fixture was updated because example.com's body copy changed upstream.
+- **Builds**: server build, web export, and browser-worker typecheck pass. Root typecheck and lint pass on owned files; unrelated lint findings in other workers' in-flight areas were left to their owners.
+- **Boundaries**: all connector provider coverage is mocked — no live GitHub/Tailscale/Headscale/WireGuard/Proxmox credentials were supplied. Live model/provider acceptance and live connector acceptance remain open on the roadmap. Docker-based computer checks and the browser-container acceptance were not run on this Windows host (no Docker daemon); their prior Linux evidence stands.
+
 ## Automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.

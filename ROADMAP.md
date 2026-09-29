@@ -10,12 +10,16 @@ The release is a personal-agent alpha: delegate a job, inspect its plan, supply 
 - Persistent Chromium sessions, public-page reading, screenshots, manual interaction, and PDF downloads.
 - A private Docker Linux computer with bounded terminal commands, persistent workspace files, a text editor, PDF import/export, command receipts, and stop/restart recovery. Terminal networking is disabled.
 - PDF viewing and supported form filling, reviewed Gmail/Calendar adapters, CSV spending artifacts, identity, and editable memory.
+- A server-owned model catalog across OpenAI, Anthropic, Google, and OpenCodex, with per-request selection and durable multi-role agent teams that run sequential or parallel dependency graphs and survive restarts.
+- Authenticated infrastructure connectors for GitHub, Tailscale, Headscale, WireGuard, and multiple Proxmox identities, with AES-256-GCM-encrypted credentials, health checks, and read-only agent tools.
+- A persisted system/light/dark theme with semantic palettes on iOS, Android, and web.
 
 ## Integration acceptance next
 
 - [ ] Live Google OAuth, mail, attachment, and calendar acceptance on real test accounts.
 - [ ] CopilotKit Intelligence Rich Threads persistence/replay and cross-device acceptance with a project key.
 - [ ] Live model acceptance for open-ended delegated jobs and source-based research.
+- [ ] Live infrastructure connector acceptance on real GitHub, Tailscale, Headscale, WireGuard, and Proxmox deployments. All provider coverage is mocked contract tests; no live credentials were supplied.
 - [ ] Installed Android emulator/device smoke tests. Android bundles already export; iPhone simulator has been exercised.
 - [ ] OpenBot user/session bridge, routines, and computer backend. The disabled HTTP adapter is contract-tested; it is not a live connection.
 

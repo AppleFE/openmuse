@@ -54,7 +54,9 @@ The computer combines **persistent Chromium and an optional Linux workspace**. T
 | **Documents** | Email attachment → PDF → requested form values → filled copy → reviewed reply → receipt. Native/web PDF viewing, paging, zoom, supported fields, and sharing. |
 | **Finance** | Import transaction CSV to create a spending summary with categories, transactions, and a savings-goal action. |
 | **Gmail & Calendar** | Google OAuth adapters, complete mail threads, drafts/attachments, calendar discovery, and reviewed event creation/update/deletion. Live credentials required. |
-| **Personal context** | Editable name, tone, avatar, and memories. Background-update preferences and durable in-app notifications. |
+| **Personal context** | Editable name, tone, avatar, memories, and a persisted system/light/dark theme. Background-update preferences and durable in-app notifications. |
+| **Models & Teams** | Server-owned model catalog across OpenAI, Anthropic, Google, and an OpenCodex data-plane proxy. Per-request model selection and durable multi-role agent teams with sequential or parallel dependency execution, role-labelled messages, and restart recovery. [Models and teams](docs/MODELS-TEAMS.md) |
+| **Connectors** | Authenticated infrastructure connectors for GitHub, Tailscale, Headscale, WireGuard, and multiple Proxmox identities. Credentials are encrypted at rest, write-only in the UI, and exposed to the agent as read-only tools. [Connector setup](docs/CONNECTORS.md) |
 | **Rich Threads** | CopilotKit Intelligence persistence in every mode, with a stable main conversation, side chats, renaming, archiving, restoring, and replay. A server-only project key is required. |
 
 The [feature inventory](docs/FEATURES.md) describes implemented capabilities and planned extensions. Health/bank/social connectors, device push, voice, generated executable tools, and automatic reservations/payments are on the [roadmap](ROADMAP.md).
@@ -168,7 +170,7 @@ flowchart TD
 | `apps/worker` | Token-protected Playwright browser service with persistent profiles. |
 | `apps/computer` | Nonroot Linux image, bounded filesystem helper, and real container verification. |
 | `packages/domain` | Shared types and request validation. |
-| `packages/integrations` | Google and browser protocol adapters. |
+| `packages/integrations` | Google, browser protocol, and infrastructure connector adapters. |
 | `packages/backends` | Optional OpenBot HTTP adapter and its identity boundary. |
 | `tests` | Workflow, runtime, persistence, provider-contract, and authorization tests. |
 

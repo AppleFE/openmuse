@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Selectable model catalog (`OPENMUSE_MODELS`) across OpenAI, Anthropic, Google, and an OpenCodex data-plane proxy, with per-request model selection replacing the single `MODEL` setting.
+- Durable multi-role agent teams: sequential or parallel dependency execution, role-labelled messages, dependency failure propagation, and restart recovery that resumes only interrupted roles.
+- Authenticated infrastructure connectors for GitHub, Tailscale, Headscale, WireGuard, and multiple Proxmox identities — AES-256-GCM-encrypted credentials, write-only secrets, persisted health checks, settings UI, and read-only agent tools.
+- Persisted system/light/dark theme with semantic palettes on iOS, Android, and web.
+- Fixed the browser-worker lifecycle test to match current example.com page copy.
+
 ## 0.1.0-alpha — 2026-09-15
 
 Initial public OpenMuse alpha.
