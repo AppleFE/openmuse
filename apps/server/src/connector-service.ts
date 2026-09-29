@@ -19,6 +19,7 @@ import {
   tailscaleSecretsSchema,
   wireguardConfigSchema,
 } from "../../../packages/domain/src/connectors.ts";
+import type { Connection } from "../../../packages/domain/src/index.ts";
 import {
   type ConnectorDeps,
   ConnectorError,
@@ -232,7 +233,7 @@ export class ConnectorService {
   }
 
   /** Summary for the workspace connection list; secrets never appear here. */
-  async connections(owner: string) {
+  async connections(owner: string): Promise<Connection[]> {
     return (await this.db.list<StoredConnector>(owner, "connectors")).map((record) => ({
       id: `connector:${record.id}`,
       name: record.name,
