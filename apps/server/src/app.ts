@@ -5,13 +5,19 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { emailDraftSchema, proposalSchema } from "../../../packages/domain/src/index.ts";
+import {
+  type Connection,
+  emailDraftSchema,
+  proposalSchema,
+} from "../../../packages/domain/src/index.ts";
 import { ActionService } from "./actions.ts";
 import { agentConfigured, makeRuntime } from "./agent.ts";
 import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
 import { computerRoutes } from "./computer-routes.ts";
+import { connectorRoutes } from "./connector-routes.ts";
+import { ConnectorService } from "./connector-service.ts";
 import { assertApiDeploymentConfig, type Config } from "./config.ts";
 import type { Store } from "./db.ts";
 import { agentRoutes } from "./engine/routes.ts";
@@ -40,7 +46,17 @@ export async function createApp(
   });
   const browser = new BrowserService(db, config, auth, files);
   const computer = new ComputerService(db, config, options.docker);
-  const agent = new AgentService(db, config, workspace, files, actions, browser, computer);
+  const connectors = new ConnectorService(db, config);
+  const agent = new AgentService(
+    db,
+    config,
+    workspace,
+    files,
+    actions,
+    browser,
+    computer,
+    connectors,
+  );
   const intelligence = new CopilotKitIntelligence({ apiKey: config.intelligenceApiKey });
   const runtime = makeRuntime(config, agent, auth, intelligence);
   const app = new Hono<{ Variables: { owner: string } }>();
@@ -136,9 +152,10 @@ export async function createApp(
     await next();
   });
   app.get("/api/workspace", async (c) => {
-    const [snapshot, reachable] = await Promise.all([
+    const [snapshot, reachable, connectorConnections] = await Promise.all([
       workspace.snapshot(c.get("owner"), c.req.query("q")),
       browser.reachable(),
+      connectors.connections(c.get("owner")),
     ]);
     snapshot.browsers = snapshot.browsers.map((s) => browser.decorate(c.get("owner"), s));
     // A configured worker that does not answer is offline, not ready.
@@ -147,10 +164,12 @@ export async function createApp(
         ? { ...connection, status: "unavailable" }
         : connection,
     );
+    snapshot.connections.push(...(connectorConnections as Connection[]));
     return c.json(snapshot);
   });
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
+  app.route("/api/connectors", connectorRoutes(connectors));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));
   app.get("/api/calendar/events", async (c) => {
     const query = z
@@ -347,5 +366,5 @@ export async function createApp(
   app.get("/", (c) =>
     c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
   );
-  return { app, auth, files, actions, workspace, agent, computer };
+  return { app, auth, files, actions, workspace, agent, computer, connectors };
 }
