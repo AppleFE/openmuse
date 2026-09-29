@@ -21,7 +21,7 @@ export class ConversationAgent extends AbstractAgent {
     private readonly config: Config,
     private readonly service: AgentService,
     private readonly owner: string,
-    private readonly defaultModel?: string,
+    private readonly defaultModel?: string | null,
   ) {
     super({ agentId: "default" });
   }
@@ -95,9 +95,23 @@ export class ConversationAgent extends AbstractAgent {
       typeof (input.forwardedProps as Record<string, unknown>).modelId === "string"
         ? String((input.forwardedProps as Record<string, unknown>).modelId)
         : undefined;
-    const model = requestedModelId
-      ? this.service.models.require(requestedModelId).model
-      : (this.defaultModel ?? this.config.model);
+    let model: string | undefined;
+    try {
+      model =
+        requestedModelId !== undefined
+          ? this.service.models.require(requestedModelId).model
+          : this.defaultModel === undefined
+            ? this.config.model
+            : (this.defaultModel ?? undefined);
+    } catch (error) {
+      return new Observable((subscriber) => {
+        subscriber.next({
+          type: EventType.RUN_ERROR,
+          message: error instanceof Error ? error.message : "The selected model is unavailable",
+        });
+        subscriber.complete();
+      });
+    }
     if (!model)
       return new Observable((subscriber) => {
         subscriber.next({

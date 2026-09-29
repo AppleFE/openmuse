@@ -209,6 +209,7 @@ test("OpenCodex profiles use its native Responses endpoint, data key, and select
       });
     await run();
     await run("beta");
+    await assert.rejects(run("not-allowed"), /not configured or enabled/);
     assert.deepEqual(
       requests.map((request) => request.body.model),
       ["provider/alpha", "provider/beta"],

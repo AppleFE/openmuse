@@ -278,6 +278,14 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
     assert.equal(first.modelId, "fast");
     await api("/model-settings", "PATCH", { modelId: "deep" });
     assert.equal((await server.agent.getTask("local-user", first.id)).modelId, "fast");
+    await api("/model-settings", "PATCH", { modelId: null });
+    const clearedSelection = await api("/model-settings");
+    assert.equal((await clearedSelection.json()).modelId, null);
+    const unconfigured = (await (
+      await api("/tasks", "POST", { prompt: "Wait for model" })
+    ).json()) as AgentTask;
+    assert.equal(unconfigured.modelId, null);
+    await api("/model-settings", "PATCH", { modelId: "deep" });
 
     const invalidTeam = team();
     invalidTeam.roles[0]!.dependsOn = ["reviewer"];

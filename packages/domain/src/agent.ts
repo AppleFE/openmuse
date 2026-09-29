@@ -100,7 +100,7 @@ export interface AgentTask {
   status: TaskStatus;
   goalId?: string;
   /** Snapshotted when the task is created; later default changes do not alter this run. */
-  modelId?: string;
+  modelId?: string | null;
   teamId?: string;
   teamContext?: AgentTeamTaskContext;
   plan: TaskStep[];

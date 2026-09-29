@@ -17,9 +17,12 @@ export async function executeModelTask(
   initial: AgentTask,
   ctx: TaskContext,
 ): Promise<Partial<AgentTask>> {
-  const selected = initial.modelId
-    ? service.models.require(initial.modelId)
-    : await service.resolveModel(owner);
+  const selected =
+    initial.modelId === null
+      ? null
+      : initial.modelId
+        ? service.models.require(initial.modelId)
+        : await service.resolveModel(owner);
   if (!selected)
     return {
       status: "waiting_input",

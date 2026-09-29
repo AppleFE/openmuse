@@ -294,7 +294,7 @@ export class AgentService {
       prompt: input.prompt,
       kind: input.kind,
       goalId: input.goalId,
-      modelId: selectedModel?.id,
+      modelId: team ? undefined : (selectedModel?.id ?? null),
       teamId: team?.id,
       teamContext: team ? createTeamTaskContext(team) : undefined,
       status: held ? "paused" : "queued",

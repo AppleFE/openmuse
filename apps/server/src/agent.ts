@@ -50,7 +50,7 @@ export function makeRuntime(
                 url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
                 headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
               })
-            : new ConversationAgent(config, service, owner, selected?.model),
+            : new ConversationAgent(config, service, owner, selected?.model ?? null),
     };
   };
   const runtime = new CopilotRuntime({

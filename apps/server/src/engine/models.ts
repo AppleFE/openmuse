@@ -81,6 +81,7 @@ export class ModelRegistry {
   }
   async selection(owner: string): Promise<ModelSelection> {
     const saved = await this.db.get<ModelSelection>(owner, "model-settings", "default");
+    if (saved?.modelId === null) return saved;
     if (saved?.modelId && this.profiles.some((profile) => profile.id === saved.modelId && profile.enabled))
       return saved;
     return {
