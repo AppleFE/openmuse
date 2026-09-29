@@ -83,8 +83,16 @@ export class ConnectorService {
       } catch (error) {
         if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
         const key = randomBytes(32).toString("base64");
-        await writeFile(path, key, { mode: 0o600, flag: "wx" });
-        return key;
+        try {
+          await writeFile(path, key, { mode: 0o600, flag: "wx" });
+          return key;
+        } catch (writeError) {
+          if (
+            !(writeError instanceof Error && "code" in writeError && writeError.code === "EEXIST")
+          )
+            throw writeError;
+          return readFile(path, "utf8");
+        }
       }
     })();
     return this.keyPromise;
