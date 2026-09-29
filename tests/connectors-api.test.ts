@@ -390,6 +390,135 @@ test("multiple proxmox connections stay independent and reachable", async (t) =>
   );
 });
 
+test("credential-bearing URLs are rejected on write and stripped from legacy views", async (t) => {
+  const { db, app } = await fixture(t);
+  const created = await app.request("/api/connectors", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      provider: "headscale",
+      name: "Embedded creds",
+      config: { baseUrl: "https://ops:s3cret-pass@hs.example.com" },
+      secrets: { apiKey: "hs-key" },
+    }),
+  });
+  assert.equal(created.status, 422);
+  assert.match((await created.json()).error, /credentials/i);
+  const clean = await app.request("/api/connectors", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      provider: "headscale",
+      name: "Clean",
+      config: { baseUrl: "https://hs.example.com" },
+      secrets: { apiKey: "hs-key" },
+    }),
+  });
+  const { id } = await clean.json();
+  const edited = await app.request(`/api/connectors/${id}`, {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify({ config: { baseUrl: "https://admin:hunter2@hs2.example.com:8443" } }),
+  });
+  assert.equal(edited.status, 422);
+  // A record that predates the write boundary still never echoes userinfo.
+  await db.put("alice", "connectors", {
+    id: "legacy-1",
+    provider: "github",
+    name: "Legacy",
+    config: { baseUrl: "https://ci:old-pass@git.example.com" },
+    secret: null,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+  });
+  const legacy = await app.request("/api/connectors/legacy-1", { headers: headers() });
+  const legacyView = await legacy.json();
+  assert.equal(legacyView.config.baseUrl, "https://git.example.com/");
+  assert.equal(JSON.stringify(legacyView).includes("old-pass"), false);
+});
+
+test("a check computed against old credentials is not persisted over an edit", async (t) => {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const slow = await mockProvider(t, async (_request, response) => {
+    await gate;
+    response.end(JSON.stringify({ login: "octocat" }));
+  });
+  const { db, service } = await fixture(t);
+  const created = await service.create("alice", {
+    provider: "github",
+    name: "GitHub",
+    config: { baseUrl: slow.baseUrl },
+    secrets: { token: TOKEN_SECRET },
+  });
+  const pending = service.test("alice", created.id);
+  await service.update("alice", created.id, {
+    config: { baseUrl: "https://github.example.invalid" },
+  });
+  release();
+  const check = await pending;
+  assert.equal(check.ok, true);
+  const stored = await db.get<{ check?: unknown }>("alice", "connectors", created.id);
+  assert.ok(!stored?.check, "stale check must not overwrite an edited connection");
+
+  // A name-only edit does not invalidate credentials, so the result still persists.
+  let release2 = () => {};
+  const gate2 = new Promise<void>((resolve) => {
+    release2 = resolve;
+  });
+  const slow2 = await mockProvider(t, async (_request, response) => {
+    await gate2;
+    response.end(JSON.stringify({ login: "octocat" }));
+  });
+  const second = await service.create("alice", {
+    provider: "github",
+    name: "GitHub 2",
+    config: { baseUrl: slow2.baseUrl },
+    secrets: { token: TOKEN_SECRET },
+  });
+  const pending2 = service.test("alice", second.id);
+  await service.update("alice", second.id, { name: "Renamed" });
+  release2();
+  await pending2;
+  const stored2 = await db.get<{ check?: { ok: boolean }; name: string }>(
+    "alice",
+    "connectors",
+    second.id,
+  );
+  assert.equal(stored2?.name, "Renamed");
+  assert.equal(stored2?.check?.ok, true);
+});
+
+test("caller cancellation aborts provider I/O", async (t) => {
+  const mock = await mockProvider(t, (_request, response) => {
+    response.end(JSON.stringify([{ id: 1, name: "x" }]));
+  });
+  const { service } = await fixture(t);
+  const created = await service.create("alice", {
+    provider: "github",
+    name: "GitHub",
+    config: { baseUrl: mock.baseUrl },
+    secrets: { token: TOKEN_SECRET },
+  });
+  await assert.rejects(
+    service.run("alice", created.id, "repos", {}, AbortSignal.abort()),
+    /aborted/,
+  );
+  assert.equal(mock.requests.length, 0, "no request may leave the process after abort");
+});
+
+test("provider metadata publishes explicit field types", async (t) => {
+  const { service } = await fixture(t);
+  const infos = service.providers();
+  const github = infos.find((info) => info.provider === "github");
+  assert.equal(github?.configFields.find((field) => field.name === "baseUrl")?.type, "url");
+  assert.equal(github?.secretFields.find((field) => field.name === "token")?.type, "password");
+  const proxmox = infos.find((info) => info.provider === "proxmox");
+  assert.equal(proxmox?.configFields.find((field) => field.name === "verifyTls")?.type, "boolean");
+});
+
 test("connector agent tools list, test and query without leaking secrets", async (t) => {
   const { service } = await fixture(t);
   const created = await service.create("alice", {

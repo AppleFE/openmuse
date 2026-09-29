@@ -32,6 +32,8 @@ export interface ConnectorHttpOptions {
   /** Secret values that must never appear in error messages. */
   secrets?: (string | undefined)[];
   maxBytes?: number;
+  /** Aborts the in-flight request when the caller is cancelled. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -56,8 +58,16 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
     return Promise.reject(
       new ConnectorError("Connector endpoints must use http or https", undefined, "malformed"),
     );
+  const signal = options.signal;
+  if (signal?.aborted)
+    return Promise.reject(
+      new ConnectorError("Connector request was aborted", undefined, "provider"),
+    );
   const client = target.protocol === "https:" ? https : http;
   return new Promise((resolve, reject) => {
+    const onAbort = () =>
+      request.destroy(new ConnectorError("Connector request was aborted", undefined, "provider"));
+    signal?.addEventListener("abort", onAbort, { once: true });
     const request = client.request(
       target,
       {
@@ -129,6 +139,7 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
           ),
         );
     });
+    request.on("close", () => signal?.removeEventListener("abort", onAbort));
     request.end();
   });
 }

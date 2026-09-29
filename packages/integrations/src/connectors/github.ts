@@ -67,6 +67,7 @@ function request(ctx: ConnectorContext, path: string) {
   const base = (config.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
   return httpJson(`${base}${path}`, {
     timeoutMs: ctx.timeoutMs,
+    signal: ctx.signal,
     secrets: [secrets.token],
     headers: {
       Authorization: `Bearer ${secrets.token}`,
@@ -87,6 +88,7 @@ export function githubAdapter(): ConnectorAdapter {
         name: "baseUrl",
         label: "API base URL",
         required: false,
+        type: "url",
         description: "Defaults to https://api.github.com. Set for GitHub Enterprise Server.",
       },
     ],
@@ -95,6 +97,7 @@ export function githubAdapter(): ConnectorAdapter {
         name: "token",
         label: "Personal access token",
         required: true,
+        type: "password",
         description: "Fine-grained or classic PAT with repository read access.",
       },
     ],

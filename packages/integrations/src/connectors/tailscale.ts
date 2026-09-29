@@ -37,6 +37,7 @@ function request(ctx: ConnectorContext, path: string) {
   const base = (config.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
   return httpJson(`${base}${path}`, {
     timeoutMs: ctx.timeoutMs,
+    signal: ctx.signal,
     secrets: [secrets.apiKey],
     headers: {
       Authorization: `Bearer ${secrets.apiKey}`,
@@ -77,12 +78,14 @@ export function tailscaleAdapter(): ConnectorAdapter {
         name: "tailnet",
         label: "Tailnet",
         required: true,
+        type: "text",
         description: 'Tailnet name, or "-" for the key\'s default tailnet.',
       },
       {
         name: "baseUrl",
         label: "API base URL",
         required: false,
+        type: "url",
         description: "Defaults to https://api.tailscale.com/api/v2.",
       },
     ],
@@ -91,6 +94,7 @@ export function tailscaleAdapter(): ConnectorAdapter {
         name: "apiKey",
         label: "API access token",
         required: true,
+        type: "password",
         description: "tskey-api-… access token or OAuth access token.",
       },
     ],

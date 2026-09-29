@@ -50,6 +50,7 @@ POST   /api/connectors/:id/query          run a read operation { operation, para
 { "provider": "headscale", "name": "Self-hosted",
   "config": { "baseUrl": "https://headscale.example.com" },
   "secrets": { "apiKey": "…" } }                              // `headscale apikeys create`
+// URL fields reject embedded userinfo — credentials belong in `secrets`.
 
 // WireGuard (no secrets; runs the local wg binary)
 { "provider": "wireguard", "name": "Host VPN",
@@ -107,6 +108,15 @@ upstream detail redacted.
   cannot see or exercise a connection.
 - **Proxmox TLS.** `verifyTls: false` or a custom PEM `ca` supports self-signed
   lab endpoints; verification stays on by default.
+- **No credentials in URLs.** URL config fields reject embedded
+  `user:password@` userinfo at validation; any such record written before this
+  invariant is still stripped in views.
+- **Checks are credential-bound.** A `test` result only persists while the
+  config and secrets that produced it are still stored; editing either clears
+  a stale check, and a concurrent result cannot overwrite the edit.
+- **Cancellation aborts I/O.** Caller abort signals (request disconnect, task
+  cancellation, pi timeout) propagate into provider HTTP requests and the `wg`
+  child process.
 
 ## Agent tools
 
@@ -147,5 +157,6 @@ connection, keyed by `(owner, id)` — so PGlite and Postgres behave identically
 providers (auth headers, response mapping, malformed JSON, timeouts, secret
 redaction, the Headscale legacy fallback and `wg` argv).
 `tests/connectors-api.test.ts` covers the authenticated CRUD/test/query
-routes, encrypted storage, owner isolation and multiple simultaneous Proxmox
-connections.
+routes, encrypted storage, owner isolation, embedded-URL credential rejection,
+stale-check fencing, abort propagation, field-type metadata, and multiple
+simultaneous Proxmox connections.

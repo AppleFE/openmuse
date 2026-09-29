@@ -42,6 +42,32 @@ const providerSchemas = {
 const now = () => new Date().toISOString();
 
 /**
+ * Strip URL userinfo from `*Url` config fields returned in views. Writes are
+ * rejected at the schema boundary; this covers records written before that
+ * invariant existed.
+ */
+function sanitizeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value === "string" && /url$/i.test(key)) {
+      try {
+        const url = new URL(value);
+        if (url.username || url.password) {
+          url.username = "";
+          url.password = "";
+          cleaned[key] = url.toString();
+          continue;
+        }
+      } catch {
+        // Not a parseable URL; schema validation decides whether it is allowed.
+      }
+    }
+    cleaned[key] = value;
+  }
+  return cleaned;
+}
+
+/**
  * Durable, owner-scoped connector management. Secrets are encrypted with
  * TOKEN_ENCRYPTION_KEY (or a generated per-installation key in sample mode)
  * and are never returned in views, logs or error messages.
@@ -63,7 +89,7 @@ export class ConnectorService {
       id: record.id,
       provider: record.provider,
       name: record.name,
-      config: record.config,
+      config: sanitizeConfig(record.config),
       hasSecret: Boolean(record.secret),
       ...(record.check ? { check: record.check } : {}),
       createdAt: record.createdAt,
@@ -164,6 +190,9 @@ export class ConnectorService {
       const parsed = schemas.secrets.parse(patch.secrets);
       secret = Object.keys(parsed).length === 0 ? null : await this.encrypt(parsed);
     }
+    const credentialsChanged =
+      patch.secrets !== undefined ||
+      (patch.config !== undefined && JSON.stringify(config) !== JSON.stringify(stored.config));
     const updated = await this.db.compareAndSwap<StoredConnector>(
       owner,
       "connectors",
@@ -173,6 +202,8 @@ export class ConnectorService {
         name: patch.name ?? stored.name,
         config,
         secret,
+        // A check describes the previous credentials; clear it when they change.
+        ...(credentialsChanged ? { check: null } : {}),
         updatedAt: now(),
       },
     );
@@ -185,7 +216,7 @@ export class ConnectorService {
       throw new AppError("Connector not found", 404);
   }
 
-  async test(owner: string, id: string): Promise<ConnectorCheck> {
+  async test(owner: string, id: string, signal?: AbortSignal): Promise<ConnectorCheck> {
     const stored = await this.record(owner, id);
     let check: ConnectorCheck;
     try {
@@ -193,6 +224,7 @@ export class ConnectorService {
         config: stored.config,
         secrets: await this.secrets(stored),
         timeoutMs: this.deps.timeoutMs,
+        signal,
       });
       check = { ...result, checkedAt: now() };
     } catch (error) {
@@ -202,13 +234,15 @@ export class ConnectorService {
         checkedAt: now(),
       };
     }
-    // Persist the check under the same document version so a concurrent update
-    // is not silently overwritten; the live result is returned either way.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const latest = await this.db.get<StoredConnector>(owner, "connectors", id);
-      if (!latest) break;
-      if (await this.db.compareAndSwap(owner, "connectors", id, { ...latest }, { check })) break;
-    }
+    // Persist only while the credentials and config that produced this result are
+    // still stored; a concurrent edit invalidates it and must not be overwritten.
+    await this.db.compareAndSwap(
+      owner,
+      "connectors",
+      id,
+      { config: stored.config, secret: stored.secret },
+      { check },
+    );
     return check;
   }
 
@@ -217,6 +251,7 @@ export class ConnectorService {
     id: string,
     operation: string,
     params: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const stored = await this.record(owner, id);
     if (!(connectorOperations[stored.provider] as readonly string[]).includes(operation))
@@ -230,6 +265,7 @@ export class ConnectorService {
           config: stored.config,
           secrets: await this.secrets(stored),
           timeoutMs: this.deps.timeoutMs,
+          signal,
         },
         operation,
         params,

@@ -62,6 +62,7 @@ function client(ctx: ConnectorContext) {
     get: (path: string) =>
       httpJson(`${base}${path}`, {
         timeoutMs: ctx.timeoutMs,
+        signal: ctx.signal,
         secrets: [secrets.tokenId, secrets.tokenSecret],
         tls: {
           ca: config.ca,
@@ -110,18 +111,21 @@ export function proxmoxAdapter(): ConnectorAdapter {
         name: "baseUrl",
         label: "API URL",
         required: true,
+        type: "url",
         description: "For example https://pve.example.com:8006.",
       },
       {
         name: "verifyTls",
         label: "Verify TLS",
         required: false,
+        type: "boolean",
         description: "Disable only for self-signed lab deployments.",
       },
       {
         name: "ca",
         label: "CA certificate (PEM)",
         required: false,
+        type: "text",
         description: "Custom CA bundle for self-signed deployments.",
       },
     ],
@@ -130,12 +134,14 @@ export function proxmoxAdapter(): ConnectorAdapter {
         name: "tokenId",
         label: "API token id",
         required: true,
+        type: "password",
         description: "user@realm!tokenname, for example monitoring@pve!openmuse.",
       },
       {
         name: "tokenSecret",
         label: "API token secret",
         required: true,
+        type: "password",
         description: "UUID shown once when the token is created.",
       },
     ],

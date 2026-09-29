@@ -5,6 +5,8 @@ export interface ConnectorContext {
   config: Record<string, unknown>;
   secrets: Record<string, unknown>;
   timeoutMs?: number;
+  /** Aborts in-flight provider I/O when the caller's request is cancelled. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -25,7 +27,7 @@ export interface ConnectorAdapter {
 export type ConnectorExec = (
   file: string,
   args: string[],
-  options: { timeoutMs: number },
+  options: { timeoutMs: number; signal?: AbortSignal },
 ) => Promise<{ stdout: string; stderr: string }>;
 
 export interface ConnectorDeps {

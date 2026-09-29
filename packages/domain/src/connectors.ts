@@ -19,7 +19,15 @@ const nameSchema = z.string().trim().min(1).max(120);
 const httpUrl = z
   .url()
   .max(2048)
-  .refine((value) => /^https?:/i.test(value), "Use an http or https URL");
+  .refine((value) => /^https?:/i.test(value), "Use an http or https URL")
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return !url.username && !url.password;
+    } catch {
+      return true;
+    }
+  }, "Do not embed credentials in the URL; use the secrets fields");
 const interfaceName = z
   .string()
   .regex(/^[a-zA-Z0-9_.:-]{1,32}$/, "Use a WireGuard interface name such as wg0");
@@ -157,6 +165,8 @@ export interface ConnectorFieldInfo {
   name: string;
   label: string;
   required: boolean;
+  /** Explicit field kind so clients do not infer behavior from field names. */
+  type?: "text" | "password" | "url" | "boolean";
   description?: string;
 }
 export interface ConnectorOperationParam {

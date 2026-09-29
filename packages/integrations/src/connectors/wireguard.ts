@@ -9,14 +9,14 @@ import type { ConnectorAdapter, ConnectorContext, ConnectorExec } from "./types.
 const DEFAULT_WG = "wg";
 const EXEC_TIMEOUT_MS = 10000;
 
-const execWg: ConnectorExec = (file, args, { timeoutMs }) =>
+const execWg: ConnectorExec = (file, args, { timeoutMs, signal }) =>
   new Promise((resolve, reject) => {
     // execFile never spawns a shell; argv is fixed and cannot be influenced by
     // user input beyond the schema-validated interface name.
     execFile(
       file,
       args,
-      { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true },
+      { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true, signal },
       (error, stdout, stderr) => {
         if (error) {
           const missing = "code" in error && error.code === "ENOENT";
@@ -113,12 +113,14 @@ export function wireguardAdapter(exec: ConnectorExec = execWg): ConnectorAdapter
         name: "wgPath",
         label: "wg executable path",
         required: false,
+        type: "text",
         description: "Defaults to `wg` on PATH.",
       },
       {
         name: "interface",
         label: "Interface",
         required: false,
+        type: "text",
         description: "Limit status to one interface such as wg0; defaults to all.",
       },
     ],
@@ -138,6 +140,7 @@ export function wireguardAdapter(exec: ConnectorExec = execWg): ConnectorAdapter
     const args = config.interface ? ["show", config.interface, "dump"] : ["show", "all", "dump"];
     const { stdout } = await exec(file, args, {
       timeoutMs: ctx.timeoutMs ?? EXEC_TIMEOUT_MS,
+      signal: ctx.signal,
     });
     return parseWgDump(stdout);
   };

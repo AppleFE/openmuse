@@ -41,14 +41,14 @@ export function connectorTools(
       "test_connector",
       "Run a live connectivity and credential check against a configured connector",
       z.object({ connectorId: z.string().min(1).max(120) }),
-      async ({ connectorId }) => service.test(owner, connectorId),
+      async ({ connectorId }) => service.test(owner, connectorId, options.signal),
     ),
     tool(
       "query_connector",
       "Run a read-only provider operation such as repos, issues, devices, status, nodes, vms or containers",
       connectorQuerySchema.extend({ connectorId: z.string().min(1).max(120) }),
       async ({ connectorId, operation, params }) =>
-        service.run(owner, connectorId, operation, params),
+        service.run(owner, connectorId, operation, params, options.signal),
     ),
   ];
 }

@@ -54,6 +54,7 @@ async function fetchNodes(ctx: ConnectorContext) {
   const base = config.baseUrl.replace(/\/+$/, "");
   const options = {
     timeoutMs: ctx.timeoutMs,
+    signal: ctx.signal,
     secrets: [secrets.apiKey],
     headers: { Authorization: `Bearer ${secrets.apiKey}` },
   };
@@ -82,6 +83,7 @@ export function headscaleAdapter(): ConnectorAdapter {
         name: "baseUrl",
         label: "Server URL",
         required: true,
+        type: "url",
         description: "Headscale base URL, for example https://headscale.example.com.",
       },
     ],
@@ -90,6 +92,7 @@ export function headscaleAdapter(): ConnectorAdapter {
         name: "apiKey",
         label: "API key",
         required: true,
+        type: "password",
         description: "Created with `headscale apikeys create`.",
       },
     ],

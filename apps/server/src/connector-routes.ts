@@ -20,11 +20,19 @@ export function connectorRoutes(service: ConnectorService) {
     await service.remove(c.get("owner"), c.req.param("id"));
     return c.json({ ok: true });
   });
-  app.post("/:id/test", async (c) => c.json(await service.test(c.get("owner"), c.req.param("id"))));
+  app.post("/:id/test", async (c) =>
+    c.json(await service.test(c.get("owner"), c.req.param("id"), c.req.raw.signal)),
+  );
   app.post("/:id/query", async (c) => {
     const body = connectorQuerySchema.parse(await c.req.json());
     return c.json({
-      data: await service.run(c.get("owner"), c.req.param("id"), body.operation, body.params),
+      data: await service.run(
+        c.get("owner"),
+        c.req.param("id"),
+        body.operation,
+        body.params,
+        c.req.raw.signal,
+      ),
     });
   });
   return app;
