@@ -183,6 +183,7 @@ export class ConnectorService {
       const result = await connectorAdapter(stored.provider, this.deps).test({
         config: stored.config,
         secrets: await this.secrets(stored),
+        timeoutMs: this.deps.timeoutMs,
       });
       check = { ...result, checkedAt: now() };
     } catch (error) {
@@ -216,7 +217,11 @@ export class ConnectorService {
       );
     try {
       return await connectorAdapter(stored.provider, this.deps).run(
-        { config: stored.config, secrets: await this.secrets(stored) },
+        {
+          config: stored.config,
+          secrets: await this.secrets(stored),
+          timeoutMs: this.deps.timeoutMs,
+        },
         operation,
         params,
       );

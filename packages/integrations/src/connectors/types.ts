@@ -30,4 +30,6 @@ export type ConnectorExec = (
 
 export interface ConnectorDeps {
   exec?: ConnectorExec;
+  /** Provider request timeout override; defaults to 15s per call. */
+  timeoutMs?: number;
 }

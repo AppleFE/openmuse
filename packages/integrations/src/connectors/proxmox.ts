@@ -200,15 +200,17 @@ export function proxmoxAdapter(): ConnectorAdapter {
         case "containers":
         case "resources": {
           const input = resourcesParams.parse(params);
-          const type =
-            operation === "resources" ? input.type : operation === "vms" ? "qemu" : "lxc";
+          // PVE's type filter only knows `vm` (qemu+lxc combined); the per-kind
+          // split happens locally on the returned resource.type.
+          const queryType = operation === "resources" ? input.type : "vm";
+          const wanted = operation === "vms" ? "qemu" : operation === "containers" ? "lxc" : null;
           const resources = data(z.array(resourceSchema)).parse(
-            await get(`/cluster/resources${type ? `?type=${type}` : ""}`),
+            await get(`/cluster/resources${queryType ? `?type=${queryType}` : ""}`),
           );
           const filtered = resources.filter(
             (resource) =>
               (!input.node || resource.node === input.node) &&
-              (operation === "resources" || resource.type === (type ?? resource.type)),
+              (!wanted || resource.type === wanted),
           );
           const key =
             operation === "vms" ? "vms" : operation === "containers" ? "containers" : "resources";
