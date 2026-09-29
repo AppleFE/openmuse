@@ -9,12 +9,19 @@ import {
   chooseAvailableModel,
   compactSettings,
   executionDependencies,
+  modelAvailabilityLabel,
 } from "../src/settings-core.ts";
 
 const models = [
-  { id: "fast", enabled: true },
-  { id: "disabled", enabled: false },
-  { id: "deep", enabled: true },
+  { id: "fast", enabled: true, available: true },
+  { id: "disabled", enabled: false, available: false, unavailableReason: "disabled" as const },
+  {
+    id: "missing-key",
+    enabled: true,
+    available: false,
+    unavailableReason: "missing_credentials" as const,
+  },
+  { id: "deep", enabled: true, available: true },
 ];
 
 test("conversation selection keeps an available local choice", () => {
@@ -23,8 +30,15 @@ test("conversation selection keeps an available local choice", () => {
 
 test("conversation selection falls back through server default and availability", () => {
   assert.equal(chooseAvailableModel("disabled", "fast", models), "fast");
+  assert.equal(chooseAvailableModel("missing-key", "missing-key", models), "fast");
   assert.equal(chooseAvailableModel(undefined, "missing", models), "fast");
   assert.equal(chooseAvailableModel(undefined, null, []), undefined);
+});
+
+test("model availability describes disabled and unconfigured server profiles", () => {
+  assert.equal(modelAvailabilityLabel(models[0]), "Available");
+  assert.equal(modelAvailabilityLabel(models[1]), "Disabled");
+  assert.equal(modelAvailabilityLabel(models[2]), "Server key required");
 });
 
 test("connector payload compaction preserves booleans and removes blank fields", () => {

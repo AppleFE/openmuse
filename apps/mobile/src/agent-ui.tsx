@@ -946,10 +946,10 @@ export function DelegateSheet() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    if (modelId && data?.models?.some((model) => model.id === modelId && model.enabled)) return;
+    if (modelId && data?.models?.some((model) => model.id === modelId && model.available)) return;
     setModelId(
-      data?.models?.find((model) => model.id === data.modelSelection?.modelId && model.enabled)
-        ?.id ?? data?.models?.find((model) => model.enabled)?.id,
+      data?.models?.find((model) => model.id === data.modelSelection?.modelId && model.available)
+        ?.id ?? data?.models?.find((model) => model.available)?.id,
     );
   }, [data?.modelSelection?.modelId, data?.models, modelId]);
   async function submit() {

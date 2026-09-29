@@ -8,7 +8,7 @@ import type {
   TeamInput,
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
-import { executionDependencies } from "./settings-core";
+import { executionDependencies, modelAvailabilityLabel } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -43,13 +43,14 @@ export function ModelChoices({
     >
       {models.map((model) => {
         const selected = value === model.id;
+        const availability = modelAvailabilityLabel(model);
         return (
           <Pressable
             key={model.id}
             accessibilityRole="radio"
-            accessibilityLabel={`${model.label}, ${model.enabled ? "available" : "unavailable"}`}
-            accessibilityState={{ checked: selected, disabled: disabled || !model.enabled }}
-            disabled={disabled || !model.enabled}
+            accessibilityLabel={`${model.label}, ${availability.toLowerCase()}`}
+            accessibilityState={{ checked: selected, disabled: disabled || !model.available }}
+            disabled={disabled || !model.available}
             onPress={() => onChange(model.id)}
             style={({ pressed }) => ({
               minWidth: compact ? undefined : 170,
@@ -60,7 +61,7 @@ export function ModelChoices({
               borderWidth: 1,
               borderColor: selected ? colors.blueDark : colors.line,
               backgroundColor: selected ? colors.sky : colors.surfaceMuted,
-              opacity: model.enabled ? (pressed ? 0.72 : 1) : 0.48,
+              opacity: model.available ? (pressed ? 0.72 : 1) : 0.48,
             })}
           >
             <Text
@@ -70,8 +71,8 @@ export function ModelChoices({
               {model.label}
             </Text>
             {!compact && <Text style={s.small}>{modelDetail(model)}</Text>}
-            <Text style={[s.small, { color: model.enabled ? colors.success : colors.danger }]}>
-              {model.enabled ? "Available" : "Unavailable"}
+            <Text style={[s.small, { color: model.available ? colors.success : colors.danger }]}>
+              {availability}
             </Text>
           </Pressable>
         );
@@ -118,7 +119,7 @@ function TeamEditor({
 }) {
   const { api } = useWorkspace();
   const { refresh } = useAgentWorkspace();
-  const fallbackModel = models.find((model) => model.enabled)?.id ?? "";
+  const fallbackModel = models.find((model) => model.available)?.id ?? "";
   const [name, setName] = useState(team?.name ?? "");
   const [description, setDescription] = useState(team?.description ?? "");
   const [execution, setExecution] = useState<"sequential" | "parallel">(
@@ -176,7 +177,7 @@ function TeamEditor({
       (role) =>
         role.label.trim() &&
         role.systemPrompt.trim() &&
-        models.some((model) => model.id === role.modelId && model.enabled),
+        models.some((model) => model.id === role.modelId && model.available),
     );
   return (
     <Sheet
@@ -322,7 +323,8 @@ export function ModelTeamSettings() {
       <Card style={{ gap: 12 }}>
         <SectionHeading title="Models" />
         <Text style={s.muted}>
-          This catalog comes from your server. Disabled entries stay visible but cannot be selected.
+          This catalog comes from your server. Disabled models and models missing a server key stay
+          visible but cannot be selected.
         </Text>
         {models.length ? (
           <ModelChoices
@@ -382,7 +384,7 @@ export function ModelTeamSettings() {
         {!teams.length && <Text style={s.muted}>No model teams yet.</Text>}
         <Button
           icon={Plus}
-          disabled={!models.some((model) => model.enabled)}
+          disabled={!models.some((model) => model.available)}
           onPress={() => setEditing("new")}
         >
           Create model team

@@ -1,6 +1,14 @@
 export interface AvailableModel {
   id: string;
   enabled: boolean;
+  available: boolean;
+  unavailableReason?: "disabled" | "missing_credentials";
+}
+
+export function modelAvailabilityLabel(model: AvailableModel) {
+  if (model.available) return "Available";
+  if (model.unavailableReason === "missing_credentials") return "Server key required";
+  return "Disabled";
 }
 
 export function chooseAvailableModel(
@@ -8,10 +16,10 @@ export function chooseAvailableModel(
   serverDefault: string | null | undefined,
   models: AvailableModel[],
 ) {
-  if (current && models.some((model) => model.id === current && model.enabled)) return current;
-  if (serverDefault && models.some((model) => model.id === serverDefault && model.enabled))
+  if (current && models.some((model) => model.id === current && model.available)) return current;
+  if (serverDefault && models.some((model) => model.id === serverDefault && model.available))
     return serverDefault;
-  return models.find((model) => model.enabled)?.id;
+  return models.find((model) => model.available)?.id;
 }
 
 export function compactSettings(values: Record<string, unknown>) {
