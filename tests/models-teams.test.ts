@@ -179,14 +179,17 @@ test("team role checkpoints survive restart and retry only interrupted work", as
     initial.leaseId = "expired";
     initial.leaseUntil = "2020-01-01T00:00:00.000Z";
     initial.teamContext.status = "running";
+    const plannerRun = initial.teamContext.roleRuns[0];
+    const coderRun = initial.teamContext.roleRuns[1];
+    if (!plannerRun || !coderRun) throw new Error("missing role runs");
     initial.teamContext.roleRuns[0] = {
-      ...initial.teamContext.roleRuns[0]!,
+      ...plannerRun,
       status: "succeeded",
       attempts: 1,
       output: "saved-plan",
     };
     initial.teamContext.roleRuns[1] = {
-      ...initial.teamContext.roleRuns[1]!,
+      ...coderRun,
       status: "running",
       attempts: 1,
     };
@@ -288,7 +291,9 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
     await api("/model-settings", "PATCH", { modelId: "deep" });
 
     const invalidTeam = team();
-    invalidTeam.roles[0]!.dependsOn = ["reviewer"];
+    const invalidPlanner = invalidTeam.roles[0];
+    if (!invalidPlanner) throw new Error("missing planner");
+    invalidPlanner.dependsOn = ["reviewer"];
     assert.equal((await api("/teams", "POST", invalidTeam)).status, 422);
     const created = (await (
       await api("/teams", "POST", {
