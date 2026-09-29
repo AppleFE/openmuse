@@ -98,7 +98,19 @@ test("real embedded pi executes an adapted delegated-task tool over the model pr
   assert.ok(
     fixture.requests.every((request) => request.authorization === "Bearer local-pi-protocol-key"),
   );
-  assert.match(JSON.stringify(fixture.requests[0]?.body.tools), /set_plan/);
+  const firstRequest = fixture.requests[0];
+  assert.ok(firstRequest);
+  const exposedTools = (firstRequest.body.tools as Array<{ name?: string }>).map(
+    (tool) => tool.name,
+  );
+  assert.ok(exposedTools.includes("set_plan"));
+  assert.deepEqual(
+    exposedTools.filter((name) =>
+      ["bash", "powershell", "read", "write", "edit"].includes(name ?? ""),
+    ),
+    [],
+    "pi must not expose host shell or filesystem tools",
+  );
   assert.match(JSON.stringify(fixture.requests[1]?.body.input), /function_call_output/);
 });
 
