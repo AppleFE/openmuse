@@ -35,6 +35,7 @@ import type {
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
+import { type ThemePreference, useTheme } from "./theme";
 import {
   Button,
   Card,
@@ -117,7 +118,7 @@ export function TaskCard({
           padding: compact ? 15 : 20,
           gap: 11,
           borderRadius: 22,
-          backgroundColor: "#F0F1F2",
+          backgroundColor: colors.surfaceMuted,
         }}
       >
         <View style={[s.row, { gap: 10 }]}>
@@ -721,7 +722,13 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
   const period = record(artifact.data.period);
   return (
     <Card
-      style={{ gap: 12, padding: 10, backgroundColor: "#EEEEF0", maxWidth: 440, width: "100%" }}
+      style={{
+        gap: 12,
+        padding: 10,
+        backgroundColor: colors.surfaceMuted,
+        maxWidth: 440,
+        width: "100%",
+      }}
     >
       <Pressable
         accessibilityRole="button"
@@ -809,7 +816,7 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
                   <Text style={s.text}>{String(row.name)}</Text>
                   <Text style={s.text}>{amount(row.amount)}</Text>
                 </View>
-                <View style={{ height: 7, backgroundColor: "#DFE8EB", borderRadius: 8 }}>
+                <View style={{ height: 7, backgroundColor: colors.lineStrong, borderRadius: 8 }}>
                   <View
                     style={{
                       width: `${Math.min(100, (Number(row.amount) / spending) * 100)}%`,
@@ -1174,7 +1181,7 @@ export function GoalsScreen() {
             onPress={() => setSelectedMonitor(item.id)}
             style={[s.row, { gap: 12, paddingVertical: 13 }]}
           >
-            <Square size={21} color="#A7AAAC" />
+            <Square size={21} color={colors.subtle} />
             <View style={{ flex: 1, gap: 4 }}>
               <Text style={s.text}>{item.title}</Text>
               <Text numberOfLines={1} style={s.muted}>
@@ -1183,7 +1190,7 @@ export function GoalsScreen() {
                   : statusLabel(item.status)}
               </Text>
             </View>
-            <ChevronRight size={18} color="#A3A6A8" />
+            <ChevronRight size={18} color={colors.subtle} />
           </Pressable>
         ))}
         {!monitors.length && (
@@ -1222,7 +1229,7 @@ export function GoalsScreen() {
           >
             <Square
               size={21}
-              color="#A7AAAC"
+              color={colors.subtle}
               fill={item.status === "completed" ? colors.green : "transparent"}
             />
             <View style={{ flex: 1, gap: 4 }}>
@@ -1231,7 +1238,7 @@ export function GoalsScreen() {
                 {item.description || statusLabel(item.status)}
               </Text>
             </View>
-            <ChevronRight size={18} color="#A3A6A8" />
+            <ChevronRight size={18} color={colors.subtle} />
           </Pressable>
         ))}
         {!data?.goals.length && (
@@ -1255,9 +1262,9 @@ export function GoalsScreen() {
           onPress={() => setAdding(item.name)}
           style={[s.row, { gap: 12, minHeight: 38 }]}
         >
-          <item.icon size={23} color="#989C9F" />
-          <Text style={[s.text, { flex: 1, color: "#666A6D" }]}>{item.name}</Text>
-          <Plus size={18} color="#989C9F" />
+          <item.icon size={23} color={colors.subtle} />
+          <Text style={[s.text, { flex: 1, color: colors.muted }]}>{item.name}</Text>
+          <Plus size={18} color={colors.subtle} />
         </Pressable>
       ))}
       {adding && (
@@ -1664,6 +1671,7 @@ export function NotificationsSheet() {
 export function AppsScreen() {
   const { navigate, open } = useWorkspace();
   const { data, mutate } = useAgentWorkspace();
+  const { preference, resolved, setPreference } = useTheme();
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState(false);
   const [name, setName] = useState(data?.identity.name || "OpenMuse");
@@ -1735,7 +1743,7 @@ export function AppsScreen() {
       />
       <ConnectionsScreen query={query} />
       <Text style={s.heading}>On your computer</Text>
-      <Card style={{ paddingVertical: 3, backgroundColor: "#F4F5F6" }}>
+      <Card style={{ paddingVertical: 3, backgroundColor: colors.surfaceMuted }}>
         {shortcuts
           .filter((item) =>
             `${item.title} ${item.detail}`.toLowerCase().includes(query.toLowerCase()),
@@ -1751,6 +1759,42 @@ export function AppsScreen() {
               }
             />
           ))}
+      </Card>
+      <Card style={{ gap: 12 }}>
+        <SectionHeading title="Appearance" />
+        <Text style={s.muted}>
+          Follow this device or keep OpenMuse in a consistent light or dark theme.
+        </Text>
+        <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+          {(["system", "light", "dark"] as ThemePreference[]).map((item) => (
+            <Pressable
+              key={item}
+              accessibilityRole="radio"
+              accessibilityLabel={`${statusLabel(item)} theme`}
+              accessibilityState={{ checked: preference === item }}
+              onPress={() => setPreference(item)}
+              style={{ flexGrow: 1, minWidth: 86 }}
+            >
+              <View
+                style={[
+                  s.button,
+                  {
+                    backgroundColor: preference === item ? colors.blue : colors.surfaceMuted,
+                    borderWidth: 1,
+                    borderColor: preference === item ? colors.blueDark : colors.line,
+                  },
+                ]}
+              >
+                <Text style={[s.buttonText, { color: colors.text }]}>{statusLabel(item)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={s.small}>
+          {preference === "system"
+            ? `Currently using the ${resolved} device appearance.`
+            : `Using ${resolved} appearance on web and native.`}
+        </Text>
       </Card>
       <Button onPress={() => setSettings(!settings)}>
         {settings ? "Close agent settings" : "Personality & memory"}

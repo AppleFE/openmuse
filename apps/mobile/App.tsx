@@ -38,6 +38,7 @@ import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
+import { ThemeProvider, useTheme } from "./src/theme";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
 import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from "./src/ui";
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
@@ -67,6 +68,14 @@ const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
   files: { title: "Files", subtitle: "Documents, forms and filled copies." },
 };
 export default function App() {
+  return (
+    <ThemeProvider>
+      <MuseApp />
+    </ThemeProvider>
+  );
+}
+function MuseApp() {
+  const { resolved } = useTheme();
   const [token, setToken] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [busy, setBusy] = useState(true);
@@ -88,7 +97,7 @@ export default function App() {
   }, [connect]);
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style={resolved === "dark" ? "light" : "dark"} />
       {token ? (
         <CopilotKitProvider
           runtimeUrl={`${API_URL}/api/copilotkit`}
@@ -436,15 +445,15 @@ function WorkspaceShell({
                 width: "100%",
                 maxWidth: 370,
                 padding: 5,
-                backgroundColor: "#FFF",
+                backgroundColor: colors.surfaceRaised,
                 borderRadius: 40,
-                shadowColor: "#132631",
+                shadowColor: colors.shadow,
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.07,
                 shadowRadius: 18,
                 elevation: 3,
                 borderWidth: 1,
-                borderColor: "#F8F8F8",
+                borderColor: colors.line,
               }}
             >
               {nav.map((item) => {
@@ -461,7 +470,7 @@ function WorkspaceShell({
                       height: 47,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: active ? "#F0F1F2" : "transparent",
+                      backgroundColor: active ? colors.surfaceMuted : "transparent",
                       borderRadius: 28,
                     }}
                   >
@@ -490,13 +499,15 @@ function WorkspaceShell({
               ]}
             >
               <Check size={16} color={colors.blue} />
-              <Text style={{ color: "#FFF", fontSize: 13, flexShrink: 1 }}>{toast}</Text>
+              <Text style={{ color: colors.inverseText, fontSize: 13, flexShrink: 1 }}>
+                {toast}
+              </Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss notification"
                 onPress={clearToast}
               >
-                <X size={16} color="#FFF" />
+                <X size={16} color={colors.inverseText} />
               </Pressable>
             </View>
           </View>

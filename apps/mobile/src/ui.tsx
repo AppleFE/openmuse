@@ -15,103 +15,113 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-export const colors = {
-  canvas: "#FCFCFC",
-  card: "#FFFFFF",
-  text: "#11191C",
-  muted: "#697176",
-  line: "#EEEEF0",
-  blue: "#C8E7FF",
-  blueDark: "#1473C8",
-  sky: "#EDF7FD",
-  green: "#E3F3E8",
-  lavender: "#F0EEFA",
-  orange: "#FDF0DF",
-  danger: "#AA4A45",
-};
-export const s = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center" },
-  between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  text: { color: colors.text, fontSize: 15, lineHeight: 23 },
-  muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
-  small: { color: colors.muted, fontSize: 11, lineHeight: 17 },
-  label: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
+import { colors } from "./theme";
+
+export { colors } from "./theme";
+
+function createStyles() {
+  return StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center" },
+    between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    text: { color: colors.text, fontSize: 15, lineHeight: 23 },
+    muted: { color: colors.muted, fontSize: 14, lineHeight: 21 },
+    small: { color: colors.muted, fontSize: 11, lineHeight: 17 },
+    label: {
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+    },
+    title: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.7 },
+    heading: { color: colors.text, fontSize: 16, fontWeight: "600", letterSpacing: -0.25 },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 23,
+      borderWidth: 0,
+      borderColor: colors.line,
+      padding: 20,
+    },
+    divider: { height: 1, backgroundColor: colors.line, marginVertical: 18 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.line,
+      borderRadius: 19,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      color: colors.text,
+      fontSize: 16,
+      backgroundColor: colors.input,
+      minHeight: 45,
+    },
+    field: { gap: 7, marginBottom: 16 },
+    button: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      paddingHorizontal: 17,
+      minHeight: 42,
+      paddingVertical: 10,
+      borderRadius: 24,
+    },
+    primary: { backgroundColor: colors.blue },
+    secondary: { backgroundColor: colors.surfaceMuted },
+    buttonText: { fontSize: 14, fontWeight: "600" },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+      alignSelf: "flex-start",
+      backgroundColor: colors.canvas,
+    },
+    chipText: { fontSize: 10, fontWeight: "600", color: colors.muted },
+    iconBox: {
+      width: 42,
+      height: 42,
+      borderRadius: 13,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.sky,
+    },
+    error: {
+      padding: 16,
+      borderRadius: 14,
+      backgroundColor: colors.dangerSurface,
+      marginVertical: 10,
+      gap: 4,
+    },
+    modalShade: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    },
+    sheet: {
+      backgroundColor: colors.canvas,
+      borderRadius: 26,
+      width: "100%",
+      maxWidth: 790,
+      maxHeight: "94%",
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: colors.line,
+    },
+  });
+}
+type SharedStyles = ReturnType<typeof createStyles>;
+let stylePalette = colors.canvas;
+let sharedStyles = createStyles();
+export const s = new Proxy(sharedStyles, {
+  get: (_target, property: keyof SharedStyles) => {
+    if (stylePalette !== colors.canvas) {
+      stylePalette = colors.canvas;
+      sharedStyles = createStyles();
+    }
+    return sharedStyles[property];
   },
-  title: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.7 },
-  heading: { color: colors.text, fontSize: 16, fontWeight: "600", letterSpacing: -0.25 },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 23,
-    borderWidth: 0,
-    borderColor: colors.line,
-    padding: 20,
-  },
-  divider: { height: 1, backgroundColor: colors.line, marginVertical: 18 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 19,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: colors.text,
-    fontSize: 16,
-    backgroundColor: "#FFF",
-    minHeight: 45,
-  },
-  field: { gap: 7, marginBottom: 16 },
-  button: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 17,
-    minHeight: 42,
-    paddingVertical: 10,
-    borderRadius: 24,
-  },
-  primary: { backgroundColor: colors.blue },
-  secondary: { backgroundColor: "#F1F2F3" },
-  buttonText: { fontSize: 14, fontWeight: "600" },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    alignSelf: "flex-start",
-    backgroundColor: colors.canvas,
-  },
-  chipText: { fontSize: 10, fontWeight: "600", color: colors.muted },
-  iconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: colors.sky,
-  },
-  error: { padding: 16, borderRadius: 14, backgroundColor: "#FBEFED", marginVertical: 10, gap: 4 },
-  modalShade: {
-    flex: 1,
-    backgroundColor: "rgba(35,48,44,0.25)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  sheet: {
-    backgroundColor: colors.canvas,
-    borderRadius: 26,
-    width: "100%",
-    maxWidth: 790,
-    maxHeight: "94%",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-});
+}) as SharedStyles;
 export function Button({
   children,
   onPress,
@@ -179,7 +189,7 @@ export function IconButton({
           alignItems: "center",
           justifyContent: "center",
           borderRadius: 22,
-          backgroundColor: pressed ? colors.line : "#FFFFFF",
+          backgroundColor: pressed ? colors.line : colors.surfaceRaised,
         },
       ]}
     >
@@ -282,7 +292,7 @@ export function Sheet({
                 width: 34,
                 height: 4,
                 borderRadius: 3,
-                backgroundColor: "#D8DBDE",
+                backgroundColor: colors.lineStrong,
                 marginTop: 10,
               }}
             />
@@ -333,12 +343,12 @@ export function CheckRow({
           borderRadius: 5,
           borderWidth: 1,
           borderColor: checked ? colors.text : colors.line,
-          backgroundColor: checked ? colors.text : "#FFF",
+          backgroundColor: checked ? colors.text : colors.input,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        {checked && <Check size={13} color="#FFF" />}
+        {checked && <Check size={13} color={colors.inverseText} />}
       </View>
       <Text style={[s.text, { flex: 1 }]}>{label}</Text>
     </Pressable>
@@ -407,11 +417,7 @@ export function Mascot({
   size?: number;
   variant?: "sky" | "sand" | "lilac";
 }) {
-  const palette = {
-    sky: "#ECF5FA",
-    sand: "#FAF0DF",
-    lilac: "#F1ECF9",
-  }[variant];
+  const palette = { sky: colors.sky, sand: colors.orange, lilac: colors.lavender }[variant];
   return (
     <View accessibilityLabel="OpenMuse capybara" style={{ width: size, height: size }}>
       <View
