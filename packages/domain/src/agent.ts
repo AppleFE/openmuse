@@ -23,7 +23,7 @@ export interface TaskStep {
   status: "pending" | "running" | "succeeded" | "failed" | "waiting";
   detail?: string;
 }
-export const modelProviderSchema = z.enum(["openai", "anthropic", "google"]);
+export const modelProviderSchema = z.enum(["openai", "anthropic", "google", "opencodex"]);
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 export const modelCapabilitySchema = z.enum(["chat", "tools", "vision", "coding"]);
 export type ModelCapability = z.infer<typeof modelCapabilitySchema>;

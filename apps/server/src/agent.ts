@@ -12,15 +12,23 @@ import { ConversationAgent } from "./engine/conversation.ts";
 import type { AgentService } from "./engine/service.ts";
 
 export function agentConfigured(config: Config) {
+  const modelConfigured = (config.models ?? []).some((model) => {
+    if (!model.enabled) return false;
+    if (model.provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
+    if (model.provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
+    if (model.provider === "google") return Boolean(process.env.GOOGLE_API_KEY);
+    return Boolean(config.openCodexBaseUrl && config.openCodexApiKey);
+  });
   return (
     config.agentBackend === "sample" ||
     (config.agentBackend === "agui"
       ? Boolean(config.agentUrl)
       : Boolean(
-          (config.models?.some((model) => model.enabled) || config.model) &&
-            (process.env.OPENAI_API_KEY ||
-              process.env.ANTHROPIC_API_KEY ||
-              process.env.GOOGLE_API_KEY),
+          modelConfigured ||
+            (config.model &&
+              (process.env.OPENAI_API_KEY ||
+                process.env.ANTHROPIC_API_KEY ||
+                process.env.GOOGLE_API_KEY)),
         ))
   );
 }

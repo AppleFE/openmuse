@@ -40,6 +40,8 @@ export interface Config {
   model?: string;
   /** Server allowlist exposed without credentials; clients may select only these IDs. */
   models?: ModelProfile[];
+  openCodexBaseUrl?: string;
+  openCodexApiKey?: string;
   agentBackend: "sample" | "model" | "agui";
   agentUrl?: string;
   agentToken?: string;
@@ -108,6 +110,8 @@ export function readConfig(): Config {
     encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
     model,
     models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
+    openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
+    openCodexApiKey: process.env.OPENCODEX_API_KEY,
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,

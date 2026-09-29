@@ -9,7 +9,7 @@ import {
 import { chat, maxIterations, type SchemaInput, toolDefinition } from "@tanstack/ai";
 import { type AnthropicChatModel, anthropicText } from "@tanstack/ai-anthropic";
 import { type GeminiTextModel, geminiText } from "@tanstack/ai-gemini";
-import { type OpenAIChatModel, openaiText } from "@tanstack/ai-openai";
+import { createOpenaiChat, type OpenAIChatModel, openaiText } from "@tanstack/ai-openai";
 import { map, mergeMap, type Observable } from "rxjs";
 import { z } from "zod";
 import { MODEL_MAX_RETRIES } from "../config.ts";
@@ -29,6 +29,21 @@ function adapter(spec: string) {
         baseURL: process.env.OPENAI_BASE_URL,
         maxRetries: MODEL_MAX_RETRIES,
       });
+    case "opencodex": {
+      const baseURL = process.env.OPENCODEX_BASE_URL?.trim();
+      const apiKey = process.env.OPENCODEX_API_KEY?.trim();
+      if (!baseURL || !apiKey)
+        throw new Error(
+          "OpenCodex models require server-only OPENCODEX_BASE_URL and OPENCODEX_API_KEY",
+        );
+      const url = new URL(baseURL);
+      if (!/^https?:$/.test(url.protocol) || url.username || url.password)
+        throw new Error("OPENCODEX_BASE_URL must be an http(s) URL without embedded credentials");
+      return createOpenaiChat(id as OpenAIChatModel, apiKey, {
+        baseURL: baseURL.replace(/\/$/, ""),
+        maxRetries: MODEL_MAX_RETRIES,
+      });
+    }
     case "anthropic":
       // The AI SDK base URL ends in /v1; the Anthropic SDK adds /v1 itself.
       return anthropicText(id as AnthropicChatModel, {
@@ -61,7 +76,7 @@ export function unknownProvider(
     ? ` For a model on your OPENAI_BASE_URL gateway, use "openai/${spec.trim()}".`
     : "";
   return new Error(
-    `Unknown provider "${provider}" in "${spec}". Supported: openai, anthropic, google (gemini).${hint}`,
+    `Unknown provider "${provider}" in "${spec}". Supported: openai, anthropic, google (gemini), opencodex.${hint}`,
   );
 }
 

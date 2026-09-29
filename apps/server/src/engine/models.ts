@@ -19,7 +19,13 @@ const profileInputSchema = z.object({
 
 function providerOf(model: string): ModelProvider {
   const provider = model.split(/[/:]/, 1)[0]?.toLowerCase();
-  if (provider === "openai" || provider === "anthropic" || provider === "google") return provider;
+  if (
+    provider === "openai" ||
+    provider === "anthropic" ||
+    provider === "google" ||
+    provider === "opencodex"
+  )
+    return provider;
   throw new Error(`Unsupported provider in model "${model}"`);
 }
 
