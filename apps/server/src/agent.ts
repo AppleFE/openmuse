@@ -16,7 +16,12 @@ export function agentConfigured(config: Config) {
     if (!model.enabled) return false;
     if (model.provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
     if (model.provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
-    if (model.provider === "google") return Boolean(process.env.GOOGLE_API_KEY);
+    if (model.provider === "google")
+      return Boolean(
+        process.env.GOOGLE_API_KEY ??
+          process.env.GEMINI_API_KEY ??
+          process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      );
     return Boolean(config.openCodexBaseUrl && config.openCodexApiKey);
   });
   return (
@@ -28,7 +33,9 @@ export function agentConfigured(config: Config) {
             (config.model &&
               (process.env.OPENAI_API_KEY ||
                 process.env.ANTHROPIC_API_KEY ||
-                process.env.GOOGLE_API_KEY)),
+                process.env.GOOGLE_API_KEY ||
+                process.env.GEMINI_API_KEY ||
+                process.env.GOOGLE_GENERATIVE_AI_API_KEY)),
         ))
   );
 }
@@ -50,7 +57,7 @@ export function makeRuntime(
                 url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
                 headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
               })
-            : new ConversationAgent(config, service, owner, selected?.model ?? null),
+            : new ConversationAgent(config, service, owner, selected),
     };
   };
   const runtime = new CopilotRuntime({

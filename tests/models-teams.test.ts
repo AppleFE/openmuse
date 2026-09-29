@@ -6,7 +6,10 @@ import { test } from "node:test";
 import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
-import { parseModelCatalog } from "../apps/server/src/engine/models.ts";
+import { executeModelTask } from "../apps/server/src/engine/model.ts";
+import { ModelRegistry, parseModelCatalog } from "../apps/server/src/engine/models.ts";
+import { RuntimeHookPipeline } from "../apps/server/src/engine/runtime-hooks.ts";
+import { TeamModelExecutor } from "../apps/server/src/engine/team-model.ts";
 import { createTeamTaskContext, TeamEngine } from "../apps/server/src/engine/teams.ts";
 import { TaskWorker } from "../apps/server/src/engine/worker.ts";
 import type {
@@ -16,6 +19,9 @@ import type {
   TaskThreadMessage,
 } from "../packages/domain/src/agent.ts";
 
+process.env.OPENAI_API_KEY ??= "test-openai-server-key";
+process.env.ANTHROPIC_API_KEY ??= "test-anthropic-server-key";
+
 const profiles: ModelProfile[] = [
   {
     id: "fast",
@@ -24,6 +30,7 @@ const profiles: ModelProfile[] = [
     model: "openai/fast-model",
     capabilities: ["chat", "tools"],
     enabled: true,
+    available: true,
   },
   {
     id: "deep",
@@ -32,6 +39,7 @@ const profiles: ModelProfile[] = [
     model: "anthropic/deep-model",
     capabilities: ["chat", "coding"],
     enabled: true,
+    available: true,
   },
 ];
 
@@ -103,6 +111,7 @@ test("model catalog is an explicit server allowlist", () => {
     model: "openai/gpt-test",
     capabilities: ["chat", "tools"],
     enabled: true,
+    available: true,
   });
   const configured = parseModelCatalog(
     JSON.stringify([{ id: "work", label: "Work", model: "anthropic/claude-test" }]),
@@ -119,6 +128,68 @@ test("model catalog is an explicit server allowlist", () => {
       ]),
     ),
   );
+});
+
+test("model selection skips missing provider credentials while keeping catalog entries visible", async () => {
+  const previousGoogle = {
+    google: process.env.GOOGLE_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    generative: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  };
+  delete process.env.GOOGLE_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const db = await createStore();
+  try {
+    const registry = new ModelRegistry(db, {
+      mode: "sample",
+      port: 8787,
+      host: "127.0.0.1",
+      publicUrl: "http://localhost:8787",
+      dataDir: ".",
+      agentBackend: "model",
+      intelligenceApiKey: "test",
+      googleRedirectUri: "http://localhost:8787/api/google/callback",
+      allowedOrigins: [],
+      models: [
+        {
+          id: "missing-google",
+          label: "Missing Google",
+          provider: "google",
+          model: "google/gemini-test",
+          capabilities: ["chat"],
+          enabled: true,
+          available: true,
+        },
+        profiles[0] as ModelProfile,
+      ],
+    });
+    assert.deepEqual(
+      registry.list().map(({ id, available, unavailableReason }) => ({
+        id,
+        available,
+        unavailableReason,
+      })),
+      [
+        {
+          id: "missing-google",
+          available: false,
+          unavailableReason: "missing_credentials",
+        },
+        { id: "fast", available: true, unavailableReason: undefined },
+      ],
+    );
+    assert.equal((await registry.selection("owner")).modelId, "fast");
+    await assert.rejects(registry.select("owner", "missing-google"), /credential/);
+  } finally {
+    await db.close();
+    if (previousGoogle.google === undefined) delete process.env.GOOGLE_API_KEY;
+    else process.env.GOOGLE_API_KEY = previousGoogle.google;
+    if (previousGoogle.gemini === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGoogle.gemini;
+    if (previousGoogle.generative === undefined) delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    else process.env.GOOGLE_GENERATIVE_AI_API_KEY = previousGoogle.generative;
+  }
 });
 
 test("parallel team branches merge deterministically before dependent roles", async () => {
@@ -160,10 +231,11 @@ test("parallel team branches merge deterministically before dependent roles", as
       reviewer: "reviewer-output",
     });
     const messages = await db.list<TaskThreadMessage>("owner", "task-thread-messages");
-    assert.deepEqual(
-      messages.map((message) => message.roleLabel).sort(),
-      ["Coder", "Planner", "Reviewer"],
-    );
+    assert.deepEqual(messages.map((message) => message.roleLabel).sort(), [
+      "Coder",
+      "Planner",
+      "Reviewer",
+    ]);
   } finally {
     await db.close();
   }
@@ -271,8 +343,14 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-    const listed = await api("/models");
-    assert.deepEqual(await listed.json(), profiles);
+    const listed = (await (await api("/models")).json()) as ModelProfile[];
+    assert.deepEqual(
+      listed.map(({ id, available, unavailableReason }) => ({ id, available, unavailableReason })),
+      [
+        { id: "fast", available: true, unavailableReason: undefined },
+        { id: "deep", available: true, unavailableReason: undefined },
+      ],
+    );
     assert.equal((await api("/model-settings", "PUT", { modelId: "unknown" })).status, 422);
     assert.equal((await api("/model-settings", "PUT", { modelId: "fast" })).status, 200);
     const first = (await (
@@ -307,8 +385,7 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
     ).json()) as AgentTask;
     assert.equal(launched.teamContext?.teamRevision, created.revision);
     assert.equal(
-      (await api("/tasks", "POST", { prompt: "Bad", modelId: "fast", teamId: created.id }))
-        .status,
+      (await api("/tasks", "POST", { prompt: "Bad", modelId: "fast", teamId: created.id })).status,
       422,
     );
     if (!launched.teamContext) throw new Error("missing team context");
@@ -347,6 +424,119 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
     );
   } finally {
     await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("queued standalone and team work execute immutable model snapshots after catalog remap", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-model-snapshot-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const config = (modelName: string): Config => ({
+    mode: "sample",
+    port: 8787,
+    host: "127.0.0.1",
+    publicUrl: "http://localhost:8787",
+    dataDir: directory,
+    agentBackend: "model",
+    intelligenceApiKey: "test-project-key-never-sent",
+    googleRedirectUri: "http://localhost:8787/api/google/callback",
+    allowedOrigins: [],
+    models: [
+      {
+        id: "stable-id",
+        label: "Stable ID",
+        provider: "openai",
+        model: modelName,
+        capabilities: ["chat", "coding", "tools"],
+        enabled: true,
+        available: true,
+      },
+    ],
+  });
+  const first = await createApp(db, config("openai/original-model"));
+  try {
+    const standalone = await first.agent.createTask("owner", {
+      prompt: "Run the snapshotted model",
+      modelId: "stable-id",
+    });
+    const createdTeam = await first.agent.createTeam("owner", {
+      name: "Snapshot team",
+      execution: "sequential",
+      roles: [
+        {
+          id: "coder",
+          label: "Coder",
+          kind: "coder",
+          modelId: "stable-id",
+          systemPrompt: "Implement",
+          dependsOn: [],
+        },
+      ],
+    });
+    const teamTask = await first.agent.createTask("owner", {
+      prompt: "Run the snapshotted team",
+      teamId: createdTeam.id,
+    });
+    assert.equal(standalone.modelSnapshot?.model, "openai/original-model");
+    assert.equal(teamTask.teamContext?.roles[0]?.modelSnapshot?.model, "openai/original-model");
+
+    const remapped = config("openai/remapped-model");
+    const second = await createApp(db, remapped);
+    try {
+      let standaloneModel = "";
+      Object.defineProperty(second.agent, "pi", {
+        value: {
+          supports: async () => true,
+          run: async (input: { profile: ModelProfile }) => {
+            standaloneModel = input.profile.model;
+            return "snapshot executed";
+          },
+        },
+      });
+      let current: AgentTask = { ...standalone, status: "running" };
+      await executeModelTask(second.agent, "owner", current, {
+        signal: new AbortController().signal,
+        guard: async () => {},
+        checkpoint: async (patch) => {
+          current = { ...current, ...patch };
+          return current;
+        },
+        event: async () => {},
+      });
+      assert.equal(standaloneModel, "openai/original-model");
+
+      let teamModel = "";
+      const executor = new TeamModelExecutor(
+        new ModelRegistry(db, remapped),
+        new RuntimeHookPipeline([
+          {
+            id: "capture",
+            supports: () => true,
+            guard: async () => {},
+            prepare: async () => ({}),
+            execute: async (request) => {
+              teamModel = request.model;
+              return { output: "snapshot executed" };
+            },
+          },
+        ]),
+      );
+      const role = teamTask.teamContext?.roles[0];
+      if (!role) throw new Error("missing snapshotted role");
+      await executor.execute({
+        owner: "owner",
+        task: teamTask,
+        role,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      });
+      assert.equal(teamModel, "openai/original-model");
+    } finally {
+      await second.agent.stop();
+    }
+  } finally {
+    await first.agent.stop();
     await db.close();
     await rm(directory, { recursive: true, force: true });
   }

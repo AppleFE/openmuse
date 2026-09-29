@@ -35,7 +35,14 @@ export interface ModelProfile {
   model: string;
   capabilities: ModelCapability[];
   enabled: boolean;
+  /** True when enabled and its server-side provider credential is configured. */
+  available: boolean;
+  unavailableReason?: "disabled" | "missing_credentials";
 }
+export type ModelSnapshot = Pick<
+  ModelProfile,
+  "id" | "label" | "provider" | "model" | "capabilities"
+>;
 export interface ModelSelection {
   id: "default";
   modelId: string | null;
@@ -49,7 +56,13 @@ export const runtimeSettingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         apiKey: z.union([z.string().trim().min(8).max(4096), z.null()]).optional(),
-        model: z.string().trim().min(1).max(120).regex(/^jev[-a-zA-Z0-9._]*$/).optional(),
+        model: z
+          .string()
+          .trim()
+          .min(1)
+          .max(120)
+          .regex(/^jev[-a-zA-Z0-9._]*$/)
+          .optional(),
         failMode: jevFailModeSchema.optional(),
         timeoutMs: z.number().int().min(1000).max(30000).optional(),
       })
@@ -59,7 +72,12 @@ export const runtimeSettingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         maxIterations: z.number().int().min(1).max(8).optional(),
-        timeoutMs: z.number().int().min(5000).max(15 * 60 * 1000).optional(),
+        timeoutMs: z
+          .number()
+          .int()
+          .min(5000)
+          .max(15 * 60 * 1000)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -87,6 +105,8 @@ export interface AgentTeamRole {
   modelId: string;
   systemPrompt: string;
   dependsOn: string[];
+  /** Immutable, secret-free profile captured when a task is created. */
+  modelSnapshot?: ModelSnapshot;
 }
 export interface AgentTeam {
   id: string;
@@ -138,6 +158,8 @@ export interface AgentTask {
   goalId?: string;
   /** Snapshotted when the task is created; later default changes do not alter this run. */
   modelId?: string | null;
+  /** Immutable, secret-free profile captured when a task is created. */
+  modelSnapshot?: ModelSnapshot;
   teamId?: string;
   teamContext?: AgentTeamTaskContext;
   plan: TaskStep[];
@@ -261,7 +283,12 @@ export const modelSelectionInputSchema = z.object({
   modelId: z.string().trim().min(1).max(120).nullable(),
 });
 const teamRoleInputSchema = z.object({
-  id: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/),
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   label: z.string().trim().min(1).max(80),
   kind: agentRoleKindSchema,
   modelId: z.string().trim().min(1).max(120),

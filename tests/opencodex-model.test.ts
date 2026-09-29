@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { test } from "node:test";
 import type { AddressInfo } from "node:net";
+import { test } from "node:test";
 import { EventType, type RunAgentInput } from "@ag-ui/core";
 import { agentConfigured } from "../apps/server/src/agent.ts";
 import type { Config } from "../apps/server/src/config.ts";
@@ -130,21 +130,22 @@ test("OpenCodex profiles use its native Responses endpoint, data key, and select
       model: `opencodex/provider/${id}`,
       capabilities: ["chat", "coding"],
       enabled: true,
+      available: true,
     }));
     const config: Config = {
-        mode: "sample",
-        port: 1,
-        host: "127.0.0.1",
-        publicUrl: "http://localhost:1",
-        dataDir: ".",
-        agentBackend: "model",
-        intelligenceApiKey: "test",
-        googleRedirectUri: "http://localhost:1/api/google/callback",
-        allowedOrigins: [],
-        models,
-        openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
-        openCodexApiKey: process.env.OPENCODEX_API_KEY,
-      };
+      mode: "sample",
+      port: 1,
+      host: "127.0.0.1",
+      publicUrl: "http://localhost:1",
+      dataDir: ".",
+      agentBackend: "model",
+      intelligenceApiKey: "test",
+      googleRedirectUri: "http://localhost:1/api/google/callback",
+      allowedOrigins: [],
+      models,
+      openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
+      openCodexApiKey: process.env.OPENCODEX_API_KEY,
+    };
     assert.equal(agentConfigured(config), true);
     const registry = new ModelRegistry(db, config);
     const executor = new TeamModelExecutor(registry);

@@ -49,7 +49,8 @@ export interface PiSessionInput {
   cwd: string;
   checkpoint?: PiCheckpoint;
   maxToolCalls: number;
-  onToolCall(): number;
+  onToolCall(): number | Promise<number>;
+  onPolicyFallback(): void;
 }
 export type PiSessionFactory = (input: PiSessionInput) => Promise<PiSession>;
 
@@ -57,7 +58,7 @@ const clipped = (value: string, max: number) =>
   value.length <= max ? value : `${value.slice(0, max)}\n[truncated by context diet]`;
 const checkpointId = (request: RoleRuntimeRequest) => `${request.task.id}:${request.role.id}`;
 
-function emptyResourceLoader(systemPrompt: string): ResourceLoader {
+export function emptyResourceLoader(systemPrompt: string): ResourceLoader {
   return {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
     getSkills: () => ({ skills: [], diagnostics: [] }),
@@ -97,7 +98,9 @@ export async function configuredPiModel(
       : provider === "anthropic"
         ? process.env.ANTHROPIC_API_KEY
         : provider === "google"
-          ? (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY)
+          ? (process.env.GEMINI_API_KEY ??
+            process.env.GOOGLE_GENERATIVE_AI_API_KEY ??
+            process.env.GOOGLE_API_KEY)
           : provider === "opencodex"
             ? (config.openCodexApiKey ?? process.env.OPENCODEX_API_KEY)
             : undefined;
@@ -122,7 +125,13 @@ export async function configuredPiModel(
     throw new Error(
       `Configured model ${spec} is not in pi's catalog and has no compatible base URL`,
     );
-  const baseUrl = customBase?.replace(/\/$/, "") ?? builtin?.baseUrl;
+  const normalizedCustomBase =
+    provider === "anthropic"
+      ? customBase?.replace(/\/v1\/?$/, "")
+      : provider === "google"
+        ? customBase?.replace(/\/v1beta\/?$/, "")
+        : customBase?.replace(/\/$/, "");
+  const baseUrl = normalizedCustomBase ?? builtin?.baseUrl;
   if (!baseUrl) throw new Error(`No base URL is configured for ${provider}`);
   const parsedBase = new URL(baseUrl);
   if (!/^https?:$/.test(parsedBase.protocol) || parsedBase.username || parsedBase.password)
@@ -175,7 +184,11 @@ export class PiRuntimeHook implements CodingRuntimeHook {
 
   async supports(request: RoleRuntimeRequest) {
     const settings = await this.jev.settings.resolve(request.owner);
-    return settings.pi.enabled && request.role.kind === "coder";
+    return (
+      settings.pi.enabled &&
+      request.role.kind === "coder" &&
+      request.capabilities.includes("coding")
+    );
   }
 
   async guard(request: RoleRuntimeRequest) {
@@ -184,27 +197,27 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     if (!settings.pi.enabled) throw new Error("Embedded pi is disabled");
   }
 
-  async prepare(request: RoleRuntimeRequest): Promise<RoleRuntimePreparation> {
-    const diet = await this.jev.contextProfile(request);
+  async prepare(_request: RoleRuntimeRequest): Promise<RoleRuntimePreparation> {
     return {
       systemPrompt:
         "You are running through embedded pi. Use only the registered OpenMuse tools. Never claim host access, network access, or an external write that the tools did not perform.",
-      context: {
-        profile: diet.value,
-        mode: diet.fallback ? "local-budget" : "jev",
-        confidence: diet.confidence,
-        failure: diet.failure,
-      },
     };
   }
 
   async execute(request: RoleRuntimeRequest & RoleRuntimePreparation) {
     const settings = await this.jev.settings.resolve(request.owner);
-    const context = (request.context?.pi ?? {}) as {
-      profile?: "minimal" | "dependencies" | "full";
-      mode?: "jev" | "local-budget";
+    const timeout = AbortSignal.timeout(settings.pi.timeoutMs);
+    const signal = AbortSignal.any([request.signal, timeout]);
+    const runtimeRequest = { ...request, signal };
+    const diet = await this.jev.contextProfile(runtimeRequest);
+    let localBudget =
+      diet.fallback ||
+      (request.context?.jev as { mode?: string } | undefined)?.mode === "local-budget";
+    const context = {
+      profile: localBudget ? ("minimal" as const) : diet.value,
+      mode: localBudget ? ("local-budget" as const) : ("jev" as const),
     };
-    const hardIterations = context.mode === "local-budget" ? 1 : settings.pi.maxIterations;
+    const hardIterations = localBudget ? 1 : settings.pi.maxIterations;
     const id = checkpointId(request);
     const existing = await this.db.get<PiCheckpoint>(request.owner, "pi-runtime", id);
     if (existing?.status === "succeeded" && existing.output) return { output: existing.output };
@@ -223,21 +236,41 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       mkdir(sessionDir, { recursive: true, mode: 0o700 }),
     ]);
     let toolCalls = existing?.toolCalls ?? 0;
-    const session = await this.sessionFactory({
-      request,
+    let iteration = existing?.iteration ?? 0;
+    let output = existing?.output ?? "";
+    let toolCheckpoint = Promise.resolve();
+    let session: PiSession;
+    session = await this.sessionFactory({
+      request: runtimeRequest,
       systemPrompt: request.systemPrompt ?? request.role.systemPrompt,
       sessionDir,
       cwd,
       checkpoint: existing ?? undefined,
-      maxToolCalls: context.mode === "local-budget" ? 4 : 32,
-      onToolCall: () => ++toolCalls,
+      maxToolCalls:
+        localBudget || (settings.jev.enabled && settings.jev.failMode === "local-budget") ? 4 : 32,
+      onToolCall: async () => {
+        const count = ++toolCalls;
+        toolCheckpoint = toolCheckpoint.then(async () => {
+          await this.db.put(request.owner, "pi-runtime", {
+            id,
+            sessionFile: session?.sessionFile,
+            iteration,
+            toolCalls: count,
+            status: "running",
+            output,
+            updatedAt: new Date().toISOString(),
+          } satisfies PiCheckpoint);
+        });
+        await toolCheckpoint;
+        return count;
+      },
+      onPolicyFallback: () => {
+        localBudget = true;
+      },
     });
-    const timeout = AbortSignal.timeout(settings.pi.timeoutMs);
-    const signal = AbortSignal.any([request.signal, timeout]);
     const abort = () => void session.abort();
     signal.addEventListener("abort", abort, { once: true });
-    let iteration = existing?.iteration ?? 0;
-    let output = existing?.output ?? "";
+    if (signal.aborted) abort();
     try {
       while (iteration < hardIterations) {
         if (signal.aborted)
@@ -254,17 +287,25 @@ export class PiRuntimeHook implements CodingRuntimeHook {
         } satisfies PiCheckpoint);
         await session.prompt(
           nextIteration === 1 && !existing
-            ? this.initialPrompt(request, context.profile ?? "minimal")
-            : "Continue this role from the durable session. Finish or verify the requested result without repeating completed side effects.",
+            ? this.initialPrompt(runtimeRequest, context.profile)
+            : existing?.iteration === 0 && iteration === 0
+              ? `Recover this interrupted role from its durable session without repeating completed side effects. Re-evaluate the original bounded context:\n\n${this.initialPrompt(runtimeRequest, context.profile)}`
+              : "Continue this role from the durable session. Finish or verify the requested result without repeating completed side effects.",
         );
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Team role interrupted");
         iteration = nextIteration;
         output = clipped(session.getLastAssistantText()?.trim() ?? "", 128 * 1024);
         if (!output) throw new Error("Embedded pi returned no assistant output");
-        const termination = await this.jev.termination(request, iteration, output, toolCalls);
-        const localBudget = termination.fallback || context.mode === "local-budget";
-        const effective = localBudget ? "complete" : termination.value;
+        const termination = await this.jev.termination(
+          runtimeRequest,
+          iteration,
+          output,
+          toolCalls,
+        );
+        localBudget ||= termination.fallback || context.mode === "local-budget";
+        const effective =
+          termination.value === "block" ? "block" : localBudget ? "complete" : termination.value;
         const persistedOutput =
           effective === "complete" && localBudget
             ? `${output}\n\n[Runtime note: Jev was unavailable or disabled; this completed under the configured one-turn local budget.]`
@@ -337,12 +378,13 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       modelRuntime: runtime,
       model,
       thinkingLevel: "medium",
-      noTools: "all",
+      noTools: "builtin",
       customTools: createPiTools(
         { computer: this.computer, connectors: this.connectors, jev: this.jev },
         input.request,
         input.onToolCall,
         input.maxToolCalls,
+        input.onPolicyFallback,
       ),
       resourceLoader: emptyResourceLoader(input.systemPrompt),
       settingsManager: SettingsManager.inMemory({

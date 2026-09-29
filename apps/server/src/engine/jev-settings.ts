@@ -33,7 +33,7 @@ const defaults = (config: Config): StoredRuntimeSettings => ({
     failMode: "closed",
     timeoutMs: 10000,
   },
-  pi: { enabled: false, maxIterations: 3, timeoutMs: 5 * 60 * 1000 },
+  pi: { enabled: true, maxIterations: 3, timeoutMs: 5 * 60 * 1000 },
   updatedAt: new Date(0).toISOString(),
 });
 

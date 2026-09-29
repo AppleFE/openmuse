@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { EventType, type RunAgentInput } from "@ag-ui/core";
 import type { AgentTask, AgentTeamRole } from "../../../../packages/domain/src/agent.ts";
+import type { ModelRegistry } from "./models.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { tanstackAgent } from "./tanstack-agent.ts";
-import type { ModelRegistry } from "./models.ts";
 
 export class TeamModelExecutor {
   constructor(
@@ -18,8 +18,10 @@ export class TeamModelExecutor {
     dependencyContext: Readonly<Record<string, string>>;
     signal: AbortSignal;
   }): Promise<{ output: string }> {
-    const profile = this.models.require(input.role.modelId);
-    const request = { ...input, model: profile.model };
+    const profile = input.role.modelSnapshot
+      ? this.models.fromSnapshot(input.role.modelSnapshot)
+      : this.models.require(input.role.modelId);
+    const request = { ...input, model: profile.model, capabilities: profile.capabilities };
     const { preparation, executor } = await this.runtimeHooks.prepare(request);
     if (executor) return executor.execute?.({ ...request, ...preparation }) ?? { output: "" };
     const agent = tanstackAgent({

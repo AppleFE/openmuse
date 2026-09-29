@@ -17,11 +17,11 @@ Supported providers are `openai`, `anthropic`, `google`, and `opencodex`. The ol
 
 The API never returns credentials:
 
-- `GET /api/agent/models` returns the configured `ModelProfile[]`.
+- `GET /api/agent/models` returns the configured `ModelProfile[]`. `enabled` is the catalog switch; `available` is true only when that switch is on and the required server-side provider credential is configured. An unavailable entry includes `unavailableReason: "disabled" | "missing_credentials"`.
 - `GET /api/agent/model-settings` returns the saved default.
 - `PUT`, `POST`, or `PATCH /api/agent/model-settings` with `{ "modelId": "fast" }` changes the default. `null` clears it.
-- Unknown or disabled model IDs return HTTP 422.
-- `POST /api/agent/tasks` accepts either `modelId` or `teamId`, not both. The resolved model or team revision is copied into the task before it is queued.
+- Unknown, disabled, or credential-unavailable model IDs return HTTP 422. Default selection skips unavailable entries while the catalog still exposes them for setup UI.
+- `POST /api/agent/tasks` accepts either `modelId` or `teamId`, not both. The resolved secret-free provider/model/capability snapshot or full team revision is copied into the task before it is queued. Reusing a catalog ID for a different provider model after restart does not redirect queued work; credentials are never snapshotted and must still be available at execution.
 - A CopilotKit run may carry `forwardedProps.modelId`; the server checks the same allowlist and uses that model for the actual adapter invocation. Without it, the saved default is resolved once when the run starts.
 
 Provider SDK retries remain bounded by `MODEL_MAX_RETRIES`; task leases, cancellation, action review, and idempotency boundaries are unchanged.
@@ -86,4 +86,4 @@ Each task snapshots the full role definition and team revision. Per-role status,
 
 ## Coding runtime handoff
 
-The core role engine calls `RuntimeHookPipeline` before its default model executor. A real coding runtime can claim a role through `CodingRuntimeHook.execute`, with `guard` and `prepare` owning its permission checks and context. Only one runtime may claim a role. This is the injection point reserved for embedded pi and Jev; this release does not pretend those integrations exist, and model-only coder roles must not claim they used coding tools.
+The core role engine calls `RuntimeHookPipeline` before its default model executor. Embedded Pi claims coding-capable team `coder` roles, while optional Jev guards model execution and the bounded Pi loop. Planner/reviewer roles retain the provider-only path. See [Jev policy and embedded pi coding runtime](JEV-PI.md) for setup, isolation, persistence, and fallback details.

@@ -90,8 +90,7 @@ export class JevRuntime {
 
   async contextProfile(request: RoleRuntimeRequest): Promise<JevDecision<JevContextProfile>> {
     const settings = await this.settings.resolve(request.owner);
-    if (!settings.jev.enabled)
-      return { value: "minimal", fallback: true, failure: "Jev is disabled" };
+    if (!settings.jev.enabled) return { value: "minimal", fallback: false, confidence: 1 };
     return this.decide(settings, "minimal", request.signal, (client) =>
       client.selectContext(
         {
@@ -113,8 +112,7 @@ export class JevRuntime {
     signal: AbortSignal,
   ): Promise<JevDecision<"allow" | "block">> {
     const settings = await this.settings.resolve(request.owner);
-    if (!settings.jev.enabled)
-      return { value: "allow", fallback: true, failure: "Jev is disabled" };
+    if (!settings.jev.enabled) return { value: "allow", fallback: false, confidence: 1 };
     return this.decide(settings, "allow", signal, (client) =>
       client.guardTool(
         contextOf(request),
@@ -131,8 +129,7 @@ export class JevRuntime {
     toolCalls: number,
   ): Promise<JevDecision<JevTermination>> {
     const settings = await this.settings.resolve(request.owner);
-    if (!settings.jev.enabled)
-      return { value: "complete", fallback: true, failure: "Jev is disabled" };
+    if (!settings.jev.enabled) return { value: "complete", fallback: false, confidence: 1 };
     return this.decide(settings, "complete", request.signal, (client) =>
       client.decideTermination(
         { ...contextOf(request), iteration, output, toolCalls },
@@ -155,9 +152,9 @@ export class JevGuardRuntimeHook implements CodingRuntimeHook {
   }
   async guard(request: RoleRuntimeRequest) {
     const decision = await this.runtime.guard(request);
-    this.outcomes.set(this.key(request), decision);
     if (decision.value !== "allow" || (!decision.fallback && (decision.confidence ?? 0) < 0.55))
       throw new Error("Jev blocked this role before model execution");
+    this.outcomes.set(this.key(request), decision);
   }
   async prepare(request: RoleRuntimeRequest) {
     const outcome = this.outcomes.get(this.key(request));

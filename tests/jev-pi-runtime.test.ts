@@ -3,28 +3,40 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { defineTool } from "@copilotkit/runtime/v2";
+import { z } from "zod";
 import { createApp } from "../apps/server/src/app.ts";
 import type { ComputerService } from "../apps/server/src/computer.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
+import { ConversationAgent } from "../apps/server/src/engine/conversation.ts";
 import {
   type JevDecisionClient,
   JevGuardRuntimeHook,
   JevRuntime,
 } from "../apps/server/src/engine/jev-runtime.ts";
 import { RuntimeSettingsService } from "../apps/server/src/engine/jev-settings.ts";
+import { executeModelTask } from "../apps/server/src/engine/model.ts";
 import { ModelRegistry } from "../apps/server/src/engine/models.ts";
+import {
+  type PiAgentRunInput,
+  PiAgentRunner,
+  type PiAgentSessionFactory,
+} from "../apps/server/src/engine/pi-agent.ts";
 import {
   configuredPiModel,
   PiRuntimeHook,
   type PiSessionFactory,
 } from "../apps/server/src/engine/pi-runtime.ts";
+import { adaptCopilotTools } from "../apps/server/src/engine/pi-tools.ts";
 import { RuntimeHookPipeline } from "../apps/server/src/engine/runtime-hooks.ts";
 import { TeamModelExecutor } from "../apps/server/src/engine/team-model.ts";
 import { createTeamTaskContext, TeamEngine } from "../apps/server/src/engine/teams.ts";
 import { TaskWorker } from "../apps/server/src/engine/worker.ts";
 import type { AgentTask, AgentTeam, ModelProfile } from "../packages/domain/src/agent.ts";
 import { JevClient } from "../packages/integrations/src/jev.ts";
+
+process.env.OPENAI_API_KEY ??= "test-openai-server-key";
 
 const model: ModelProfile = {
   id: "coder",
@@ -33,6 +45,7 @@ const model: ModelProfile = {
   model: "openai/test-coder",
   capabilities: ["chat", "coding", "tools"],
   enabled: true,
+  available: true,
 };
 
 const configFor = (dataDir: string): Config => ({
@@ -89,6 +102,16 @@ const task = (): AgentTask => {
     artifactIds: [],
   };
 };
+
+const standaloneTask = (): AgentTask => ({
+  ...task(),
+  id: "standalone-runtime-task",
+  status: "running",
+  modelId: model.id,
+  teamId: undefined,
+  teamContext: undefined,
+  state: {},
+});
 
 test("official Jev SDK adapter sends constrained System One questions with bounded retries", async () => {
   const calls: { url: string; init?: RequestInit; body: Record<string, unknown> }[] = [];
@@ -163,7 +186,7 @@ test("pi registers an allowlisted OpenCodex model on the Responses API without e
   }
 });
 
-test("runtime settings API is owner scoped, encrypted, redacted, and disabled by default", async () => {
+test("runtime settings API is owner scoped, encrypted, redacted, and pi-enabled by default", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-jev-settings-"));
   const db = await createStore({ dataDir: join(directory, "db") });
   const server = await createApp(db, configFor(directory));
@@ -183,7 +206,7 @@ test("runtime settings API is owner scoped, encrypted, redacted, and disabled by
     const initial = await (await request("GET")).json();
     assert.equal(initial.jev.enabled, false);
     assert.equal(initial.jev.configured, false);
-    assert.equal(initial.pi.enabled, false);
+    assert.equal(initial.pi.enabled, true);
     assert.equal((await request("PATCH", { jev: { enabled: true } })).status, 422);
     const savedResponse = await request("PATCH", {
       jev: { apiKey: "jev-owner-secret", enabled: true, failMode: "local-budget" },
@@ -287,6 +310,116 @@ test("team coder path invokes Jev guard/context/termination and applies continue
   }
 });
 
+test("team pi propagates isolated Jev preflight and tool fallbacks into one-turn output", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-team-fallback-propagation-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", {
+      jev: { apiKey: "jev-test-key", enabled: true, failMode: "local-budget" },
+      pi: { enabled: true, maxIterations: 5, timeoutMs: 20000 },
+    });
+    for (const stage of ["preflight", "tool"] as const) {
+      let prompts = 0;
+      const jev = new JevRuntime(settings, () => ({
+        guardExecution: async () => {
+          if (stage === "preflight") throw new Error("preflight unavailable");
+          return { choice: "allow", confidence: 1 };
+        },
+        selectContext: async () => ({ choice: "minimal", confidence: 1 }),
+        guardTool: async () => ({ choice: "allow", confidence: 1 }),
+        decideTermination: async () => ({ choice: "continue", confidence: 1 }),
+      }));
+      const hook = new PiRuntimeHook(
+        db,
+        config,
+        {} as ComputerService,
+        undefined,
+        jev,
+        async (input) => ({
+          prompt: async () => {
+            prompts++;
+            if (stage === "tool") input.onPolicyFallback();
+          },
+          abort: async () => {},
+          dispose: () => {},
+          getLastAssistantText: () => "bounded team result",
+        }),
+      );
+      const executor = new TeamModelExecutor(
+        new ModelRegistry(db, config),
+        new RuntimeHookPipeline([new JevGuardRuntimeHook(jev), hook]),
+      );
+      const role = team().roles[0];
+      if (!role) throw new Error("missing role");
+      const result = await executor.execute({
+        owner: "owner",
+        task: { ...task(), id: `team-${stage}` },
+        role,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      });
+      assert.equal(prompts, 1);
+      assert.match(result.output, /one-turn local budget/);
+    }
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("team pi keeps preflight fallback context minimal and honors a later termination block", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-team-fallback-precedence-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", {
+      jev: { apiKey: "jev-test-key", enabled: true, failMode: "local-budget" },
+      pi: { enabled: true, maxIterations: 5, timeoutMs: 20000 },
+    });
+    const jev = new JevRuntime(settings, () => ({
+      guardExecution: async () => {
+        throw new Error("preflight unavailable");
+      },
+      selectContext: async () => ({ choice: "full", confidence: 1 }),
+      guardTool: async () => ({ choice: "allow", confidence: 1 }),
+      decideTermination: async () => ({ choice: "block", confidence: 1 }),
+    }));
+    let receivedPrompt = "";
+    const hook = new PiRuntimeHook(db, config, {} as ComputerService, undefined, jev, async () => ({
+      prompt: async (prompt) => {
+        receivedPrompt = prompt;
+      },
+      abort: async () => {},
+      dispose: () => {},
+      getLastAssistantText: () => "unsafe team result",
+    }));
+    const executor = new TeamModelExecutor(
+      new ModelRegistry(db, config),
+      new RuntimeHookPipeline([new JevGuardRuntimeHook(jev), hook]),
+    );
+    const role = team().roles[0];
+    if (!role) throw new Error("missing coder role");
+    await assert.rejects(
+      executor.execute({
+        owner: "owner",
+        task: { ...task(), id: "team-fallback-precedence", prompt: "x".repeat(10000) },
+        role,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      }),
+      /Jev blocked the coding loop result/,
+    );
+    assert.match(receivedPrompt, /\[truncated by context diet\]/);
+    assert.ok(receivedPrompt.length < 7000);
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("Jev block prevents pi session creation and local-budget outage permits only one turn", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-jev-guard-"));
   const db = await createStore({ dataDir: join(directory, "db") });
@@ -319,6 +452,7 @@ test("Jev block prevents pi session creation and local-budget outage permits onl
       owner: "owner",
       task: task(),
       role,
+      capabilities: model.capabilities,
       dependencyContext: {},
       signal: new AbortController().signal,
     };
@@ -394,17 +528,21 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
       task: task(),
       role,
       model: model.model,
+      capabilities: model.capabilities,
       dependencyContext: {},
       signal: new AbortController().signal,
       systemPrompt: "Implement safely",
       context: { pi: { profile: "minimal", mode: "jev" } },
     } as const;
     let firstPrompts = 0;
-    const firstFactory: PiSessionFactory = async () => ({
+    const firstFactory: PiSessionFactory = async (input) => ({
       sessionFile: join(directory, "mock-session.jsonl"),
       prompt: async () => {
         firstPrompts++;
-        if (firstPrompts === 2) throw new Error("simulated process loss");
+        if (firstPrompts === 2) {
+          await input.onToolCall();
+          throw new Error("simulated process loss");
+        }
       },
       abort: async () => {},
       dispose: () => {},
@@ -419,16 +557,19 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
       firstFactory,
     );
     await assert.rejects(first.execute(roleRequest), /simulated process loss/);
-    const interrupted = await db.get<{ iteration: number; output?: string; status: string }>(
-      "owner",
-      "pi-runtime",
-      "runtime-task:coder",
-    );
+    const interrupted = await db.get<{
+      iteration: number;
+      output?: string;
+      status: string;
+      toolCalls: number;
+    }>("owner", "pi-runtime", "runtime-task:coder");
     assert.equal(interrupted?.iteration, 1);
     assert.equal(interrupted?.output, "first verified step");
     assert.equal(interrupted?.status, "failed");
+    assert.equal(interrupted?.toolCalls, 1);
 
     let resumedCheckpoint = 0;
+    let resumedToolCalls = 0;
     const retry = new PiRuntimeHook(
       db,
       config,
@@ -437,6 +578,7 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
       jev,
       async (input) => {
         resumedCheckpoint = input.checkpoint?.iteration ?? -1;
+        resumedToolCalls = input.checkpoint?.toolCalls ?? -1;
         return {
           prompt: async () => {},
           abort: async () => {},
@@ -447,6 +589,7 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
     );
     assert.equal((await retry.execute(roleRequest)).output, "resumed and complete");
     assert.equal(resumedCheckpoint, 1);
+    assert.equal(resumedToolCalls, 1);
 
     const cancelController = new AbortController();
     let rejectPrompt: ((error: Error) => void) | undefined;
@@ -480,6 +623,495 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
     await assert.rejects(running, /cancelled by task signal/);
     assert.equal(aborts, 1);
   } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared pi runner persists non-team sessions, reuses completed runs, and records cancellation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-shared-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    const jev = new JevRuntime(settings);
+    let sessions = 0;
+    let resumedFile: string | undefined;
+    const factory: PiAgentSessionFactory = async (input) => {
+      sessions++;
+      resumedFile = input.sessionFile;
+      return {
+        sessionFile: join(directory, "shared-session.jsonl"),
+        prompt: async () => {},
+        abort: async () => {},
+        dispose: () => {},
+        getLastAssistantText: () => "completed through embedded pi",
+        subscribe: () => () => {},
+      };
+    };
+    const runner = new PiAgentRunner(db, config, jev, factory);
+    const taskValue = standaloneTask();
+    const request = {
+      owner: "owner",
+      task: taskValue,
+      role: {
+        id: "agent",
+        label: "Delegated agent",
+        kind: "coder" as const,
+        modelId: model.id,
+        systemPrompt: "Use reviewed tools",
+        dependsOn: [],
+      },
+      model: model.model,
+      capabilities: model.capabilities,
+      dependencyContext: {},
+      signal: new AbortController().signal,
+    };
+    const run = {
+      owner: "owner",
+      profile: model,
+      request,
+      sessionKey: `task:${taskValue.id}`,
+      runKey: `task:${taskValue.id}:1`,
+      systemPrompt: "Use reviewed tools",
+      prompt: taskValue.prompt,
+      tools: [],
+    };
+    assert.equal(await runner.run(run), "completed through embedded pi");
+    assert.equal(
+      await new PiAgentRunner(db, config, jev, factory).run(run),
+      "completed through embedded pi",
+    );
+    assert.equal(sessions, 1);
+    await runner.run({ ...run, runKey: `task:${taskValue.id}:2` });
+    assert.equal(sessions, 2);
+    assert.equal(resumedFile, join(directory, "shared-session.jsonl"));
+
+    const controller = new AbortController();
+    let rejectPrompt: ((error: Error) => void) | undefined;
+    const cancelled = new PiAgentRunner(db, config, jev, async () => ({
+      prompt: () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectPrompt = reject;
+        }),
+      abort: async () => rejectPrompt?.(new Error("cancelled by shared signal")),
+      dispose: () => {},
+      getLastAssistantText: () => undefined,
+      subscribe: () => () => {},
+    }));
+    const cancelledRun = cancelled.run({
+      ...run,
+      request: { ...request, signal: controller.signal },
+      runKey: `task:${taskValue.id}:cancel`,
+    });
+    setTimeout(() => controller.abort(), 10);
+    await assert.rejects(cancelledRun, /cancelled by shared signal/);
+    const records = await db.list<{ status: string; error?: string }>("owner", "pi-agent-runs");
+    assert.ok(records.some((record) => record.status === "cancelled"));
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("default pi admits adapted tools with Jev disabled and aborts in-flight execution", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-adapted-cancel-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const settings = new RuntimeSettingsService(db, configFor(directory));
+    const jev = new JevRuntime(settings);
+    const controller = new AbortController();
+    let aborted = 0;
+    const request = {
+      owner: "owner",
+      task: standaloneTask(),
+      role: {
+        id: "agent",
+        label: "Agent",
+        kind: "coder" as const,
+        modelId: model.id,
+        systemPrompt: "Use reviewed tools",
+        dependsOn: [],
+      },
+      model: model.model,
+      capabilities: model.capabilities,
+      dependencyContext: {},
+      signal: new AbortController().signal,
+    };
+    const [adapted] = adaptCopilotTools(
+      [
+        defineTool({
+          name: "wait_for_abort",
+          description: "Wait until the runtime cancels",
+          parameters: z.object({}),
+          execute: () => new Promise(() => {}),
+        }),
+      ],
+      { jev },
+      request,
+      () => 1,
+      32,
+      () => {
+        aborted++;
+      },
+    );
+    if (!adapted) throw new Error("missing adapted tool");
+    const running = adapted.execute("call", {}, controller.signal, undefined, {} as never);
+    setTimeout(() => controller.abort(), 10);
+    await assert.rejects(running, /cancelled/);
+    assert.equal(aborted, 1);
+    assert.deepEqual(await jev.guardTool(request, "safe_tool", {}, request.signal), {
+      value: "allow",
+      fallback: false,
+      confidence: 1,
+    });
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared pi first-prompt recovery restores bounded context without resetting its run key", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-first-prompt-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const jev = new JevRuntime(new RuntimeSettingsService(db, config));
+    const taskValue = standaloneTask();
+    const request = {
+      owner: "owner",
+      task: taskValue,
+      role: {
+        id: "agent",
+        label: "Agent",
+        kind: "coder" as const,
+        modelId: model.id,
+        systemPrompt: "Use reviewed tools",
+        dependsOn: [],
+      },
+      model: model.model,
+      capabilities: model.capabilities,
+      dependencyContext: {},
+      signal: new AbortController().signal,
+    };
+    const run = {
+      owner: "owner",
+      profile: model,
+      request,
+      sessionKey: `task:${taskValue.id}`,
+      runKey: `task:${taskValue.id}:stable-generation`,
+      systemPrompt: "Use reviewed tools",
+      prompt: "Original durable task context",
+      tools: [],
+    };
+    const sessionFile = join(directory, "first-prompt.jsonl");
+    const interrupted = new PiAgentRunner(db, config, jev, async (input) => ({
+      sessionFile,
+      prompt: async () => {
+        await input.onToolCall();
+        throw new Error("process lost during first prompt");
+      },
+      abort: async () => {},
+      dispose: () => {},
+      getLastAssistantText: () => undefined,
+      subscribe: () => () => {},
+    }));
+    await assert.rejects(interrupted.run(run), /process lost/);
+    assert.ok(
+      (await db.list<{ toolCalls: number }>("owner", "pi-agent-runs")).some(
+        (record) => record.toolCalls === 1,
+      ),
+    );
+
+    let recoveryPrompt = "";
+    let resumedFile: string | undefined;
+    const resumed = new PiAgentRunner(db, config, jev, async (input) => {
+      resumedFile = input.sessionFile;
+      return {
+        sessionFile,
+        prompt: async (prompt) => {
+          recoveryPrompt = prompt;
+        },
+        abort: async () => {},
+        dispose: () => {},
+        getLastAssistantText: () => "recovered",
+        subscribe: () => () => {},
+      };
+    });
+    assert.equal(await resumed.run(run), "recovered");
+    assert.equal(resumedFile, sessionFile);
+    assert.match(recoveryPrompt, /Original durable task context/);
+    assert.match(recoveryPrompt, /without repeating completed side effects/);
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared pi applies one-turn four-tool local budget when Jev fails before or after a prompt", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-shared-budget-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", {
+      jev: { apiKey: "jev-test-key", enabled: true, failMode: "local-budget" },
+      pi: { enabled: true, maxIterations: 8, timeoutMs: 20000 },
+    });
+    const request = {
+      owner: "owner",
+      task: standaloneTask(),
+      role: {
+        id: "agent",
+        label: "Agent",
+        kind: "coder" as const,
+        modelId: model.id,
+        systemPrompt: "Use reviewed tools",
+        dependsOn: [],
+      },
+      model: model.model,
+      capabilities: model.capabilities,
+      dependencyContext: {},
+      signal: new AbortController().signal,
+    };
+    const baseRun = {
+      owner: "owner",
+      profile: model,
+      request,
+      sessionKey: "task:budget",
+      systemPrompt: "Use reviewed tools",
+      prompt: "Complete within fallback bounds",
+      tools: [],
+    };
+    for (const stage of ["preflight", "tool", "termination"] as const) {
+      let prompts = 0;
+      let maxTools = 0;
+      const jev = new JevRuntime(settings, () => ({
+        guardExecution: async () => {
+          if (stage === "preflight") throw new Error("preflight unavailable");
+          return { choice: "allow", confidence: 1 };
+        },
+        selectContext: async () => ({ choice: "minimal", confidence: 1 }),
+        guardTool: async () => ({ choice: "allow", confidence: 1 }),
+        decideTermination: async () => {
+          if (stage === "termination") throw new Error("termination unavailable");
+          return { choice: "continue", confidence: 1 };
+        },
+      }));
+      const runner = new PiAgentRunner(db, config, jev, async (input) => {
+        maxTools = input.maxToolCalls;
+        return {
+          prompt: async () => {
+            prompts++;
+            if (stage === "tool") input.onPolicyFallback();
+          },
+          abort: async () => {},
+          dispose: () => {},
+          getLastAssistantText: () => "bounded result",
+          subscribe: () => () => {},
+        };
+      });
+      const output = await runner.run({
+        ...baseRun,
+        runKey: `task:budget:${stage}`,
+      });
+      assert.equal(prompts, 1);
+      assert.equal(maxTools, 4);
+      assert.match(output, /one-turn local budget/);
+    }
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("shared pi keeps preflight fallback context minimal and honors a later termination block", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-shared-fallback-precedence-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", {
+      jev: { apiKey: "jev-test-key", enabled: true, failMode: "local-budget" },
+      pi: { enabled: true, maxIterations: 5, timeoutMs: 20000 },
+    });
+    const jev = new JevRuntime(settings, () => ({
+      guardExecution: async () => {
+        throw new Error("preflight unavailable");
+      },
+      selectContext: async () => ({ choice: "full", confidence: 1 }),
+      guardTool: async () => ({ choice: "allow", confidence: 1 }),
+      decideTermination: async () => ({ choice: "block", confidence: 1 }),
+    }));
+    let receivedPrompt = "";
+    const runner = new PiAgentRunner(db, config, jev, async () => ({
+      prompt: async (prompt) => {
+        receivedPrompt = prompt;
+      },
+      abort: async () => {},
+      dispose: () => {},
+      getLastAssistantText: () => "unsafe shared result",
+      subscribe: () => () => {},
+    }));
+    await assert.rejects(
+      runner.run({
+        owner: "owner",
+        profile: model,
+        request: {
+          owner: "owner",
+          task: standaloneTask(),
+          role: {
+            id: "agent",
+            label: "Agent",
+            kind: "coder",
+            modelId: model.id,
+            systemPrompt: "Use reviewed tools",
+            dependsOn: [],
+          },
+          model: model.model,
+          capabilities: model.capabilities,
+          dependencyContext: {},
+          signal: new AbortController().signal,
+        },
+        sessionKey: "task:fallback-precedence",
+        runKey: "task:fallback-precedence:run",
+        systemPrompt: "Use reviewed tools",
+        prompt: "x".repeat(20000),
+        tools: [],
+      }),
+      /Jev blocked the runtime result/,
+    );
+    assert.match(receivedPrompt, /\[truncated by runtime limit\]/);
+    assert.ok(receivedPrompt.length < 13000);
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("coding-capable standalone task and conversation paths select the shared pi runner", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-call-paths-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  try {
+    const calls: PiAgentRunInput[] = [];
+    const fakePi = {
+      supports: async (_owner: string, profile: ModelProfile) =>
+        profile.capabilities.includes("coding"),
+      run: async (input: PiAgentRunInput) => {
+        calls.push(input);
+        input.onTextDelta?.("streamed by pi");
+        input.onToolStart?.("pi-tool", "agent_status", {});
+        input.onToolEnd?.("pi-tool", "agent_status", { ok: true }, false);
+        return "streamed by pi";
+      },
+    };
+    Object.defineProperty(server.agent, "pi", { value: fakePi });
+
+    let current = standaloneTask();
+    const taskResult = await executeModelTask(server.agent, "owner", current, {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    });
+    assert.equal(calls[0]?.request.task.id, current.id);
+    assert.equal(
+      calls[0]?.tools.some((tool) => tool.name === "finish_task"),
+      true,
+    );
+    assert.equal(taskResult.status, "waiting_input");
+
+    const events: Array<{ type: string; [key: string]: unknown }> = [];
+    await new Promise<void>((resolve, reject) => {
+      new ConversationAgent(configFor(directory), server.agent, "owner", model)
+        .run({
+          threadId: "pi-chat",
+          runId: "pi-chat-run",
+          messages: [{ id: "user-message", role: "user", content: "Inspect status" }],
+          state: {},
+          tools: [],
+          context: [],
+          forwardedProps: {},
+        })
+        .subscribe({
+          next: (event) => events.push(event),
+          error: reject,
+          complete: resolve,
+        });
+    });
+    assert.equal(calls[1]?.sessionKey, "chat:pi-chat");
+    assert.equal(
+      calls[1]?.tools.some((tool) => tool.name === "agent_status"),
+      true,
+    );
+    assert.ok(events.some((event) => event.type === "TEXT_MESSAGE_CONTENT"));
+    assert.ok(events.some((event) => event.type === "TOOL_CALL_START"));
+    assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("standalone pi abort bridge reaches an in-flight isolated computer command", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-computer-abort-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  try {
+    let commandStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      commandStarted = resolve;
+    });
+    let observedAbort = false;
+    Object.defineProperty(server.agent, "computer", {
+      value: {
+        execute: async (_owner: string, _args: unknown, options: { signal?: AbortSignal }) => {
+          commandStarted();
+          await new Promise<void>((_resolve, reject) => {
+            options.signal?.addEventListener(
+              "abort",
+              () => {
+                observedAbort = true;
+                reject(new Error("computer command interrupted"));
+              },
+              { once: true },
+            );
+          });
+        },
+      } as unknown as ComputerService,
+    });
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const command = input.tools.find((tool) => tool.name === "run_computer_command");
+          if (!command?.execute) throw new Error("missing computer command tool");
+          const running = command.execute({ operationId: "cancel-me", command: "sleep 30" });
+          await started;
+          input.abortTools?.();
+          assert.deepEqual(await running, { error: "computer command interrupted" });
+          return "cancelled safely";
+        },
+      },
+    });
+    let current = standaloneTask();
+    await executeModelTask(server.agent, "owner", current, {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    });
+    assert.equal(observedAbort, true);
+  } finally {
+    await server.agent.stop();
     await db.close();
     await rm(directory, { recursive: true, force: true });
   }

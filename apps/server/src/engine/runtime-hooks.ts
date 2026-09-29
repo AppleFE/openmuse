@@ -1,10 +1,15 @@
-import type { AgentTask, AgentTeamRole } from "../../../../packages/domain/src/agent.ts";
+import type {
+  AgentTask,
+  AgentTeamRole,
+  ModelCapability,
+} from "../../../../packages/domain/src/agent.ts";
 
 export interface RoleRuntimeRequest {
   owner: string;
   task: Readonly<AgentTask>;
   role: Readonly<AgentTeamRole>;
   model: string;
+  capabilities: readonly ModelCapability[];
   dependencyContext: Readonly<Record<string, string>>;
   signal: AbortSignal;
 }

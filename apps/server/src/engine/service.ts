@@ -15,8 +15,8 @@ import {
   type Idea,
   type Monitor,
   monitorInputSchema,
-  type RuntimeSettingsPatch,
   type RunEvent,
+  type RuntimeSettingsPatch,
   type TaskThreadMessage,
   teamInputSchema,
 } from "../../../../packages/domain/src/agent.ts";
@@ -29,9 +29,9 @@ import type {
 } from "../../../../packages/domain/src/index.ts";
 import type { ActionService } from "../actions.ts";
 import type { BrowserService } from "../browser.ts";
-import type { ConnectorService } from "../connector-service.ts";
 import { ComputerService } from "../computer.ts";
 import type { Config } from "../config.ts";
+import type { ConnectorService } from "../connector-service.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
 import type { Files } from "../files.ts";
@@ -42,6 +42,7 @@ import { JevGuardRuntimeHook, JevRuntime } from "./jev-runtime.ts";
 import { RuntimeSettingsService } from "./jev-settings.ts";
 import { executeModelTask } from "./model.ts";
 import { ModelRegistry } from "./models.ts";
+import { PiAgentRunner } from "./pi-agent.ts";
 import { PiRuntimeHook } from "./pi-runtime.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { TeamModelExecutor } from "./team-model.ts";
@@ -56,6 +57,7 @@ export class AgentService {
   readonly models: ModelRegistry;
   readonly teams: TeamEngine;
   readonly runtimeSettings: RuntimeSettingsService;
+  readonly pi: PiAgentRunner;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -72,6 +74,7 @@ export class AgentService {
     this.models = new ModelRegistry(db, config);
     this.runtimeSettings = new RuntimeSettingsService(db, config);
     const jev = new JevRuntime(this.runtimeSettings);
+    this.pi = new PiAgentRunner(db, config, jev);
     const hooks =
       runtimeHooks ??
       new RuntimeHookPipeline([
@@ -151,19 +154,29 @@ export class AgentService {
   }
   async snapshot(owner: string): Promise<AgentWorkspace> {
     await this.ensure(owner);
-    const [tasks, goals, monitors, ideas, memories, artifacts, notifications, identity, teams, modelSelection] =
-      await Promise.all([
-        this.db.list<AgentTask>(owner, "tasks"),
-        this.db.list<Goal>(owner, "goals"),
-        this.db.list<Monitor>(owner, "monitors"),
-        this.db.list<Idea>(owner, "ideas"),
-        this.db.list<AgentMemory>(owner, "memories"),
-        this.db.list<AgentArtifact>(owner, "agent-artifacts"),
-        this.db.list<AgentNotification>(owner, "notifications"),
-        this.db.get<AgentIdentity>(owner, "agent-settings", "identity"),
-        this.db.list<AgentTeam>(owner, "agent-teams"),
-        this.models.selection(owner),
-      ]);
+    const [
+      tasks,
+      goals,
+      monitors,
+      ideas,
+      memories,
+      artifacts,
+      notifications,
+      identity,
+      teams,
+      modelSelection,
+    ] = await Promise.all([
+      this.db.list<AgentTask>(owner, "tasks"),
+      this.db.list<Goal>(owner, "goals"),
+      this.db.list<Monitor>(owner, "monitors"),
+      this.db.list<Idea>(owner, "ideas"),
+      this.db.list<AgentMemory>(owner, "memories"),
+      this.db.list<AgentArtifact>(owner, "agent-artifacts"),
+      this.db.list<AgentNotification>(owner, "notifications"),
+      this.db.get<AgentIdentity>(owner, "agent-settings", "identity"),
+      this.db.list<AgentTeam>(owner, "agent-teams"),
+      this.models.selection(owner),
+    ]);
     const heartbeat = await this.db.get<{ lastTickAt: string }>("system", "worker-status", "tasks");
     return {
       tasks,
@@ -285,6 +298,24 @@ export class AgentService {
     if (team && input.kind !== "agent" && input.kind !== "plan")
       throw new AppError("Teams can run agent and plan tasks only", 422);
     const selectedModel = team ? null : await this.models.resolve(owner, input.modelId);
+    const snapshottedTeam = team
+      ? {
+          ...team,
+          roles: team.roles.map((role) => {
+            const profile = this.models.require(role.modelId);
+            return {
+              ...role,
+              modelSnapshot: {
+                id: profile.id,
+                label: profile.label,
+                provider: profile.provider,
+                model: profile.model,
+                capabilities: [...profile.capabilities],
+              },
+            };
+          }),
+        }
+      : null;
     const id = idempotencyKey ? hash(`task:${idempotencyKey}`) : randomUUID();
     const existing = await this.db.get<AgentTask>(owner, "tasks", id);
     if (existing) return existing;
@@ -314,8 +345,17 @@ export class AgentService {
       kind: input.kind,
       goalId: input.goalId,
       modelId: team ? undefined : (selectedModel?.id ?? null),
+      modelSnapshot: selectedModel
+        ? {
+            id: selectedModel.id,
+            label: selectedModel.label,
+            provider: selectedModel.provider,
+            model: selectedModel.model,
+            capabilities: [...selectedModel.capabilities],
+          }
+        : undefined,
       teamId: team?.id,
-      teamContext: team ? createTeamTaskContext(team) : undefined,
+      teamContext: snapshottedTeam ? createTeamTaskContext(snapshottedTeam) : undefined,
       status: held ? "paused" : "queued",
       plan: titles.map((title, i) => ({ id: String(i), title, status: "pending" })),
       evidence: [],

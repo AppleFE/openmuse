@@ -1,16 +1,22 @@
 import { z } from "zod";
 import {
-  modelCapabilitySchema,
   type ModelProfile,
   type ModelProvider,
   type ModelSelection,
+  type ModelSnapshot,
+  modelCapabilitySchema,
 } from "../../../../packages/domain/src/agent.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
 
 const profileInputSchema = z.object({
-  id: z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9._-]+$/),
+  id: z
+    .string()
+    .trim()
+    .min(1)
+    .max(120)
+    .regex(/^[a-zA-Z0-9._-]+$/),
   label: z.string().trim().min(1).max(120),
   model: z.string().trim().min(3).max(300),
   capabilities: z.array(modelCapabilitySchema).max(10).default(["chat", "tools"]),
@@ -56,33 +62,77 @@ export function parseModelCatalog(raw: string | undefined, fallback?: string): M
     const value = profileInputSchema.parse(input);
     if (ids.has(value.id)) throw new Error(`Duplicate model id "${value.id}" in OPENMUSE_MODELS`);
     ids.add(value.id);
-    return { ...value, provider: providerOf(value.model) };
+    return {
+      ...value,
+      provider: providerOf(value.model),
+      available: value.enabled,
+      ...(value.enabled ? {} : { unavailableReason: "disabled" as const }),
+    };
   });
+}
+
+function hasProviderCredential(config: Config, provider: ModelProvider) {
+  if (provider === "openai") return Boolean(process.env.OPENAI_API_KEY);
+  if (provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
+  if (provider === "google")
+    return Boolean(
+      process.env.GOOGLE_API_KEY ??
+        process.env.GEMINI_API_KEY ??
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    );
+  return Boolean(config.openCodexBaseUrl && config.openCodexApiKey);
 }
 
 export class ModelRegistry {
   private readonly profiles: ModelProfile[];
   constructor(
     private readonly db: Store,
-    config: Config,
+    private readonly config: Config,
   ) {
-    this.profiles = config.models ?? parseModelCatalog(undefined, config.model);
+    this.profiles = (config.models ?? parseModelCatalog(undefined, config.model)).map((profile) => {
+      const available = profile.enabled && hasProviderCredential(config, profile.provider);
+      return {
+        ...profile,
+        available,
+        ...(available
+          ? { unavailableReason: undefined }
+          : {
+              unavailableReason: profile.enabled
+                ? ("missing_credentials" as const)
+                : ("disabled" as const),
+            }),
+      };
+    });
   }
   list(): ModelProfile[] {
-    return this.profiles.map((profile) => ({ ...profile, capabilities: [...profile.capabilities] }));
+    return this.profiles.map((profile) => ({
+      ...profile,
+      capabilities: [...profile.capabilities],
+    }));
   }
   require(id: string): ModelProfile {
     const profile = this.profiles.find((candidate) => candidate.id === id && candidate.enabled);
     if (!profile) throw new AppError("Model is not configured or enabled on this server", 422);
+    if (!profile.available)
+      throw new AppError("The model's server-side provider credential is not configured", 422);
     return profile;
   }
+  fromSnapshot(snapshot: ModelSnapshot): ModelProfile {
+    const available = hasProviderCredential(this.config, snapshot.provider);
+    if (!available)
+      throw new AppError("The model's server-side provider credential is not configured", 422);
+    return { ...snapshot, enabled: true, available: true };
+  }
   defaultProfile(): ModelProfile | null {
-    return this.profiles.find((profile) => profile.enabled) ?? null;
+    return this.profiles.find((profile) => profile.available) ?? null;
   }
   async selection(owner: string): Promise<ModelSelection> {
     const saved = await this.db.get<ModelSelection>(owner, "model-settings", "default");
     if (saved?.modelId === null) return saved;
-    if (saved?.modelId && this.profiles.some((profile) => profile.id === saved.modelId && profile.enabled))
+    if (
+      saved?.modelId &&
+      this.profiles.some((profile) => profile.id === saved.modelId && profile.available)
+    )
       return saved;
     return {
       id: "default",
