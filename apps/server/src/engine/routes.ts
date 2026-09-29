@@ -8,6 +8,7 @@ import type {
 } from "../../../../packages/domain/src/agent.ts";
 import {
   modelSelectionInputSchema,
+  runtimeSettingsPatchSchema,
   teamInputSchema,
 } from "../../../../packages/domain/src/agent.ts";
 import { AppError } from "../errors.ts";
@@ -42,6 +43,17 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
   app.put("/model-settings", saveModelSelection);
   app.post("/model-settings", saveModelSelection);
   app.patch("/model-settings", saveModelSelection);
+  app.get("/runtime-settings", async (c) =>
+    c.json(await service.getRuntimeSettings(c.get("owner"))),
+  );
+  app.patch("/runtime-settings", async (c) =>
+    c.json(
+      await service.updateRuntimeSettings(
+        c.get("owner"),
+        runtimeSettingsPatchSchema.parse(await c.req.json()),
+      ),
+    ),
+  );
   app.get("/teams", async (c) => c.json(await service.listTeams(c.get("owner"))));
   app.post("/teams", async (c) =>
     c.json(await service.createTeam(c.get("owner"), await c.req.json()), 201),

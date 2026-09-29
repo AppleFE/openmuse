@@ -15,6 +15,7 @@ import {
   type Idea,
   type Monitor,
   monitorInputSchema,
+  type RuntimeSettingsPatch,
   type RunEvent,
   type TaskThreadMessage,
   teamInputSchema,
@@ -37,8 +38,11 @@ import type { Files } from "../files.ts";
 import { backgroundFailure } from "../log.ts";
 import type { WorkspaceService } from "../workspace.ts";
 import { analyzeSpending } from "./finance.ts";
+import { JevGuardRuntimeHook, JevRuntime } from "./jev-runtime.ts";
+import { RuntimeSettingsService } from "./jev-settings.ts";
 import { executeModelTask } from "./model.ts";
 import { ModelRegistry } from "./models.ts";
+import { PiRuntimeHook } from "./pi-runtime.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { TeamModelExecutor } from "./team-model.ts";
 import { createTeamTaskContext, TeamEngine, validateTeam } from "./teams.ts";
@@ -51,6 +55,7 @@ export class AgentService {
   readonly worker: TaskWorker;
   readonly models: ModelRegistry;
   readonly teams: TeamEngine;
+  readonly runtimeSettings: RuntimeSettingsService;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -62,10 +67,18 @@ export class AgentService {
     readonly browser: BrowserService,
     readonly computer: ComputerService = new ComputerService(db, config),
     readonly connectors?: ConnectorService,
-    runtimeHooks: RuntimeHookPipeline = new RuntimeHookPipeline(),
+    runtimeHooks?: RuntimeHookPipeline,
   ) {
     this.models = new ModelRegistry(db, config);
-    const teamModels = new TeamModelExecutor(this.models, runtimeHooks);
+    this.runtimeSettings = new RuntimeSettingsService(db, config);
+    const jev = new JevRuntime(this.runtimeSettings);
+    const hooks =
+      runtimeHooks ??
+      new RuntimeHookPipeline([
+        new JevGuardRuntimeHook(jev),
+        new PiRuntimeHook(db, config, computer, connectors, jev),
+      ]);
+    const teamModels = new TeamModelExecutor(this.models, hooks);
     this.teams = new TeamEngine(db, (input) => teamModels.execute(input));
     this.worker = new TaskWorker(db, (owner, task, context) => this.execute(owner, task, context), {
       settled: (owner, task) => this.publishOutcome(owner, task),
@@ -202,6 +215,12 @@ export class AgentService {
   }
   async modelSelection(owner: string) {
     return this.models.selection(owner);
+  }
+  async getRuntimeSettings(owner: string) {
+    return this.runtimeSettings.view(owner);
+  }
+  async updateRuntimeSettings(owner: string, patch: RuntimeSettingsPatch) {
+    return this.runtimeSettings.update(owner, patch);
   }
   async selectModel(owner: string, modelId: string | null) {
     return this.models.select(owner, modelId);

@@ -14,6 +14,7 @@ The demos follow a request from chat to the agent's inline browser, then show ho
 - [Linux computer, terminal, and workspace files](COMPUTER.md)
 - [CopilotKit Rich Threads](RICH-THREADS.md)
 - [Models, OpenCodex, and multi-model teams](MODELS-TEAMS.md)
+- [Jev policy and embedded pi runtime](JEV-PI.md)
 - [Infrastructure connectors](CONNECTORS.md)
 - [Interaction design and conversation behavior](EXPERIENCE.md)
 - [OpenBot integration contract](OPENBOT-INTEGRATION.md)
