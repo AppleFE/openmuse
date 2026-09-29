@@ -40,3 +40,18 @@ Screenshots from that run are in the local system temporary directory:
 - TypeScript typecheck passed.
 - Expo web, Android, and iOS exports completed.
 
+## Jev and pi runtime settings follow-up
+
+Validated on 2026-09-29 against an isolated sample server at `localhost:8787` and Expo web at `localhost:8082` after the authenticated runtime contract landed.
+
+- `GET /api/agent/runtime-settings` populated the Jev and pi status, policy, and numeric controls without returning credential material.
+- The rendered form changed pi from 4 to 5 maximum iterations and Jev from `local-budget` to `closed`; Save issued the PATCH and a separate GET confirmed both persisted values.
+- Client validation mirrors the shared contract: Jev timeout 1000-30000 ms, pi iterations 1-8, and pi timeout 5000-900000 ms.
+- Desktop light and dark captures show readable nested surfaces, secure credential input, status labels, policy buttons, numeric controls, and a reachable save action.
+- A 390x844 mobile emulation exposed every runtime input/action in the accessibility tree and kept the settings vertically scrollable without horizontal clipping.
+
+Runtime QA captures are in the local system temporary directory:
+
+- `%TEMP%\openmuse-runtime-dark.png`
+- `%TEMP%\openmuse-runtime-light.png`
+- `%TEMP%\openmuse-runtime-phone-light.png`

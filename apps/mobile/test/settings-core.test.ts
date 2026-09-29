@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  parseRuntimeInteger,
+  runtimeLimits,
+  runtimeReadiness,
+} from "../src/runtime-settings-core.ts";
+import {
   chooseAvailableModel,
   compactSettings,
   executionDependencies,
@@ -33,4 +38,36 @@ test("team execution derives a dependency chain only for sequential mode", () =>
   const ids = ["planner", "coder", "reviewer"];
   assert.deepEqual(executionDependencies(ids, "sequential"), [[], ["planner"], ["coder"]]);
   assert.deepEqual(executionDependencies(ids, "parallel"), [[], [], []]);
+});
+
+test("runtime numeric controls enforce the shared server bounds", () => {
+  assert.equal(parseRuntimeInteger("8", "Pi iterations", runtimeLimits.piMaxIterations), 8);
+  assert.throws(
+    () => parseRuntimeInteger("9", "Pi iterations", runtimeLimits.piMaxIterations),
+    /1 to 8/,
+  );
+  assert.throws(
+    () => parseRuntimeInteger("1.5", "Pi iterations", runtimeLimits.piMaxIterations),
+    /whole number/,
+  );
+});
+
+test("runtime readiness distinguishes disabled, configured, and missing credentials", () => {
+  const settings = {
+    id: "runtime" as const,
+    jev: {
+      enabled: true,
+      configured: false,
+      model: "jev-latest",
+      failMode: "closed" as const,
+      timeoutMs: 10000,
+    },
+    pi: { enabled: true, maxIterations: 4, timeoutMs: 120000 },
+    updatedAt: "2026-09-29T00:00:00.000Z",
+  };
+  assert.deepEqual(runtimeReadiness(settings), { jev: "API key required", pi: "Enabled" });
+  assert.deepEqual(runtimeReadiness({ ...settings, jev: { ...settings.jev, enabled: false } }), {
+    jev: "Off",
+    pi: "Enabled",
+  });
 });

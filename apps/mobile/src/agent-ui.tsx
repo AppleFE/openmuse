@@ -38,6 +38,7 @@ import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { ConnectorSettings } from "./connector-settings";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
+import { RuntimeSettings } from "./runtime-settings";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
 import { type ThemePreference, useTheme } from "./theme";
 import {
@@ -1871,6 +1872,7 @@ export function AppsScreen() {
         </Text>
       </Card>
       <ModelTeamSettings />
+      <RuntimeSettings />
       <Button onPress={() => setSettings(!settings)}>
         {settings ? "Close agent settings" : "Personality & memory"}
       </Button>
