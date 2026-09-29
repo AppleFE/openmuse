@@ -6,6 +6,9 @@
 - Durable multi-role agent teams: sequential or parallel dependency execution, role-labelled messages, dependency failure propagation, and restart recovery that resumes only interrupted roles.
 - Authenticated infrastructure connectors for GitHub, Tailscale, Headscale, WireGuard, and multiple Proxmox identities — AES-256-GCM-encrypted credentials, write-only secrets, persisted health checks, settings UI, and read-only agent tools.
 - Persisted system/light/dark theme with semantic palettes on iOS, Android, and web.
+- Embedded pi coding runtime: configured coding-capable profiles route team `coder` roles, delegated agent/plan tasks, and conversational tool work through the official pi SDK with durable sessions, task-snapshotted models, bounded iterations/tool-call budgets, and cancellation-aware OpenMuse tools — host shell and filesystem tools are never registered.
+- Optional TypeSafe.ai Jev policy layer (`TYPESAFE_*` or owner-saved key) with allow/block preflight, context-profile selection, per-tool guards, and `closed`/`local-budget` fail modes. Owner-scoped runtime settings API and settings UI.
+- Connector hardening: URL config fields reject embedded credentials, health checks are bound to the credential set that produced them, and caller cancellation aborts provider I/O.
 - Fixed the browser-worker lifecycle test to match current example.com page copy.
 
 ## 0.1.0-alpha — 2026-09-15
