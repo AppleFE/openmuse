@@ -22,7 +22,7 @@ export interface RoleRuntimeResult {
  */
 export interface CodingRuntimeHook {
   readonly id: string;
-  supports(request: RoleRuntimeRequest): boolean;
+  supports(request: RoleRuntimeRequest): boolean | Promise<boolean>;
   guard(request: RoleRuntimeRequest): Promise<void>;
   prepare(request: RoleRuntimeRequest): Promise<RoleRuntimePreparation>;
   execute?(request: RoleRuntimeRequest & RoleRuntimePreparation): Promise<RoleRuntimeResult>;
@@ -39,7 +39,7 @@ export class RuntimeHookPipeline {
     const context: Record<string, unknown> = {};
     let executor: CodingRuntimeHook | undefined;
     for (const hook of this.hooks) {
-      if (!hook.supports(request)) continue;
+      if (!(await hook.supports(request))) continue;
       await hook.guard(request);
       const prepared = await hook.prepare(request);
       if (prepared.systemPrompt) systemPrompt += `\n\n${prepared.systemPrompt}`;

@@ -42,6 +42,10 @@ export interface Config {
   models?: ModelProfile[];
   openCodexBaseUrl?: string;
   openCodexApiKey?: string;
+  /** Server-side Jev defaults; owner settings never expose the credential. */
+  typesafeApiKey?: string;
+  typesafeBaseUrl?: string;
+  typesafeModel?: string;
   agentBackend: "sample" | "model" | "agui";
   agentUrl?: string;
   agentToken?: string;
@@ -112,6 +116,9 @@ export function readConfig(): Config {
     models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
     openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
     openCodexApiKey: process.env.OPENCODEX_API_KEY,
+    typesafeApiKey: process.env.TYPESAFE_API_KEY,
+    typesafeBaseUrl: process.env.TYPESAFE_BASE_URL,
+    typesafeModel: process.env.TYPESAFE_DEFAULT_MODEL ?? "jev-latest",
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,

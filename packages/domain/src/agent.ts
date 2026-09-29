@@ -41,6 +41,43 @@ export interface ModelSelection {
   modelId: string | null;
   updatedAt: string;
 }
+export const jevFailModeSchema = z.enum(["closed", "local-budget"]);
+export type JevFailMode = z.infer<typeof jevFailModeSchema>;
+export const runtimeSettingsPatchSchema = z
+  .object({
+    jev: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.union([z.string().trim().min(8).max(4096), z.null()]).optional(),
+        model: z.string().trim().min(1).max(120).regex(/^jev[-a-zA-Z0-9._]*$/).optional(),
+        failMode: jevFailModeSchema.optional(),
+        timeoutMs: z.number().int().min(1000).max(30000).optional(),
+      })
+      .strict()
+      .optional(),
+    pi: z
+      .object({
+        enabled: z.boolean().optional(),
+        maxIterations: z.number().int().min(1).max(8).optional(),
+        timeoutMs: z.number().int().min(5000).max(15 * 60 * 1000).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type RuntimeSettingsPatch = z.infer<typeof runtimeSettingsPatchSchema>;
+export interface RuntimeSettingsView {
+  id: "runtime";
+  jev: {
+    enabled: boolean;
+    configured: boolean;
+    model: string;
+    failMode: JevFailMode;
+    timeoutMs: number;
+  };
+  pi: { enabled: boolean; maxIterations: number; timeoutMs: number };
+  updatedAt: string;
+}
 export const agentRoleKindSchema = z.enum(["planner", "coder", "reviewer", "custom"]);
 export type AgentRoleKind = z.infer<typeof agentRoleKindSchema>;
 export interface AgentTeamRole {
