@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
+import type { ModelProfile } from "../../../packages/domain/src/agent.ts";
+import { parseModelCatalog } from "./engine/models.ts";
 
 /** .env keys whose file value loses to a different value already set in the environment. */
 export function shadowedEnvKeys(
@@ -36,6 +38,8 @@ export interface Config {
   accessKey?: string;
   encryptionKey?: string;
   model?: string;
+  /** Server allowlist exposed without credentials; clients may select only these IDs. */
+  models?: ModelProfile[];
   agentBackend: "sample" | "model" | "agui";
   agentUrl?: string;
   agentToken?: string;
@@ -92,6 +96,7 @@ export function readConfig(): Config {
     throw new Error("Live workspaces cannot use the sample agent");
   const port = Number(process.env.PORT ?? 8787);
   const publicUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${port}`;
+  const model = process.env.MODEL?.trim() || undefined;
   const config: Config = {
     mode,
     port,
@@ -101,7 +106,8 @@ export function readConfig(): Config {
     databaseUrl: process.env.DATABASE_URL,
     accessKey: process.env.OPENMUSE_ACCESS_KEY,
     encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
-    model: process.env.MODEL,
+    model,
+    models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,

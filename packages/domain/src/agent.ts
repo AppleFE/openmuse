@@ -23,6 +23,75 @@ export interface TaskStep {
   status: "pending" | "running" | "succeeded" | "failed" | "waiting";
   detail?: string;
 }
+export const modelProviderSchema = z.enum(["openai", "anthropic", "google"]);
+export type ModelProvider = z.infer<typeof modelProviderSchema>;
+export const modelCapabilitySchema = z.enum(["chat", "tools", "vision", "coding"]);
+export type ModelCapability = z.infer<typeof modelCapabilitySchema>;
+/** Public, secret-free model metadata returned to clients. */
+export interface ModelProfile {
+  id: string;
+  label: string;
+  provider: ModelProvider;
+  model: string;
+  capabilities: ModelCapability[];
+  enabled: boolean;
+}
+export interface ModelSelection {
+  id: "default";
+  modelId: string | null;
+  updatedAt: string;
+}
+export const agentRoleKindSchema = z.enum(["planner", "coder", "reviewer", "custom"]);
+export type AgentRoleKind = z.infer<typeof agentRoleKindSchema>;
+export interface AgentTeamRole {
+  id: string;
+  label: string;
+  kind: AgentRoleKind;
+  modelId: string;
+  systemPrompt: string;
+  dependsOn: string[];
+}
+export interface AgentTeam {
+  id: string;
+  name: string;
+  description?: string;
+  execution: "sequential" | "parallel";
+  roles: AgentTeamRole[];
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+}
+export type AgentRoleRunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+export interface AgentRoleRun {
+  roleId: string;
+  roleLabel: string;
+  modelId: string;
+  status: AgentRoleRunStatus;
+  attempts: number;
+  startedAt?: string;
+  finishedAt?: string;
+  output?: string;
+  error?: string;
+}
+export interface AgentTeamTaskContext {
+  teamId: string;
+  teamRevision: number;
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  roles: AgentTeamRole[];
+  roleRuns: AgentRoleRun[];
+  /** Deterministic dependency-ordered results available to subsequent roles. */
+  sharedContext: Record<string, string>;
+}
+export interface TaskThreadMessage {
+  id: string;
+  taskId: string;
+  role: "assistant";
+  roleId: string;
+  roleLabel: string;
+  modelId: string;
+  content: string;
+  createdAt: string;
+}
 export interface AgentTask {
   id: string;
   title: string;
@@ -30,6 +99,10 @@ export interface AgentTask {
   kind: "agent" | "document" | "monitor" | "finance" | "plan";
   status: TaskStatus;
   goalId?: string;
+  /** Snapshotted when the task is created; later default changes do not alter this run. */
+  modelId?: string;
+  teamId?: string;
+  teamContext?: AgentTeamTaskContext;
   plan: TaskStep[];
   evidence: Evidence[];
   input: Record<string, unknown>;
@@ -53,6 +126,9 @@ export interface RunEvent {
   kind: "plan" | "step" | "observation" | "approval" | "result" | "error" | "status";
   title: string;
   detail: string;
+  roleId?: string;
+  roleLabel?: string;
+  modelId?: string;
 }
 export interface Goal {
   id: string;
@@ -130,15 +206,38 @@ export interface AgentWorkspace {
   notifications: AgentNotification[];
   identity: AgentIdentity;
   worker: { running: boolean; lastTickAt?: string };
+  models?: ModelProfile[];
+  modelSelection?: ModelSelection;
+  teams?: AgentTeam[];
 }
 export const createTaskSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
   prompt: z.string().trim().min(1).max(12000),
   kind: z.enum(["agent", "document", "monitor", "finance", "plan"]).default("agent"),
   goalId: z.string().optional(),
+  modelId: z.string().trim().min(1).max(120).optional(),
+  teamId: z.string().trim().min(1).max(120).optional(),
   input: z.record(z.string(), z.unknown()).default({}),
 });
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+export const modelSelectionInputSchema = z.object({
+  modelId: z.string().trim().min(1).max(120).nullable(),
+});
+const teamRoleInputSchema = z.object({
+  id: z.string().trim().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/),
+  label: z.string().trim().min(1).max(80),
+  kind: agentRoleKindSchema,
+  modelId: z.string().trim().min(1).max(120),
+  systemPrompt: z.string().trim().min(1).max(12000),
+  dependsOn: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+});
+export const teamInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(1000).optional(),
+  execution: z.enum(["sequential", "parallel"]).default("parallel"),
+  roles: z.array(teamRoleInputSchema).min(1).max(20),
+});
+export type TeamInput = z.infer<typeof teamInputSchema>;
 export const monitorInputSchema = z
   .object({
     title: z.string().min(1).max(160),

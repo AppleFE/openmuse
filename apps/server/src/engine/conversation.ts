@@ -20,11 +20,12 @@ export class ConversationAgent extends AbstractAgent {
     private readonly config: Config,
     private readonly service: AgentService,
     private readonly owner: string,
+    private readonly defaultModel?: string,
   ) {
     super({ agentId: "default" });
   }
   clone(): ConversationAgent {
-    return new ConversationAgent(this.config, this.service, this.owner);
+    return new ConversationAgent(this.config, this.service, this.owner, this.defaultModel);
   }
   run(input: RunAgentInput): Observable<BaseEvent> {
     const latest = input.messages.filter((m) => m.role === "user").at(-1);
@@ -86,6 +87,23 @@ export class ConversationAgent extends AbstractAgent {
             });
             subscriber.complete();
           });
+      });
+    const requestedModelId =
+      input.forwardedProps &&
+      typeof input.forwardedProps === "object" &&
+      typeof (input.forwardedProps as Record<string, unknown>).modelId === "string"
+        ? String((input.forwardedProps as Record<string, unknown>).modelId)
+        : undefined;
+    const model = requestedModelId
+      ? this.service.models.require(requestedModelId).model
+      : this.defaultModel;
+    if (!model)
+      return new Observable((subscriber) => {
+        subscriber.next({
+          type: EventType.RUN_ERROR,
+          message: "Select a configured model before starting chat",
+        });
+        subscriber.complete();
       });
     const key = (name: string, value: unknown) =>
       `${requestKey}:${name}:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
@@ -215,7 +233,7 @@ export class ConversationAgent extends AbstractAgent {
       }),
     ];
     const agent = tanstackAgent({
-      model: this.config.model ?? "openai/unconfigured",
+      model,
       maxSteps: 6,
       stepLimitNote:
         "I reached my step limit for this reply before finishing. Say “continue” and I’ll pick up where I left off.",

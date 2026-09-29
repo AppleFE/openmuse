@@ -6,6 +6,7 @@ import {
   type AgentMemory,
   type AgentNotification,
   type AgentTask,
+  type AgentTeam,
   type AgentWorkspace,
   createTaskSchema,
   type Evidence,
@@ -15,6 +16,8 @@ import {
   type Monitor,
   monitorInputSchema,
   type RunEvent,
+  type TaskThreadMessage,
+  teamInputSchema,
 } from "../../../../packages/domain/src/agent.ts";
 import type {
   ActionProposal,
@@ -34,6 +37,10 @@ import { backgroundFailure } from "../log.ts";
 import type { WorkspaceService } from "../workspace.ts";
 import { analyzeSpending } from "./finance.ts";
 import { executeModelTask } from "./model.ts";
+import { ModelRegistry } from "./models.ts";
+import { RuntimeHookPipeline } from "./runtime-hooks.ts";
+import { TeamModelExecutor } from "./team-model.ts";
+import { createTeamTaskContext, TeamEngine, validateTeam } from "./teams.ts";
 import { LostLeaseError, type TaskContext, TaskWorker } from "./worker.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -41,6 +48,8 @@ const date = () => new Date().toISOString();
 const terminal = new Set(["succeeded", "failed", "cancelled"]);
 export class AgentService {
   readonly worker: TaskWorker;
+  readonly models: ModelRegistry;
+  readonly teams: TeamEngine;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -51,7 +60,11 @@ export class AgentService {
     readonly actions: ActionService,
     readonly browser: BrowserService,
     readonly computer: ComputerService = new ComputerService(db, config),
+    runtimeHooks: RuntimeHookPipeline = new RuntimeHookPipeline(),
   ) {
+    this.models = new ModelRegistry(db, config);
+    const teamModels = new TeamModelExecutor(this.models, runtimeHooks);
+    this.teams = new TeamEngine(db, (input) => teamModels.execute(input));
     this.worker = new TaskWorker(db, (owner, task, context) => this.execute(owner, task, context), {
       settled: (owner, task) => this.publishOutcome(owner, task),
     });
@@ -123,7 +136,7 @@ export class AgentService {
   }
   async snapshot(owner: string): Promise<AgentWorkspace> {
     await this.ensure(owner);
-    const [tasks, goals, monitors, ideas, memories, artifacts, notifications, identity] =
+    const [tasks, goals, monitors, ideas, memories, artifacts, notifications, identity, teams, modelSelection] =
       await Promise.all([
         this.db.list<AgentTask>(owner, "tasks"),
         this.db.list<Goal>(owner, "goals"),
@@ -133,6 +146,8 @@ export class AgentService {
         this.db.list<AgentArtifact>(owner, "agent-artifacts"),
         this.db.list<AgentNotification>(owner, "notifications"),
         this.db.get<AgentIdentity>(owner, "agent-settings", "identity"),
+        this.db.list<AgentTeam>(owner, "agent-teams"),
+        this.models.selection(owner),
       ]);
     const heartbeat = await this.db.get<{ lastTickAt: string }>("system", "worker-status", "tasks");
     return {
@@ -144,6 +159,9 @@ export class AgentService {
       artifacts,
       notifications,
       identity: identity ?? { name: "OpenMuse", tone: "warm" },
+      models: this.models.list(),
+      modelSelection,
+      teams,
       worker: {
         running:
           this.worker.running ||
@@ -175,12 +193,77 @@ export class AgentService {
       artifacts: (await this.db.list<AgentArtifact>(owner, "agent-artifacts")).filter(
         (a) => a.taskId === id,
       ),
+      messages: (await this.db.list<TaskThreadMessage>(owner, "task-thread-messages"))
+        .filter((message) => message.taskId === id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     };
+  }
+  async modelSelection(owner: string) {
+    return this.models.selection(owner);
+  }
+  async selectModel(owner: string, modelId: string | null) {
+    return this.models.select(owner, modelId);
+  }
+  async resolveModel(owner: string, requested?: string) {
+    return this.models.resolve(owner, requested);
+  }
+  async listTeams(owner: string) {
+    return this.db.list<AgentTeam>(owner, "agent-teams");
+  }
+  async getTeam(owner: string, id: string) {
+    const team = await this.db.get<AgentTeam>(owner, "agent-teams", id);
+    if (!team) throw new AppError("Team not found", 404);
+    return team;
+  }
+  private validateTeamModels(team: Pick<AgentTeam, "roles">) {
+    try {
+      validateTeam(team);
+      for (const role of team.roles) this.models.require(role.modelId);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError(error instanceof Error ? error.message : "Invalid team", 422);
+    }
+  }
+  async createTeam(owner: string, raw: unknown) {
+    const input = teamInputSchema.parse(raw);
+    const now = date();
+    const team: AgentTeam = {
+      id: randomUUID(),
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+    };
+    this.validateTeamModels(team);
+    return this.db.put(owner, "agent-teams", team);
+  }
+  async updateTeam(owner: string, id: string, raw: unknown) {
+    const existing = await this.getTeam(owner, id);
+    const input = teamInputSchema.parse(raw);
+    const team: AgentTeam = {
+      ...existing,
+      ...input,
+      updatedAt: date(),
+      revision: existing.revision + 1,
+    };
+    this.validateTeamModels(team);
+    return this.db.put(owner, "agent-teams", team);
+  }
+  async deleteTeam(owner: string, id: string) {
+    await this.getTeam(owner, id);
+    await this.db.remove(owner, "agent-teams", id);
+    return { ok: true };
   }
   async createTask(owner: string, raw: unknown, idempotencyKey?: string, held = false) {
     const input = createTaskSchema.parse(raw);
+    if (input.modelId && input.teamId)
+      throw new AppError("Choose either a model or a team for this task", 422);
     if (input.goalId && !(await this.db.get(owner, "goals", input.goalId)))
       throw new AppError("Goal not found", 404);
+    const team = input.teamId ? await this.getTeam(owner, input.teamId) : null;
+    if (team && input.kind !== "agent" && input.kind !== "plan")
+      throw new AppError("Teams can run agent and plan tasks only", 422);
+    const selectedModel = team ? null : await this.models.resolve(owner, input.modelId);
     const id = idempotencyKey ? hash(`task:${idempotencyKey}`) : randomUUID();
     const existing = await this.db.get<AgentTask>(owner, "tasks", id);
     if (existing) return existing;
@@ -209,12 +292,16 @@ export class AgentService {
       prompt: input.prompt,
       kind: input.kind,
       goalId: input.goalId,
+      modelId: selectedModel?.id,
+      teamId: team?.id,
+      teamContext: team ? createTeamTaskContext(team) : undefined,
       status: held ? "paused" : "queued",
       plan: titles.map((title, i) => ({ id: String(i), title, status: "pending" })),
       evidence: [],
       input: input.input,
       state: {
         connectionId: (await this.workspace.connection(owner))?.id ?? null,
+        ...(team ? { teamExecution: team.execution } : {}),
         ...(held && input.kind === "monitor" ? { initializingMonitor: true } : {}),
       },
       createdAt: date(),
@@ -253,6 +340,35 @@ export class AgentService {
           409,
         );
     }
+    const teamContext = task.teamContext
+      ? action === "cancel"
+        ? {
+            ...task.teamContext,
+            status: "cancelled" as const,
+            roleRuns: task.teamContext.roleRuns.map((run) =>
+              run.status === "pending" || run.status === "running"
+                ? { ...run, status: "cancelled" as const, error: "Task cancelled" }
+                : run,
+            ),
+          }
+        : action === "retry"
+          ? {
+              ...task.teamContext,
+              status: "pending" as const,
+              roleRuns: task.teamContext.roleRuns.map((run) =>
+                run.status === "failed" || run.status === "cancelled"
+                  ? {
+                      ...run,
+                      status: "pending" as const,
+                      error: undefined,
+                      startedAt: undefined,
+                      finishedAt: undefined,
+                    }
+                  : run,
+              ),
+            }
+          : task.teamContext
+      : undefined;
     const updated = await this.db.compareAndSwap<AgentTask>(
       owner,
       "tasks",
@@ -263,6 +379,7 @@ export class AgentService {
         leaseId: null,
         leaseUntil: null,
         error: null,
+        ...(teamContext ? { teamContext } : {}),
         updatedAt: date(),
         result:
           action === "cancel"
@@ -753,6 +870,7 @@ export class AgentService {
         );
       else return { status: "waiting_approval" };
     }
+    if (task.teamContext) return this.teams.execute(owner, task, context);
     if (task.kind === "document") return this.document(owner, task, context);
     if (task.kind === "monitor") {
       try {

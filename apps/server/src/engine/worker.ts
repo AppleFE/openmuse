@@ -13,7 +13,12 @@ export interface TaskContext {
   signal: AbortSignal;
   guard(): Promise<void>;
   checkpoint(patch: Partial<AgentTask>): Promise<AgentTask>;
-  event(kind: RunEvent["kind"], title: string, detail?: string): Promise<void>;
+  event(
+    kind: RunEvent["kind"],
+    title: string,
+    detail?: string,
+    role?: Pick<RunEvent, "roleId" | "roleLabel" | "modelId">,
+  ): Promise<void>;
 }
 export type TaskHandler = (
   owner: string,
@@ -151,7 +156,12 @@ export class TaskWorker {
       task = next;
       return next;
     };
-    const event = async (kind: RunEvent["kind"], title: string, detail = "") => {
+    const event = async (
+      kind: RunEvent["kind"],
+      title: string,
+      detail = "",
+      role?: Pick<RunEvent, "roleId" | "roleLabel" | "modelId">,
+    ) => {
       await guard();
       await this.db.put(owner, "run-events", {
         id: randomUUID(),
@@ -160,6 +170,7 @@ export class TaskWorker {
         kind,
         title,
         detail,
+        ...role,
       });
     };
     const startedAt = new Date(this.now()).toISOString();

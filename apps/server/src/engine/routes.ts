@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import type {
   AgentIdentity,
   AgentMemory,
   AgentNotification,
+} from "../../../../packages/domain/src/agent.ts";
+import {
+  modelSelectionInputSchema,
+  teamInputSchema,
 } from "../../../../packages/domain/src/agent.ts";
 import { AppError } from "../errors.ts";
 import type { AgentService } from "./service.ts";
@@ -27,6 +31,33 @@ const goalPatchSchema = z.object({
 
 export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: string } }> {
   const app = new Hono<{ Variables: { owner: string } }>();
+  app.get("/models", (c) => c.json(service.models.list()));
+  app.get("/model-settings", async (c) =>
+    c.json(await service.modelSelection(c.get("owner"))),
+  );
+  const saveModelSelection = async (c: Context<{ Variables: { owner: string } }>) => {
+    const { modelId } = modelSelectionInputSchema.parse(await c.req.json());
+    return c.json(await service.selectModel(c.get("owner"), modelId));
+  };
+  app.put("/model-settings", saveModelSelection);
+  app.post("/model-settings", saveModelSelection);
+  app.patch("/model-settings", saveModelSelection);
+  app.get("/teams", async (c) => c.json(await service.listTeams(c.get("owner"))));
+  app.post("/teams", async (c) =>
+    c.json(await service.createTeam(c.get("owner"), await c.req.json()), 201),
+  );
+  app.get("/teams/:id", async (c) =>
+    c.json(await service.getTeam(c.get("owner"), c.req.param("id"))),
+  );
+  app.patch("/teams/:id", async (c) => {
+    const owner = c.get("owner");
+    const existing = await service.getTeam(owner, c.req.param("id"));
+    const patch = teamInputSchema.partial().parse(await c.req.json());
+    return c.json(await service.updateTeam(owner, existing.id, { ...existing, ...patch }));
+  });
+  app.delete("/teams/:id", async (c) =>
+    c.json(await service.deleteTeam(c.get("owner"), c.req.param("id"))),
+  );
   app.get("/", async (c) => c.json(await service.snapshot(c.get("owner"))));
   app.post("/tasks", async (c) =>
     c.json(await service.createTask(c.get("owner"), await c.req.json()), 201),
