@@ -28,6 +28,8 @@ import { BrowserThreadCard } from "./computer";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { MailToolCard } from "./mail-tool-card";
+import { ConversationModelPicker } from "./model-team-settings";
+import { chooseAvailableModel } from "./settings-core";
 import { FileThreadCard, TaskThreadCard } from "./thread-artifacts";
 import { type Selection, useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
@@ -200,6 +202,14 @@ export function ChatScreen({
   const [saveError, setSaveError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [historyAttempt, setHistoryAttempt] = useState(0);
+  const [selectedModelId, setSelectedModelId] = useState<string>();
+  const models = agentWorkspace?.models ?? [];
+  useEffect(() => {
+    if (!models.length) return;
+    setSelectedModelId((current) =>
+      chooseAvailableModel(current, agentWorkspace?.modelSelection?.modelId, models),
+    );
+  }, [agentWorkspace?.modelSelection?.modelId, models]);
   useEffect(() => {
     if (!isReady) return;
     let active = true;
@@ -255,7 +265,11 @@ export function ChatScreen({
       try {
         await runConversationTurn(
           agentId,
-          () => copilotkit.runAgent({ agent }),
+          () =>
+            copilotkit.runAgent({
+              agent,
+              forwardedProps: selectedModelId ? { modelId: selectedModelId } : undefined,
+            }),
           (onError) => copilotkit.subscribe({ onError }),
         );
         await Promise.all([refresh(), refreshAgent()]);
@@ -273,7 +287,18 @@ export function ChatScreen({
         }
       }
     },
-    [agent, agentId, copilotkit, isReady, loaded, refresh, refreshAgent, saveHistory, queue],
+    [
+      agent,
+      agentId,
+      copilotkit,
+      isReady,
+      loaded,
+      refresh,
+      refreshAgent,
+      saveHistory,
+      queue,
+      selectedModelId,
+    ],
   );
   const flush = useCallback(() => {
     if (!loaded || !isReady || runLock.current || agent.isRunning) return;
@@ -651,6 +676,12 @@ export function ChatScreen({
             </Button>
           </Card>
         )}
+        <ConversationModelPicker
+          models={models}
+          value={selectedModelId}
+          onChange={setSelectedModelId}
+          disabled={replying}
+        />
         <View
           style={{
             backgroundColor: colors.input,

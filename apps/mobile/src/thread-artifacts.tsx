@@ -2,8 +2,13 @@ import { ChevronRight, FileText } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { Artifact, BrowserSession } from "../../../packages/domain/src";
-import type { AgentArtifact, AgentTask } from "../../../packages/domain/src/agent";
+import type {
+  AgentArtifact,
+  AgentTask,
+  TaskThreadMessage,
+} from "../../../packages/domain/src/agent";
 import { ArtifactCard, TaskCard } from "./agent-ui";
+import { AssistantResponse } from "./assistant-response";
 import { BrowserThreadCard } from "./computer";
 import { Button, Card, colors, ErrorNotice, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -66,15 +71,19 @@ export function TaskThreadCard({ task }: { task: AgentTask }) {
     artifacts: AgentArtifact[];
     files: Artifact[];
     browsers: BrowserSession[];
+    messages: TaskThreadMessage[];
   }>();
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     void api
-      .request<{ artifacts: AgentArtifact[]; files: Artifact[]; browsers: BrowserSession[] }>(
-        `/api/agent/tasks/${task.id}`,
-      )
+      .request<{
+        artifacts: AgentArtifact[];
+        files: Artifact[];
+        browsers: BrowserSession[];
+        messages: TaskThreadMessage[];
+      }>(`/api/agent/tasks/${task.id}`)
       .then((result) => {
         if (active) {
           setDetail(result);
@@ -91,6 +100,15 @@ export function TaskThreadCard({ task }: { task: AgentTask }) {
   return (
     <View style={{ gap: 12 }}>
       <TaskCard task={task} compact />
+      {detail?.messages.map((message) => (
+        <Card key={message.id} style={{ gap: 7, backgroundColor: colors.surfaceMuted }}>
+          <View style={s.between}>
+            <Text style={[s.text, { fontWeight: "700" }]}>{message.roleLabel}</Text>
+            <Text style={s.small}>{message.modelId}</Text>
+          </View>
+          <AssistantResponse content={message.content} />
+        </Card>
+      ))}
       {detail?.browsers.map((browser) => (
         <BrowserThreadCard key={browser.id} browser={browser} />
       ))}

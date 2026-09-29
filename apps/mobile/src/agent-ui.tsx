@@ -32,8 +32,12 @@ import type {
   Idea,
   Monitor,
   RunEvent,
+  TaskThreadMessage,
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
+import { AssistantResponse } from "./assistant-response";
+import { ConnectorSettings } from "./connector-settings";
+import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
 import { type ThemePreference, useTheme } from "./theme";
 import {
@@ -275,6 +279,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
     artifacts: AgentArtifact[];
     files: Artifact[];
     browsers: BrowserSession[];
+    messages: TaskThreadMessage[];
   }>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -292,6 +297,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
         artifacts: AgentArtifact[];
         files: Artifact[];
         browsers: BrowserSession[];
+        messages: TaskThreadMessage[];
       }>(`/api/agent/tasks/${taskId}`)
       .then((result) => {
         if (active) {
@@ -386,6 +392,37 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           <Text selectable style={s.text}>
             {task.prompt}
           </Text>
+          {task.teamContext && (
+            <Card style={{ gap: 12, backgroundColor: colors.lavender }}>
+              <View style={s.between}>
+                <Text style={s.heading}>Model team</Text>
+                <Text style={s.small}>{statusLabel(task.teamContext.status)}</Text>
+              </View>
+              {task.teamContext.roleRuns.map((run) => (
+                <View key={run.roleId} style={[s.between, { gap: 12 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.text}>{run.roleLabel}</Text>
+                    <Text style={s.small}>{run.modelId}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      s.small,
+                      {
+                        color:
+                          run.status === "failed"
+                            ? colors.danger
+                            : run.status === "succeeded"
+                              ? colors.success
+                              : colors.muted,
+                      },
+                    ]}
+                  >
+                    {statusLabel(run.status)}
+                  </Text>
+                </View>
+              ))}
+            </Card>
+          )}
           <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
             {["queued", "running", "scheduled", "waiting_input", "waiting_approval"].includes(
               task.status,
@@ -589,6 +626,21 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               <EvidenceList items={task.evidence} />
             </View>
           )}
+          {!!detail?.messages.length && (
+            <View style={{ gap: 12 }}>
+              <Text style={s.heading}>Team thread</Text>
+              {detail.messages.map((message) => (
+                <Card key={message.id} style={{ gap: 7, backgroundColor: colors.surfaceMuted }}>
+                  <View style={s.between}>
+                    <Text style={[s.text, { fontWeight: "700" }]}>{message.roleLabel}</Text>
+                    <Text style={s.small}>{message.modelId}</Text>
+                  </View>
+                  <AssistantResponse content={message.content} />
+                  <Text style={s.small}>{stamp(message.createdAt)}</Text>
+                </Card>
+              ))}
+            </View>
+          )}
           <Text style={s.heading}>Timeline</Text>
           {detail?.events.map((event) => (
             <View
@@ -597,6 +649,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             >
               <Text style={s.small}>
                 {stamp(event.date)} · {statusLabel(event.kind)}
+                {event.roleLabel ? ` · ${event.roleLabel}` : ""}
               </Text>
               <Text style={s.text}>{event.title}</Text>
               <Text selectable style={s.muted}>
@@ -883,13 +936,21 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
 }
 export function DelegateSheet() {
   const { workspace, close, open } = useWorkspace();
-  const { delegate } = useAgentWorkspace();
+  const { data, delegate } = useAgentWorkspace();
   const [kind, setKind] = useState<AgentTask["kind"]>("plan");
+  const [modelId, setModelId] = useState<string>();
   const [prompt, setPrompt] = useState("");
   const [messageId, setMessageId] = useState("");
   const [csv, setCsv] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (modelId && data?.models?.some((model) => model.id === modelId && model.enabled)) return;
+    setModelId(
+      data?.models?.find((model) => model.id === data.modelSelection?.modelId && model.enabled)
+        ?.id ?? data?.models?.find((model) => model.enabled)?.id,
+    );
+  }, [data?.modelSelection?.modelId, data?.models, modelId]);
   async function submit() {
     setBusy(true);
     setError("");
@@ -897,6 +958,7 @@ export function DelegateSheet() {
       const task = await delegate({
         prompt: prompt.trim(),
         kind,
+        ...(["agent", "plan"].includes(kind) && modelId ? { modelId } : {}),
         input: kind === "finance" ? { csv } : kind === "document" ? { messageId } : {},
       });
       open({ type: "task", taskId: task.id });
@@ -984,6 +1046,17 @@ export function DelegateSheet() {
           General tasks and plans require a configured model. Document jobs, page watches and
           spending summaries have guided workflows.
         </Text>
+      )}
+      {(["agent", "plan"] as AgentTask["kind"][]).includes(kind) && !!data?.models?.length && (
+        <View style={{ gap: 8, marginBottom: 16 }}>
+          <Text style={s.heading}>Model for this task</Text>
+          <ModelChoices
+            models={data.models}
+            value={modelId}
+            onChange={setModelId}
+            disabled={busy}
+          />
+        </View>
       )}
       <ErrorNotice error={error} />
       <Button
@@ -1742,6 +1815,7 @@ export function AppsScreen() {
         placeholder="Search connectors"
       />
       <ConnectionsScreen query={query} />
+      <ConnectorSettings query={query} />
       <Text style={s.heading}>On your computer</Text>
       <Card style={{ paddingVertical: 3, backgroundColor: colors.surfaceMuted }}>
         {shortcuts
@@ -1796,6 +1870,7 @@ export function AppsScreen() {
             : `Using ${resolved} appearance on web and native.`}
         </Text>
       </Card>
+      <ModelTeamSettings />
       <Button onPress={() => setSettings(!settings)}>
         {settings ? "Close agent settings" : "Personality & memory"}
       </Button>
