@@ -216,6 +216,7 @@ function ollamaStream(
         { block: Extract<AssistantMessage["content"][number], { type: "toolCall" }>; raw: string }
       >();
       let finishReason: string | undefined;
+      let completed = false;
       const consume = (data: string) => {
         if (!data.trim()) return;
         const chunk = JSON.parse(data) as {
@@ -285,6 +286,7 @@ function ollamaStream(
           }
         }
         if (chunk.done) {
+          completed = true;
           finishReason = chunk.done_reason;
           output.usage.input = chunk.prompt_eval_count ?? 0;
           output.usage.output = chunk.eval_count ?? 0;
@@ -304,6 +306,7 @@ function ollamaStream(
       }
       buffer += decoder.decode();
       for (const line of buffer.split(/\r?\n/)) consume(line);
+      if (!completed) throw new Error("Ollama stream ended before its final done marker");
       if (textBlock)
         stream.push({
           type: "text_end",

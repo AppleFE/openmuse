@@ -349,6 +349,17 @@ test("native Ollama transport reports upstream errors and closes timed-out strea
       response.end(`${JSON.stringify({ error: "model runner stopped" })}\n`);
       return;
     }
+    if (calls === 3) {
+      response.writeHead(200, { "Content-Type": "application/x-ndjson" });
+      response.end(
+        `${JSON.stringify({
+          model: "qwen3:4b",
+          message: { role: "assistant", content: "partial but incomplete" },
+          done: false,
+        })}\n`,
+      );
+      return;
+    }
     response.on("close", closed);
     response.writeHead(200, { "Content-Type": "application/x-ndjson" });
     response.write(
@@ -380,6 +391,9 @@ test("native Ollama transport reports upstream errors and closes timed-out strea
     const streamError = await runtime.completeSimple(model, context);
     assert.equal(streamError.stopReason, "error");
     assert.match(streamError.errorMessage ?? "", /Ollama stream error/);
+    const incomplete = await runtime.completeSimple(model, context);
+    assert.equal(incomplete.stopReason, "error");
+    assert.match(incomplete.errorMessage ?? "", /final done marker/);
     const timedOut = await runtime.completeSimple(model, context, {
       signal: AbortSignal.timeout(50),
     });
