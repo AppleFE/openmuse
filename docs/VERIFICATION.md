@@ -44,6 +44,33 @@ The P41 application runtime was built and activated from independently reviewed 
   서버 설정 검증과 재시작 후 `/api/health`가 정상 응답했고, 소유자 API에서 등록된 모델 80개가
   모두 OpenCodex이며 기본 선택이 `oc-gpt-6-sol`임을 확인했습니다. 과거 대화·작업은 유지합니다.
 
+## 한국어 UI와 OpenCodex 실사용 확인 — 2026년 9월 30일
+
+- 로그인, 대화, 활동, 아이디어, 목표, 앱, 모델·팀·런타임 설정, 커넥터, 컴퓨터,
+  메일·일정·문서 화면의 안내·버튼·오류와 접근성 라벨을 한국어로 전환했습니다.
+  화면의 상태·기본 역할·작업 단계·타임라인 문구와 날짜·시간 표시는 `ko-KR`을 사용합니다.
+  모델 ID, 프로토콜 값과 기존 사용자 작성 내용은 보존합니다. Enter 전송과 PDF 체크박스의
+  내부 값은 번역 대상에서 제외했습니다.
+- 로컬 타입 검사·변경 파일 Biome 검사·웹 빌드가 통과했습니다. 모바일와 OpenCodex 라우팅
+  관련 테스트 28/28, macOS 배포 테스트 14/14가 통과했습니다. P41에서도 새 웹 빌드를
+  생성했습니다. 백엔드 구현은 기존 승인 소스 그대로이며 서버의 모델 설정만 변경했습니다.
+- 실제 P41 브라우저에서 한국어 로그인·잘못된 접속 키 안내, 5개 탭, 팀 편집 화면,
+  기본 모델 변경의 HTTP 200과 저장된 선택값을 확인했습니다. `oc-gpt-6-luna`로
+  “17 곱하기 23을 계산하고 결과 숫자만 답해 주세요.”를 Enter로 전송해 `391` 응답을
+  받았습니다. 대화 `fab2046b-4c2f-4846-9ec5-6fee6b67a5bb`는 새로고침 후에도 복원됐습니다.
+  이 브라우저 확인에서 페이지 오류와 외부 브라우저 요청은 없었습니다. 확인 후 기본 선택을
+  `oc-gpt-6-sol`로 복원했습니다.
+- `oc-gpt-6-sol`의 실제 Pi 작업 `af0bead9-27c3-45a5-aac5-c34b2c9d4566`이 성공했습니다.
+  컴퓨터 도구를 통해 테스트 파일을 작성하고 읽었으며 실행 기록
+  `865c7146526d9b19ca4140cd93b88ce5443146192c38cbc76e0a96f88c3cb437`의 종료 코드 0,
+  stdout `391`, 별도 파일 읽기의 `391`, 저장된 완료 이벤트와 보고서를 확인했습니다.
+  정리 실행 `c3e47516-b611-440c-aa97-3ba40a2f7a2e`로 해당 테스트 파일·디렉터리를 제거했습니다.
+- 서버 인증 키와 소유자 접속 키는 맥미니 내부에서만 읽었습니다. 브라우저에는 모델 서비스의
+  API 키를 전달하지 않습니다. 증빙과 스크린샷은 P41의
+  `verification/opencodex-ko-20260930`에 보관합니다. OpenMuse·DB·브라우저·Pi는 자체 호스팅이며,
+  모델 추론은 사용자가 지정한 OpenCodex 게이트웨이 및 그 게이트웨이의 제공자를 사용합니다.
+  CopilotKit 프로젝트 키는 필요하지 않습니다. 모델 80개 전체의 추론을 검증한 것은 아닙니다.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.

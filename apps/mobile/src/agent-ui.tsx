@@ -658,7 +658,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 {stamp(event.date)} · {statusLabel(event.kind)}
                 {event.roleLabel ? ` · ${uiLabel(event.roleLabel)}` : ""}
               </Text>
-              <Text style={s.text}>{event.title}</Text>
+              <Text style={s.text}>{uiLabel(event.title)}</Text>
               <Text selectable style={s.muted}>
                 {event.detail}
               </Text>
@@ -1719,7 +1719,7 @@ export function NotificationsSheet() {
             style={{ gap: 8, backgroundColor: item.read ? colors.card : colors.sky }}
           >
             <View style={s.between}>
-              <Text style={s.heading}>{item.title}</Text>
+              <Text style={s.heading}>{uiLabel(item.title)}</Text>
               {!item.read && <Chip>새 알림</Chip>}
             </View>
             <Text style={s.muted}>{item.body}</Text>
