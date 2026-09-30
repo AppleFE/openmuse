@@ -71,6 +71,40 @@ The P41 application runtime was built and activated from independently reviewed 
   모델 추론은 사용자가 지정한 OpenCodex 게이트웨이 및 그 게이트웨이의 제공자를 사용합니다.
   CopilotKit 프로젝트 키는 필요하지 않습니다. 모델 80개 전체의 추론을 검증한 것은 아닙니다.
 
+## GitHub 저장·모델 선택·Pi 환경 안내 수정 — 2026년 9월 30일
+
+- P41 서버의 `TOKEN_ENCRYPTION_KEY`가 32바이트를 표현하는 정규 Base64 형식이 아니어서
+  GitHub PAT 저장이 제공자 요청 전에 실패했습니다. 당시 연결 레코드는 없었고 Jev 인증 정보도
+  설정되지 않았음을 확인한 뒤, 맥미니 내부에서 새 키를 생성하고 `.env` 권한 600을 유지했습니다.
+  이전 설정은 `private-backups/pre-vault-fix-20260930T124716Z/.env`에 권한 600으로 보관합니다.
+  설정 로더와 macOS 배포 검사는 sample 모드에서도 지정된 암호화 키를 검증하며,
+  연결 저장의 설정 오류와 일반 요청 오류는 한국어로 안내합니다. 이전 실패에서는 PAT가
+  저장되지 않았으므로 사용자가 다시 입력해야 합니다.
+- 상시 모델 목록을 검색 가능한 팝업으로 바꿨습니다. 대화의 모델 버튼은 해당 대화만 변경하고,
+  앱 설정의 기본 모델 버튼은 새 대화와 작업의 기본값을 저장합니다. 역할별 모델도 팝업에서
+  선택합니다. 웹 입력창은 브라우저의 자동 outline 스타일을 명시적으로 덮어써 안쪽 사각
+  테두리를 제거하며, 바깥의 둥근 포커스 표시는 유지합니다.
+- 대화에 `runtime_status` 서버 도구를 추가했습니다. 실제 서버 플랫폼과 내장 Pi의 활성 상태,
+  선택된 모델, 격리 컴퓨터 상태만 반환하며 인증 정보와 호스트 경로는 반환하지 않습니다.
+  대화·위임 작업·팀 Pi 프롬프트는 macOS 애플리케이션 서버와 Docker Linux 컴퓨터를 구분합니다.
+  컨테이너에서 `pi` 실행 파일을 찾지 못해도 서버의 내장 SDK가 없다고 답하지 않도록 했습니다.
+- 설정·커넥터 회귀 테스트 15/15, macOS 배포 검사 15/15, 모델·팀 테스트 7/7,
+  실제 내장 SDK의 Pi 프로토콜 테스트 3/3이 통과했습니다. 타입 검사, 변경 파일 Biome 검사와
+  서버 빌드가 통과했습니다. 맥미니에서 서버·웹을 빌드했고, 활성 작업과 대화가 없는 상태에서
+  API만 재시작했습니다. 최종 UI 소스는 `c4a8392badc54a082f0505f096f09b962d80cd2c`이며,
+  그 뒤 문서만 변경합니다. API·웹·브라우저의 네 가지 상태 확인은 HTTP 200입니다.
+- 배포된 실제 브라우저에서 팝업 검색·대화 모델 변경·기본 모델 저장을 확인했습니다.
+  대화 변경은 서버 기본값에 영향을 주지 않았고, 임시로 변경한 기본값은 기존
+  `oc-gpt-6-sol`로 복원했습니다. 포커스된 입력창의 outline/border 폭은 0px이고 자동 outline이
+  없음을 스크린샷으로 확인했습니다. 임시 루프백 GitHub 호환 서버를 통해 UI 연결 생성 201,
+  인증 정보 복호화, 연결 검사 성공과 토큰 미반환을 확인했고 테스트 연결은 삭제했습니다.
+  실제 사용자 GitHub PAT로 계정·저장소 접근을 검증한 것은 아닙니다.
+- 실제 OpenCodex `oc-gpt-6-luna` 대화가 `runtime_status`를 호출했습니다. 서버는
+  `darwin`/`arm64`, Pi는 내장·활성·현재 실행에서 사용 중, 컴퓨터는 네트워크가 비활성화된
+  실행 중 Docker Linux 컨테이너로 확인됐습니다. 한국어 답변도 이 구분과 별도 Pi CLI 설치나
+  활성화 문구가 필요 없음을 설명했습니다. 브라우저 페이지 오류와 외부 브라우저 요청은 없었습니다.
+  JSON 증빙과 스크린샷은 P41의 `verification/followup-20260930`에 보관합니다.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
