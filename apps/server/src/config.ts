@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import type { ModelProfile } from "../../../packages/domain/src/agent.ts";
+import { validateEncryptionKey } from "../../../packages/integrations/src/vault.ts";
 import { parseModelCatalog } from "./engine/models.ts";
 
 /** .env keys whose file value loses to a different value already set in the environment. */
@@ -142,6 +143,13 @@ export function readConfig(): Config {
   };
   if (config.accessKey && config.accessKey.length < 24)
     throw new Error("OPENMUSE_ACCESS_KEY must contain at least 24 characters");
+  if (config.encryptionKey) {
+    try {
+      validateEncryptionKey(config.encryptionKey);
+    } catch {
+      throw new Error("TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64");
+    }
+  }
   if (mode === "live" && (!config.accessKey || !config.encryptionKey))
     throw new Error(
       "Live mode requires OPENMUSE_ACCESS_KEY (24+ characters) and TOKEN_ENCRYPTION_KEY (32-byte base64)",

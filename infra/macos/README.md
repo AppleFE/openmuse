@@ -46,7 +46,7 @@ placeholders. `validate-env.mjs` reports names and requirements only; it never p
 | OpenCodex gateway | `MODEL=opencodex/gpt-6-sol`, `OPENCODEX_BASE_URL` and server-only `OPENCODEX_API_KEY` | Same |
 | Cloud model credential | Only required when a cloud provider model is selected | Same |
 | `WORKER_TOKEN` | Required in API and browser worker; 32+ random characters | Same |
-| `TOKEN_ENCRYPTION_KEY` | Not used | Required; exactly 32 random bytes encoded as base64 |
+| `TOKEN_ENCRYPTION_KEY` | Optional shared connector/Jev vault key; if set, exactly 32 random bytes encoded as base64. Otherwise private vault keys are generated. | Required; exactly 32 random bytes encoded as base64 |
 | Google OAuth client | Not used; fictional mail/calendar remain available | Required to connect Gmail/Calendar |
 
 For Google, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, enable Gmail and Calendar APIs, and

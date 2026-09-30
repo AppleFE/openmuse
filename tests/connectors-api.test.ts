@@ -54,6 +54,7 @@ interface Fixture {
 async function fixture(
   t: TestContext,
   deps: ConstructorParameters<typeof ConnectorService>[2] = {},
+  configPatch: Partial<Config> = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-connectors-"));
   const db = await createStore();
@@ -67,6 +68,7 @@ async function fixture(
     encryptionKey: ENCRYPTION_KEY,
     googleRedirectUri: "http://localhost:8787/api/google/callback",
     allowedOrigins: ["http://localhost:8081"],
+    ...configPatch,
   } satisfies Config;
   const service = new ConnectorService(db, config, deps);
   const app = new Hono<{ Variables: { owner: string } }>();
@@ -93,6 +95,27 @@ async function fixture(
 const headers = (owner = "alice") => ({
   Authorization: `Bearer ${owner}-token`,
   "Content-Type": "application/json",
+});
+
+test("connector creation reports an invalid sample-mode encryption key without saving credentials", async (t) => {
+  const invalidKey = "a".repeat(64);
+  const { app, db } = await fixture(t, {}, { encryptionKey: invalidKey });
+  const response = await app.request("/api/connectors", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
+      provider: "github",
+      name: "GitHub",
+      config: {},
+      secrets: { token: TOKEN_SECRET },
+    }),
+  });
+  assert.equal(response.status, 503);
+  const body = await response.text();
+  assert.match(body, /TOKEN_ENCRYPTION_KEY/);
+  assert.ok(!body.includes(TOKEN_SECRET));
+  assert.ok(!body.includes(invalidKey));
+  assert.deepEqual(await db.list("alice", "connectors"), []);
 });
 
 test("connector CRUD keeps secrets encrypted at rest and out of every view", async (t) => {

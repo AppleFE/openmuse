@@ -92,8 +92,9 @@ if (optional("DATABASE_URL"))
   errors.push("DATABASE_URL must be unset for the single-process PGlite deployment");
 
 requiredCredential("OPENMUSE_ACCESS_KEY", 24);
-if (mode === "live") {
-  const encryptionKey = requiredCredential("TOKEN_ENCRYPTION_KEY");
+{
+  const encryptionKey =
+    mode === "live" ? requiredCredential("TOKEN_ENCRYPTION_KEY") : optional("TOKEN_ENCRYPTION_KEY");
   const decoded = Buffer.from(encryptionKey, "base64");
   if (encryptionKey && (decoded.length !== 32 || decoded.toString("base64") !== encryptionKey))
     credentialErrors.push("TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64");
@@ -178,7 +179,9 @@ for (const provider of providers) {
         ollamaUrl.search ||
         ollamaUrl.hash)
     )
-      errors.push("OLLAMA_BASE_URL must be a loopback HTTP origin without a path, query, or fragment");
+      errors.push(
+        "OLLAMA_BASE_URL must be a loopback HTTP origin without a path, query, or fragment",
+      );
   } else if (provider === "openai") requiredCredential("OPENAI_API_KEY");
   else if (provider === "anthropic") requiredCredential("ANTHROPIC_API_KEY");
   else if (provider === "google") {

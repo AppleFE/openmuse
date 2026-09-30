@@ -68,11 +68,22 @@ test("accepts a keyless local Ollama model without printing credentials", async 
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(secret));
 });
 
-test("permits infrastructure preparation but blocks a selected cloud model without its key", async () => {
+test("validates optional sample-mode vault keys without printing the invalid value", async () => {
+  const invalidKey = "a".repeat(64);
+  await writeFile(envFile, config({ TOKEN_ENCRYPTION_KEY: invalidKey }));
+  const invalid = validate();
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64/);
+  assert.ok(!`${invalid.stdout}${invalid.stderr}`.includes(invalidKey));
   await writeFile(
     envFile,
-    config({ MODEL: "openai/test-model", OPENAI_API_KEY: undefined }),
+    config({ TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64") }),
   );
+  assert.equal(validate().status, 0);
+});
+
+test("permits infrastructure preparation but blocks a selected cloud model without its key", async () => {
+  await writeFile(envFile, config({ MODEL: "openai/test-model", OPENAI_API_KEY: undefined }));
   const result = validate("--infrastructure-only");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stderr, /API BLOCKED: OPENAI_API_KEY/);

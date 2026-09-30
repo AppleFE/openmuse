@@ -196,6 +196,12 @@ const errors: Record<string, string> = {
   "Could not open your workspace.": "워크스페이스를 열 수 없습니다.",
   "Failed to fetch": "서버에 연결할 수 없습니다. 연결 상태를 확인하세요.",
   "Network request failed": "네트워크 요청에 실패했습니다. 연결 상태를 확인하세요.",
+  "Request failed. Check the server setup and try again.":
+    "요청에 실패했습니다. 서버 설정을 확인한 뒤 다시 시도하세요.",
+  "Credential storage is not configured. TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64.":
+    "서버의 인증 정보 암호화 키 설정이 올바르지 않습니다. 서버 관리자가 TOKEN_ENCRYPTION_KEY를 32바이트의 base64 키로 설정해야 합니다.",
+  "Stored credentials could not be decrypted. Reconnect the provider.":
+    "저장된 인증 정보를 복호화할 수 없습니다. 토큰을 다시 입력해 연결하세요.",
   "Enter a complete date and time.": "날짜와 시간을 모두 입력하세요.",
   "Choose a valid date and time.": "유효한 날짜와 시간을 선택하세요.",
   "This time does not exist in the selected time zone. Choose another time.":

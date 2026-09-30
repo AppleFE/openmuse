@@ -26,7 +26,11 @@ import {
   connectorAdapter,
   connectorProviderInfo,
 } from "../../../packages/integrations/src/connectors/index.ts";
-import { decryptSecret, encryptSecret } from "../../../packages/integrations/src/vault.ts";
+import {
+  decryptSecret,
+  encryptSecret,
+  validateEncryptionKey,
+} from "../../../packages/integrations/src/vault.ts";
 import type { Config } from "./config.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
@@ -99,7 +103,17 @@ export class ConnectorService {
 
   private async secretKey(): Promise<string> {
     this.keyPromise ??= (async () => {
-      if (this.config.encryptionKey) return this.config.encryptionKey;
+      if (this.config.encryptionKey) {
+        try {
+          validateEncryptionKey(this.config.encryptionKey);
+        } catch {
+          throw new AppError(
+            "Credential storage is not configured. TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64.",
+            503,
+          );
+        }
+        return this.config.encryptionKey;
+      }
       // Sample mode has no configured key; persist a random one beside the data
       // directory exactly like the session signing key.
       await mkdir(this.config.dataDir, { recursive: true, mode: 0o700 });

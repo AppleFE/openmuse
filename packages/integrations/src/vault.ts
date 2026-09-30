@@ -8,6 +8,11 @@ function decodeKey(key: string): Buffer {
   return bytes;
 }
 
+/** Validate configured vault keys before accepting credentials or starting the server. */
+export function validateEncryptionKey(key: string): void {
+  decodeKey(key);
+}
+
 /** Versioned AES-256-GCM envelope: version.nonce.tag.ciphertext. */
 export function encryptSecret(plaintext: string, key: string): string {
   const nonce = randomBytes(12);
