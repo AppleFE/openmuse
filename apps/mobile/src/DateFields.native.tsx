@@ -12,7 +12,7 @@ export default function DateFields({ label, date, time, allDay, onChange }: Date
     <View style={{ flexDirection: "row", gap: 12 }}>
       <View style={{ flex: 1.2 }}>
         <Field
-          label={`${label} date`}
+          label={`${label} 날짜`}
           value={date}
           onChangeText={(value) => onChange(value, time)}
           placeholder="YYYY-MM-DD"
@@ -22,10 +22,10 @@ export default function DateFields({ label, date, time, allDay, onChange }: Date
       {!allDay && (
         <View style={{ flex: 1 }}>
           <Field
-            label={`${label} time`}
+            label={`${label} 시간`}
             value={time}
             onChangeText={(value) => onChange(date, value)}
-            placeholder="HH:MM (24-hour)"
+            placeholder="시:분(24시간)"
             keyboardType="numbers-and-punctuation"
           />
         </View>

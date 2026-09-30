@@ -1,0 +1,158 @@
+/** Localize application labels only; preserve model IDs, user content and protocol values. */
+export const UI_LOCALE = "ko-KR";
+
+const labels: Record<string, string> = {
+  active: "활성",
+  closed: "닫힘",
+  pending: "대기 중",
+  queued: "실행 대기",
+  scheduled: "예약됨",
+  running: "실행 중",
+  waiting: "대기 중",
+  waiting_input: "입력 대기",
+  waiting_approval: "승인 대기",
+  succeeded: "완료",
+  completed: "완료",
+  failed: "실패",
+  cancelled: "취소됨",
+  paused: "일시 중지",
+  stopped: "중지됨",
+  expired: "만료됨",
+  accepted: "수락됨",
+  dismissed: "닫힘",
+  new: "새 항목",
+  approved: "승인됨",
+  rejected: "거절됨",
+  ready: "준비됨",
+  starting: "시작 중",
+  stopping: "중지 중",
+  unavailable: "사용할 수 없음",
+  timed_out: "시간 초과",
+  planner: "플래너",
+  coder: "코더",
+  reviewer: "리뷰어",
+  custom: "사용자 지정",
+  agent: "에이전트",
+  plan: "계획",
+  document: "문서",
+  finance: "재무",
+  report: "보고서",
+  comparison: "비교",
+  sequential: "순차",
+  parallel: "병렬",
+  chat: "대화",
+  tools: "도구 사용",
+  coding: "코딩",
+  system: "기기 설정",
+  light: "라이트",
+  dark: "다크",
+  warm: "따뜻하게",
+  concise: "간결하게",
+  thoughtful: "신중하게",
+  sky: "하늘색",
+  sand: "모래색",
+  lilac: "라일락색",
+  started: "시작됨",
+  resumed: "다시 시작됨",
+  retry: "재시도",
+  progress: "진행 상황",
+  evidence: "근거",
+  observation: "관찰",
+  status: "상태",
+  artifact: "결과물",
+  result: "결과",
+  error: "오류",
+  step: "단계",
+  task: "작업",
+  model: "모델",
+  tool: "도구",
+  memory: "기억",
+  notification: "알림",
+  team: "팀",
+  role: "역할",
+  input: "입력",
+  approval: "승인",
+  Available: "사용 가능",
+  "Server key required": "서버 인증 정보 필요",
+  Disabled: "비활성화",
+  "API key required": "API 키 필요",
+  "API base URL": "API 기본 URL",
+  "Server URL": "서버 URL",
+  "API URL": "API URL",
+  "API key": "API 키",
+  "Personal access token": "개인 액세스 토큰",
+  "API access token": "API 액세스 토큰",
+  Tailnet: "테일넷",
+  "Verify TLS": "TLS 인증서 검증",
+  "CA certificate (PEM)": "CA 인증서(PEM)",
+  "API token id": "API 토큰 ID",
+  "API token secret": "API 토큰 비밀값",
+  "wg executable path": "wg 실행 파일 경로",
+  Interface: "인터페이스",
+  "Read repositories, issues and pull requests from GitHub or GitHub Enterprise.":
+    "GitHub 또는 GitHub Enterprise의 저장소, 이슈와 풀 리퀘스트를 읽습니다.",
+  "Defaults to https://api.github.com. Set for GitHub Enterprise Server.":
+    "기본값은 https://api.github.com입니다. GitHub Enterprise 서버 사용 시 변경하세요.",
+  "Fine-grained or classic PAT with repository read access.":
+    "저장소 읽기 권한이 있는 세분화 또는 클래식 개인 액세스 토큰입니다.",
+  "List devices on a Tailscale tailnet.": "Tailscale 테일넷의 기기 목록을 확인합니다.",
+  'Tailnet name, or "-" for the key\'s default tailnet.':
+    '테일넷 이름을 입력하세요. 키의 기본 테일넷은 "-"로 지정합니다.',
+  "Defaults to https://api.tailscale.com/api/v2.":
+    "기본값은 https://api.tailscale.com/api/v2입니다.",
+  "tskey-api-… access token or OAuth access token.":
+    "tskey-api-… 액세스 토큰 또는 OAuth 액세스 토큰입니다.",
+  "List nodes on a self-hosted Headscale coordination server.":
+    "자체 호스팅 Headscale 서버의 노드를 확인합니다.",
+  "Headscale base URL, for example https://headscale.example.com.":
+    "Headscale 기본 URL입니다. 예: https://headscale.example.com",
+  "Created with `headscale apikeys create`.": "headscale apikeys create 명령으로 만든 키입니다.",
+  "Read nodes, VMs, containers and cluster resources from a Proxmox VE API token.":
+    "Proxmox VE API 토큰으로 노드, 가상 머신, 컨테이너와 클러스터 자원을 확인합니다.",
+  "For example https://pve.example.com:8006.": "예: https://pve.example.com:8006",
+  "Disable only for self-signed lab deployments.":
+    "자체 서명 인증서를 사용하는 실험 환경에서만 끄세요.",
+  "Custom CA bundle for self-signed deployments.":
+    "자체 서명 인증서 환경에서 사용하는 사용자 지정 CA 인증서 묶음입니다.",
+  "user@realm!tokenname, for example monitoring@pve!openmuse.":
+    "형식은 user@realm!tokenname입니다. 예: monitoring@pve!openmuse",
+  "UUID shown once when the token is created.": "토큰을 만들 때 한 번 표시되는 UUID입니다.",
+  "Read local WireGuard interface and peer status via `wg show dump`. Private and preshared keys are never returned.":
+    "wg show dump로 로컬 WireGuard 인터페이스와 피어 상태를 확인합니다. 개인 키와 사전 공유 키는 반환하지 않습니다.",
+  "Defaults to `wg` on PATH.": "기본값은 PATH에 있는 wg 실행 파일입니다.",
+  "Limit status to one interface such as wg0; defaults to all.":
+    "wg0처럼 확인할 인터페이스를 지정하세요. 기본값은 전체입니다.",
+};
+
+export function uiLabel(value: string) {
+  return labels[value] ?? value;
+}
+
+const errors: Record<string, string> = {
+  "Access key is incorrect": "접속 키가 올바르지 않습니다.",
+  "Sign in to OpenMuse": "OpenMuse에 로그인하세요.",
+  "Session expired. Sign in again.": "세션이 만료됐습니다. 다시 로그인하세요.",
+  "Could not open your workspace.": "워크스페이스를 열 수 없습니다.",
+  "Failed to fetch": "서버에 연결할 수 없습니다. 연결 상태를 확인하세요.",
+  "Network request failed": "네트워크 요청에 실패했습니다. 연결 상태를 확인하세요.",
+  "Enter a complete date and time.": "날짜와 시간을 모두 입력하세요.",
+  "Choose a valid date and time.": "유효한 날짜와 시간을 선택하세요.",
+  "This time does not exist in the selected time zone. Choose another time.":
+    "선택한 시간대에 존재하지 않는 시각입니다. 다른 시각을 선택하세요.",
+  "Choose a valid time zone.": "유효한 시간대를 선택하세요.",
+  "Model is not configured or enabled on this server":
+    "서버에 설정됐거나 활성화된 모델이 아닙니다.",
+  "The model's server-side provider credential is not configured":
+    "모델의 서버 인증 정보가 설정되지 않았습니다.",
+  "Invalid address": "잘못된 주소입니다.",
+  "Enter a website address, like copilotkit.ai or https://news.ycombinator.com.":
+    "copilotkit.ai 또는 https://news.ycombinator.com 같은 웹 주소를 입력하세요.",
+};
+
+export function errorLabel(value: string) {
+  const text = value.replace(/^Error: /, "");
+  if (errors[text]) return errors[text];
+  const request = /^Request failed \((\d+)\)$/.exec(text);
+  if (request) return `요청에 실패했습니다 (HTTP ${request[1]}).`;
+  return text;
+}

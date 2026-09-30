@@ -40,6 +40,7 @@ import type {
 } from "../../../packages/domain/src";
 import { API_URL } from "./api";
 import { localDateTime, zonedInstant } from "./date-time";
+import { UI_LOCALE, uiLabel } from "./locale";
 import {
   Button,
   Card,
@@ -93,7 +94,7 @@ export function TodayScreen() {
         <View style={{ flex: 1, gap: 15, zIndex: 1 }}>
           <View style={[s.row, { gap: 7 }]}>
             <Sparkles size={13} color={colors.blueDark} />
-            <Text style={[s.label, { color: colors.blueDark }]}>A little clarity, every day</Text>
+            <Text style={[s.label, { color: colors.blueDark }]}>매일 조금 더 명확하게</Text>
           </View>
           <Text
             style={{
@@ -104,20 +105,20 @@ export function TodayScreen() {
               color: colors.text,
             }}
           >
-            Your day, with a little{"\n"}more room to breathe.
+            하루에 조금 더{"\n"}여유를 더하세요.
           </Text>
           <Text style={[s.muted, { maxWidth: 420 }]}>
-            {events.length ? `${events.length} things on your calendar` : "Your calendar has room"}
-            {unread.length ? `, ${unread.length} unread emails` : ""}.{"\n"}Let’s make space for
-            what matters.
+            {events.length ? `${events.length}개 일정` : "일정을 위한 시간이 있습니다"}
+            {unread.length ? `, ${unread.length}개 읽지 않은 메일` : ""}.{"\n"}중요한 일을 위한
+            시간을 마련해 볼까요?
           </Text>
           <Button
-            onPress={() => ask("Help me plan my day")}
+            onPress={() => ask("오늘의 계획을 세워 주세요")}
             icon={Sparkles}
             primary
             style={{ alignSelf: "flex-start", marginTop: 5 }}
           >
-            Plan my day
+            오늘 계획하기
           </Button>
         </View>
         {wide && (
@@ -158,7 +159,7 @@ export function TodayScreen() {
               ]}
             >
               <Check size={14} color="#739174" />
-              <Text style={s.small}>A lighter day</Text>
+              <Text style={s.small}>여유로운 하루</Text>
             </View>
             <View
               style={[
@@ -176,7 +177,7 @@ export function TodayScreen() {
               ]}
             >
               <CalendarDays size={17} color={colors.blueDark} />
-              <Text style={s.small}>Everything, together</Text>
+              <Text style={s.small}>한곳에서 확인하세요</Text>
             </View>
           </View>
         )}
@@ -184,25 +185,25 @@ export function TodayScreen() {
       <View style={{ flexDirection: "row", gap: 13, flexWrap: "wrap" }}>
         {[
           {
-            label: "UNREAD EMAILS",
+            label: "읽지 않은 메일",
             value: unread.length,
-            note: "A fresh look at your inbox",
+            note: "받은편지함을 살펴보세요",
             icon: Mail,
             section: "mail" as const,
             tint: colors.sky,
           },
           {
-            label: "ON THE CALENDAR",
+            label: "캘린더 일정",
             value: events.length,
-            note: "Make room for your priorities",
+            note: "중요한 일을 위한 시간",
             icon: CalendarDays,
             section: "calendar" as const,
             tint: colors.green,
           },
           {
-            label: "WAITING FOR YOU",
+            label: "확인이 필요합니다",
             value: pending.length,
-            note: "Your review keeps things moving",
+            note: "검토하면 작업을 이어갈 수 있습니다",
             icon: ShieldCheck,
             section: "activity" as const,
             tint: colors.lavender,
@@ -236,19 +237,11 @@ export function TodayScreen() {
       </View>
       <View style={{ flexDirection: wide ? "row" : "column", gap: 22 }}>
         <Card style={{ flex: 1 }}>
-          <SectionHeading
-            title="On your calendar"
-            action="Full calendar"
-            onPress={() => navigate("calendar")}
-          />
+          <SectionHeading title="내 일정" action="전체 일정" onPress={() => navigate("calendar")} />
           {events.length ? (
             events.slice(0, 3).map((e, i) => <AgendaRow key={e.id} event={e} index={i} />)
           ) : (
-            <Empty
-              icon={CalendarDays}
-              title="Some breathing room"
-              detail="No events scheduled today."
-            />
+            <Empty icon={CalendarDays} title="잠깐의 여유" detail="오늘 예정된 일정이 없습니다." />
           )}
           <Pressable
             onPress={() => open({ type: "event" })}
@@ -264,15 +257,11 @@ export function TodayScreen() {
             ]}
           >
             <Plus size={15} color={colors.muted} />
-            <Text style={s.small}>Make time for something</Text>
+            <Text style={s.small}>새 일정 만들기</Text>
           </Pressable>
         </Card>
         <Card style={{ flex: 1 }}>
-          <SectionHeading
-            title="From your inbox"
-            action="Open mail"
-            onPress={() => navigate("mail")}
-          />
+          <SectionHeading title="받은편지함" action="메일 열기" onPress={() => navigate("mail")} />
           {w.mail.length ? (
             w.mail.slice(0, 3).map((m, i) => (
               <Pressable
@@ -311,22 +300,22 @@ export function TodayScreen() {
           ) : (
             <Empty
               icon={Inbox}
-              title="Inbox is quiet"
-              detail="Connect Google to bring your messages here."
+              title="받은편지함이 조용합니다"
+              detail="Google을 연결하면 메일을 확인할 수 있습니다."
             />
           )}
         </Card>
       </View>
       <View style={{ flexDirection: wide ? "row" : "column", gap: 22 }}>
         <Card style={{ flex: 1, backgroundColor: colors.orange }}>
-          <SectionHeading title="A hand with the little things" />
+          <SectionHeading title="작은 일부터 함께해요" />
           <Text style={[s.muted, { marginBottom: 15 }]}>
-            Start with a thought. We’ll take it from there.
+            생각을 알려 주세요. 나머지는 도와드릴게요.
           </Text>
           {[
-            "What needs my attention today?",
-            "Help me catch up on my inbox",
-            "Show my recent documents",
+            "오늘 확인해야 할 일이 무엇인가요?",
+            "받은편지함 정리를 도와주세요",
+            "최근 문서를 보여 주세요",
           ].map((prompt) => (
             <Pressable
               key={prompt}
@@ -343,8 +332,8 @@ export function TodayScreen() {
         </Card>
         <Card style={{ flex: 1 }}>
           <SectionHeading
-            title={pending.length ? "Ready for your review" : "Recent activity"}
-            action="View all"
+            title={pending.length ? "검토할 준비가 됐습니다" : "최근 활동"}
+            action="전체 보기"
             onPress={() => navigate("activity")}
           />
           {pending.length
@@ -354,7 +343,7 @@ export function TodayScreen() {
                   <LinkRow
                     key={a.id}
                     title={a.title}
-                    detail="Prepared · waiting for your approval"
+                    detail="준비됨 · 승인 대기 중"
                     onPress={() => open({ type: "review", action: a })}
                     icon={ShieldCheck}
                     tint={colors.lavender}
@@ -374,9 +363,7 @@ export function TodayScreen() {
                 </View>
               ))}
           {!pending.length && !w.activity.length && (
-            <Text style={s.muted}>
-              Your workspace is ready. Things you do here will appear in your activity.
-            </Text>
+            <Text style={s.muted}>워크스페이스가 준비됐습니다. 활동 내역이 여기에 표시됩니다.</Text>
           )}
         </Card>
       </View>
@@ -422,7 +409,7 @@ export function AgendaRow({
     >
       <View style={{ width: 65 }}>
         <Text style={[s.text, { fontSize: 11 }]}>
-          {e.allDay ? "All day" : timeLabel(e.start, e.timeZone)}
+          {e.allDay ? "종일" : timeLabel(e.start, e.timeZone)}
         </Text>
         {!e.allDay && (
           <Text style={[s.small, { fontSize: 10 }]}>{timeLabel(e.end, e.timeZone)}</Text>
@@ -439,7 +426,7 @@ export function AgendaRow({
       <View style={{ flex: 1, gap: 3 }}>
         <Text style={[s.text, { fontSize: 13, fontWeight: "500" }]}>{e.title}</Text>
         <Text numberOfLines={1} style={[s.small, { fontSize: 11 }]}>
-          {e.location || (e.attendees.length ? `${e.attendees.length} attendees` : "Time for you")}
+          {e.location || (e.attendees.length ? `${e.attendees.length}명 참석자` : "나를 위한 시간")}
         </Text>
       </View>
       <ChevronRight size={14} color={colors.muted} />
@@ -486,8 +473,8 @@ export function MailScreen() {
         >
           <Search size={16} color={colors.muted} />
           <TextInput
-            accessibilityLabel="Search mail"
-            placeholder="Search your inbox"
+            accessibilityLabel="메일 검색"
+            placeholder="받은편지함 검색"
             placeholderTextColor={colors.muted}
             value={query}
             onChangeText={setQuery}
@@ -495,20 +482,20 @@ export function MailScreen() {
           />
         </View>
         <Button onPress={() => open({ type: "email" })} primary icon={Plus}>
-          Compose
+          메일 작성
         </Button>
       </View>
       <ErrorNotice error={error} />
       <Card>
         <View style={[s.row, { gap: 10, marginBottom: 15, flexWrap: "wrap" }]}>
           <Button small primary={tab === "all"} onPress={() => setTab("all")}>
-            All messages
+            전체 메일
           </Button>
           <Button small primary={tab === "unread"} onPress={() => setTab("unread")}>
-            Unread · {w.mail.filter((m) => m.unread).length}
+            읽지 않음 · {w.mail.filter((m) => m.unread).length}
           </Button>
           <Button small primary={tab === "drafts"} onPress={() => setTab("drafts")}>
-            Drafts · {drafts.length}
+            초안 · {drafts.length}
           </Button>
         </View>
         {tab === "drafts" ? (
@@ -518,15 +505,15 @@ export function MailScreen() {
                 key={d.id}
                 icon={Mail}
                 title={d.subject}
-                detail={`To: ${d.to.join(", ")} · saved ${dateLabel(d.createdAt)}`}
+                detail={`받는 사람: ${d.to.join(", ")} · 저장: ${dateLabel(d.createdAt)}`}
                 onPress={() => open({ type: "email", draft: d })}
               />
             ))
           ) : (
             <Empty
               icon={Mail}
-              title="A fresh page"
-              detail="Messages you save as drafts will be here when you’re ready."
+              title="새 시작"
+              detail="저장한 초안은 준비됐을 때 여기서 이어서 작성할 수 있습니다."
             />
           )
         ) : items.length ? (
@@ -552,9 +539,7 @@ export function MailScreen() {
                 {!!m.attachments.length && (
                   <View style={[s.row, { gap: 4, marginTop: 2 }]}>
                     <FileText size={12} color={colors.muted} />
-                    <Text style={s.small}>
-                      {m.attachments.length} attachment{m.attachments.length > 1 ? "s" : ""}
-                    </Text>
+                    <Text style={s.small}>첨부 파일 {m.attachments.length}개</Text>
                   </View>
                 )}
               </View>
@@ -568,11 +553,11 @@ export function MailScreen() {
         ) : (
           <Empty
             icon={Inbox}
-            title={query ? "No matching messages" : "Nothing in your inbox"}
+            title={query ? "일치하는 메일이 없습니다" : "받은편지함이 비어 있습니다"}
             detail={
               query
-                ? "Try a different name or subject."
-                : "Connect Google in Connections to read your mail here."
+                ? "다른 이름이나 제목으로 검색하세요."
+                : "연결에서 Google을 추가하면 메일을 읽을 수 있습니다."
             }
           />
         )}
@@ -679,26 +664,26 @@ export function CalendarScreen() {
       <View style={[s.between, { gap: 12, flexWrap: "wrap" }]}>
         <View style={[s.row, { gap: 8 }]}>
           <Text style={s.title}>
-            {anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            {anchor.toLocaleDateString(UI_LOCALE, { month: "long", year: "numeric" })}
           </Text>
           <IconButton
             icon={ChevronLeft}
-            label="Previous week"
+            label="지난주"
             onPress={() => setDate(plusDays(date, -7))}
           />
           <IconButton
             icon={ChevronRight}
-            label="Next week"
+            label="다음 주"
             onPress={() => setDate(plusDays(date, 7))}
           />
         </View>
         <Button primary icon={Plus} disabled={!writable} onPress={newEvent}>
-          New event
+          새 일정
         </Button>
       </View>
       {calendars.length > 0 && (
         <View style={{ gap: 9 }}>
-          <Text style={s.label}>Your calendars</Text>
+          <Text style={s.label}>내 캘린더</Text>
           <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
             {calendars.map((c) => (
               <Button
@@ -708,7 +693,7 @@ export function CalendarScreen() {
                 onPress={() => setCalendarId(c.id)}
               >
                 {c.name}
-                {["owner", "writer"].includes(c.accessRole) ? "" : " · read only"}
+                {["owner", "writer"].includes(c.accessRole) ? "" : " · 읽기 전용"}
               </Button>
             ))}
           </View>
@@ -737,7 +722,9 @@ export function CalendarScreen() {
                   backgroundColor: key === date ? colors.sky : "transparent",
                 }}
               >
-                <Text style={s.small}>{day.toLocaleDateString("en-US", { weekday: "short" })}</Text>
+                <Text style={s.small}>
+                  {day.toLocaleDateString(UI_LOCALE, { weekday: "short" })}
+                </Text>
                 <Text
                   style={[
                     s.title,
@@ -767,26 +754,26 @@ export function CalendarScreen() {
         <View style={[s.between, { gap: 10, flexWrap: "wrap" }]}>
           <Text style={s.heading}>
             {all
-              ? "The next 30 days"
+              ? "앞으로 30일"
               : dateLabel(`${date}T12:00:00`, { weekday: "long", month: "long", day: "numeric" })}
           </Text>
           <Button small onPress={() => setAll(!all)}>
-            {all ? "Selected day" : "Next 30 days"}
+            {all ? "선택한 날짜" : "앞으로 30일"}
           </Button>
         </View>
         <Text style={[s.small, { marginTop: 7, marginBottom: 13 }]}>
-          {selected?.name || "Your calendar"} · {zone}. Events show their own time zone.
+          {selected?.name || "내 캘린더"} · {zone}. 각 일정의 시간대에 맞춰 표시합니다.
         </Text>
         <ErrorNotice error={error} />
         {!!error && (
           <Button small onPress={() => setRetry(retry + 1)}>
-            Try again
+            다시 시도
           </Button>
         )}
         {loading ? (
           <View style={[s.row, { gap: 10, paddingVertical: 35, justifyContent: "center" }]}>
             <ActivityIndicator size="small" color={colors.blueDark} />
-            <Text style={s.muted}>Checking your calendar…</Text>
+            <Text style={s.muted}>일정을 확인하는 중…</Text>
           </View>
         ) : events.length ? (
           events.map((e, i) => (
@@ -800,16 +787,16 @@ export function CalendarScreen() {
           !error && (
             <Empty
               icon={CalendarDays}
-              title="A little open space"
+              title="비어 있는 시간"
               detail={
                 all
-                  ? "There’s nothing scheduled for the next 30 days."
-                  : "There’s nothing on the calendar for this day."
+                  ? "앞으로 30일 동안 예정된 일정이 없습니다."
+                  : "이 날짜에 예정된 일정이 없습니다."
               }
             >
               {writable && (
                 <Button icon={Plus} onPress={newEvent}>
-                  Add an event
+                  일정 추가
                 </Button>
               )}
             </Empty>
@@ -844,13 +831,13 @@ export function BrowserScreen() {
         <View style={[s.row, { gap: 12, marginBottom: 15 }]}>
           <Globe2 size={22} color={colors.blueDark} />
           <View>
-            <Text style={s.heading}>A place for your open tabs</Text>
-            <Text style={s.muted}>Browse in a private, persistent workspace session.</Text>
+            <Text style={s.heading}>열린 탭을 위한 공간</Text>
+            <Text style={s.muted}>로그인 정보가 유지되는 개인 브라우저 세션을 사용하세요.</Text>
           </View>
         </View>
         <View style={[s.row, { gap: 10 }]}>
           <TextInput
-            accessibilityLabel="Website address"
+            accessibilityLabel="웹사이트 주소"
             value={url}
             onChangeText={setUrl}
             onSubmitEditing={() => void create()}
@@ -866,13 +853,13 @@ export function BrowserScreen() {
             disabled={!url.trim()}
             onPress={() => void create()}
           >
-            Open session
+            세션 열기
           </Button>
         </View>
         <ErrorNotice error={error} />
       </Card>
       <Card>
-        <SectionHeading title="Browser sessions" />
+        <SectionHeading title="브라우저 세션" />
         {w.browsers.length ? (
           w.browsers.map((b) => (
             <Pressable
@@ -890,12 +877,14 @@ export function BrowserScreen() {
                   <Globe2 size={20} color={colors.blueDark} />
                 </View>
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={s.heading}>{b.title || "Browser session"}</Text>
+                  <Text style={s.heading}>{b.title || "브라우저 세션"}</Text>
                   <Text style={s.muted} numberOfLines={1}>
                     {b.url}
                   </Text>
                 </View>
-                <Chip tint={b.status === "active" ? colors.green : colors.canvas}>{b.status}</Chip>
+                <Chip tint={b.status === "active" ? colors.green : colors.canvas}>
+                  {uiLabel(b.status)}
+                </Chip>
                 <ArrowUpRight size={17} color={colors.muted} />
               </View>
               {!!b.previewUrl && (
@@ -915,8 +904,8 @@ export function BrowserScreen() {
         ) : (
           <Empty
             icon={Globe2}
-            title="Start with a website"
-            detail="Open a session above to keep your browsing together. Live previews appear when the browser worker is configured."
+            title="웹사이트부터 시작하세요"
+            detail="위에서 세션을 열어 탐색을 시작하세요. 브라우저 워커가 연결되면 실시간 미리 보기가 표시됩니다."
           />
         )}
       </Card>
@@ -940,8 +929,7 @@ export function FilesScreen() {
       let artifact: Artifact;
       if (Platform.OS === "web") {
         const form = new FormData();
-        if (!file.file)
-          throw new Error("The selected file could not be read. Please choose it again.");
+        if (!file.file) throw new Error("선택한 파일을 읽을 수 없습니다. 다시 선택하세요.");
         form.append("file", file.file, file.name);
         artifact = await api.request<Artifact>("/api/files", form);
       } else {
@@ -954,7 +942,7 @@ export function FilesScreen() {
         });
         const payload = JSON.parse(result.body);
         if (result.status < 200 || result.status >= 300)
-          throw new Error(payload.error || "Could not import this PDF.");
+          throw new Error(payload.error || "이 PDF를 가져올 수 없습니다.");
         artifact = payload;
       }
       await refresh();
@@ -968,11 +956,9 @@ export function FilesScreen() {
   return (
     <View style={{ gap: 20 }}>
       <View style={s.between}>
-        <Text style={[s.muted, { flex: 1, marginRight: 15 }]}>
-          Documents, with a little room to work.
-        </Text>
+        <Text style={[s.muted, { flex: 1, marginRight: 15 }]}>문서 작업을 위한 공간입니다.</Text>
         <Button primary icon={Upload} busy={busy} onPress={() => void upload()}>
-          Import PDF
+          PDF 가져오기
         </Button>
       </View>
       <ErrorNotice error={error} />
@@ -1006,7 +992,7 @@ export function FilesScreen() {
                 >
                   <View style={[s.row, { gap: 5, marginBottom: 15 }]}>
                     <FileText size={13} color={colors.blueDark} />
-                    <Text style={{ fontSize: 7, color: colors.blueDark }}>DOCUMENT</Text>
+                    <Text style={{ fontSize: 7, color: colors.blueDark }}>문서</Text>
                   </View>
                   {[100, 75, 90, 95, 60].map((width, i) => (
                     <View
@@ -1046,8 +1032,8 @@ export function FilesScreen() {
         <Card>
           <Empty
             icon={FileText}
-            title="Your documents live here"
-            detail="Import a PDF or open a mail attachment to read, fill supported form fields, and share a copy."
+            title="문서를 보관하는 공간"
+            detail="PDF를 가져오거나 메일 첨부 파일을 열어 읽고, 지원하는 양식을 작성하고 사본을 공유하세요."
           />
         </Card>
       )}
@@ -1063,15 +1049,15 @@ export function ActivityScreen() {
     <View style={{ gap: 20 }}>
       <View style={[s.row, { gap: 10 }]}>
         <Button small primary={filter === "all"} onPress={() => setFilter("all")}>
-          All activity
+          전체 활동
         </Button>
         <Button small primary={filter === "review"} onPress={() => setFilter("review")}>
-          Needs review · {pending.length}
+          검토 필요 · {pending.length}
         </Button>
       </View>
       {actions.length > 0 && (
         <Card>
-          <SectionHeading title="Your actions" />
+          <SectionHeading title="내 작업" />
           {actions.map((a) => (
             <Pressable
               key={a.id}
@@ -1118,7 +1104,7 @@ export function ActivityScreen() {
       )}
       {filter === "all" && (
         <Card>
-          <SectionHeading title="Workspace timeline" />
+          <SectionHeading title="워크스페이스 타임라인" />
           {w.activity.length ? (
             w.activity.map((a, i) => (
               <View
@@ -1146,15 +1132,11 @@ export function ActivityScreen() {
                     {dateLabel(a.date)} · {timeLabel(a.date)}
                   </Text>
                 </View>
-                <Chip>{a.status}</Chip>
+                <Chip>{uiLabel(a.status)}</Chip>
               </View>
             ))
           ) : (
-            <Empty
-              icon={Clock3}
-              title="The beginning of something lighter"
-              detail="Your actions and their results will be recorded here."
-            />
+            <Empty icon={Clock3} title="여유로운 시작" detail="작업과 결과가 여기에 기록됩니다." />
           )}
         </Card>
       )}
@@ -1162,8 +1144,8 @@ export function ActivityScreen() {
         <Card>
           <Empty
             icon={ShieldCheck}
-            title="You’re all caught up"
-            detail="When an email or calendar change needs your approval, it will appear here."
+            title="모두 확인했습니다"
+            detail="메일이나 일정 변경에 승인이 필요하면 여기에 표시됩니다."
           />
         </Card>
       )}
@@ -1185,10 +1167,10 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
       );
       if (result.url) {
         await Linking.openURL(result.url);
-        notify("Finish connecting in your browser, then refresh your workspace.");
+        notify("브라우저에서 연결을 마친 뒤 워크스페이스를 새로고침하세요.");
       } else {
         await refresh();
-        notify("Local Google data is ready.");
+        notify("로컬 Google 데이터가 준비됐습니다.");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1202,7 +1184,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
     try {
       await api.request("/api/google/disconnect", {});
       await refresh();
-      notify("Google disconnected.");
+      notify("Google 연결을 해제했습니다.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1215,7 +1197,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
     { id: "gmail", name: "Gmail", icon: Mail, color: "#EA5B4D", connected, group: "google" },
     {
       id: "calendar",
-      name: "Google Calendar",
+      name: "Google 캘린더",
       icon: CalendarDays,
       color: "#4285F4",
       connected,
@@ -1223,7 +1205,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
     },
     {
       id: "browser",
-      name: "Agent computer",
+      name: "에이전트 컴퓨터",
       icon: Globe2,
       color: "#1987CF",
       connected: w.connections.some((c) => c.id === "browser" && c.status === "connected"),
@@ -1246,11 +1228,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
         return (
           <View key={String(isConnected)} style={{ gap: 8 }}>
             <Text style={[s.small, { marginLeft: 12 }]}>
-              {isConnected
-                ? w.mode === "sample"
-                  ? "Your connections"
-                  : "Connected"
-                : "Available integrations"}
+              {isConnected ? (w.mode === "sample" ? "내 연결" : "연결됨") : "사용 가능한 연동"}
             </Text>
             <View
               style={{
@@ -1263,7 +1241,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                 <Pressable
                   key={row.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`Manage ${row.name}`}
+                  accessibilityLabel={`관리: ${row.name}`}
                   onPress={() =>
                     row.group === "browser" ? open({ type: "computer" }) : setSelected(row.group)
                   }
@@ -1291,7 +1269,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                   </View>
                   <Text style={[s.text, { flex: 1 }]}>{row.name}</Text>
                   {row.connected && row.group === "google" && w.mode === "sample" && (
-                    <Text style={s.small}>Local data</Text>
+                    <Text style={s.small}>로컬 데이터</Text>
                   )}
                   {row.connected ? (
                     <ChevronRight size={18} color={colors.subtle} />
@@ -1302,7 +1280,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                         color: row.group === "google" ? colors.blueDark : colors.muted,
                       }}
                     >
-                      {row.group === "google" ? "Connect" : "Setup"}
+                      {row.group === "google" ? "연결" : "설정"}
                     </Text>
                   )}
                 </Pressable>
@@ -1311,18 +1289,18 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
           </View>
         );
       })}
-      {!rows.length && <Text style={s.muted}>No matching connectors.</Text>}
+      {!rows.length && <Text style={s.muted}>일치하는 커넥터가 없습니다.</Text>}
       {selected && (
         <Sheet
-          title={selected === "google" ? "Google connections" : "OpenBot"}
-          subtitle={selected === "google" ? google?.account : "A computer for your agent"}
+          title={selected === "google" ? "Google 연결" : "OpenBot"}
+          subtitle={selected === "google" ? google?.account : "에이전트를 위한 컴퓨터"}
           onClose={() => setSelected(undefined)}
         >
           {selected === "google" ? (
             <View style={{ gap: 18 }}>
               <Text style={s.muted}>
-                Bring Gmail and Google Calendar into your conversations. Choose read access, then
-                enable sending and editing when you need it.
+                Gmail과 Google 캘린더를 대화에 연결하세요. 읽기 권한부터 추가하고 필요할 때
+                전송·수정을 켤 수 있습니다.
               </Text>
               <View style={[s.row, { gap: 7, flexWrap: "wrap" }]}>
                 {google?.capabilities.map((cap) => (
@@ -1331,51 +1309,51 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
               </View>
               <ErrorNotice error={error} />
               <Button busy={busy} primary icon={Link2} onPress={() => void connect("read")}>
-                Connect Google
+                Google 연결
               </Button>
               <Button busy={busy} onPress={() => void connect("write")}>
-                Enable sending & editing
+                전송과 수정 사용
               </Button>
               {connected && (
                 <Button busy={busy} danger onPress={() => void disconnect()}>
-                  Disconnect Google
+                  Google 연결 해제
                 </Button>
               )}
               <SettingsLine
-                label="Environment"
-                value={w.mode === "sample" ? "Local · example data" : "Live workspace"}
+                label="환경"
+                value={w.mode === "sample" ? "로컬 · 예시 데이터" : "실제 연결된 워크스페이스"}
               />
               <SettingsLine
-                label="Assistant"
+                label="어시스턴트"
                 value={
                   w.runtime.provider === "sample"
-                    ? "Guided workflows"
+                    ? "안내된 작업 절차"
                     : w.runtime.configured
-                      ? "Model connected"
-                      : "Model not configured"
+                      ? "모델 연결됨"
+                      : "모델 설정 필요"
                 }
               />
               <SettingsLine
-                label="Rich Threads"
-                value={w.runtime.richThreads ? "Stored by OpenMuse" : "Unavailable"}
+                label="대화 기록"
+                value={w.runtime.richThreads ? "OpenMuse에 저장됨" : "사용할 수 없음"}
               />
               <Button
                 small
                 icon={ArrowDownToLine}
                 onPress={() => void refresh().catch((e) => setError(String(e)))}
               >
-                Refresh connections
+                연결 새로고침
               </Button>
             </View>
           ) : (
             <View style={{ gap: 14 }}>
               <Text style={s.text}>
-                The OpenBot adapter is available in this open-source project. A live OpenBot backend
-                has not been configured.
+                이 오픈소스 프로젝트는 OpenBot 어댑터를 제공합니다. 실제 OpenBot 서버는 아직
+                연결되지 않았습니다.
               </Text>
               <Text style={s.muted}>
-                Your current computer uses OpenMuse’s persistent Chromium worker. OpenBot
-                integration will expand the execution backend while keeping this interface.
+                현재 컴퓨터는 OpenMuse의 Chromium 워커를 사용합니다. OpenBot 연동을 추가해도 이
+                화면에서 사용할 수 있습니다.
               </Text>
             </View>
           )}
@@ -1401,12 +1379,12 @@ function SettingsLine({ label, value }: { label: string; value: string }) {
 function capabilityLabel(value: string) {
   const scope = value.split("/").at(-1) || value;
   const names: Record<string, string> = {
-    "gmail.readonly": "Read Gmail",
-    "gmail.send": "Send Gmail",
-    "calendar.events.readonly": "Read calendar events",
-    "calendar.calendarlist.readonly": "Read calendar list",
-    "calendar.events": "Manage calendar events",
-    "calendar.readonly": "Read calendars",
+    "gmail.readonly": "Gmail 읽기",
+    "gmail.send": "Gmail 전송",
+    "calendar.events.readonly": "일정 읽기",
+    "calendar.calendarlist.readonly": "캘린더 목록 읽기",
+    "calendar.events": "일정 관리",
+    "calendar.readonly": "캘린더 읽기",
   };
   return names[scope] || scope;
 }

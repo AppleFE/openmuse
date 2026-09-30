@@ -37,6 +37,7 @@ import type {
 import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { ConnectorSettings } from "./connector-settings";
+import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
 import { RuntimeSettings } from "./runtime-settings";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
@@ -60,17 +61,17 @@ import {
 import { useWorkspace } from "./workspace";
 
 export function statusLabel(value: string) {
-  return value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return uiLabel(value);
 }
 function stamp(value?: string) {
   return value
-    ? new Date(value).toLocaleString(undefined, {
+    ? new Date(value).toLocaleString(UI_LOCALE, {
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
       })
-    : "Not checked yet";
+    : "아직 확인하지 않음";
 }
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : String(e);
@@ -83,15 +84,15 @@ export function AgentStatus() {
   if (data?.worker.running && !error) return null;
   return (
     <View style={{ gap: 8 }}>
-      <ErrorNotice error={error ? `Agent updates unavailable. ${error}` : ""} />
+      <ErrorNotice error={error ? `에이전트 업데이트를 사용할 수 없습니다. ${error}` : ""} />
       {!!error && (
         <Button small onPress={() => void refresh().catch(() => {})}>
-          Reconnect agent
+          에이전트 다시 연결
         </Button>
       )}
       {!data && !error && <ActivityIndicator color={colors.blueDark} />}
       {data && !data.worker.running && (
-        <Text style={s.small}>Worker is offline. Saved work will continue when it reconnects.</Text>
+        <Text style={s.small}>워커가 오프라인입니다. 다시 연결되면 저장된 작업을 이어갑니다.</Text>
       )}
     </View>
   );
@@ -112,7 +113,7 @@ export function TaskCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open task: ${task.title}`}
+      accessibilityLabel={`작업 열기: ${task.title}`}
       onPress={() => {
         onOpen?.();
         open({ type: "task", taskId: task.id });
@@ -139,7 +140,7 @@ export function TaskCard({
             <Text style={s.heading}>{task.title}</Text>
             <Text style={s.small}>
               {statusLabel(task.status)}
-              {task.plan.length ? ` · ${done}/${task.plan.length} steps` : ""}
+              {task.plan.length ? ` · ${done}/${task.plan.length}개 단계` : ""}
             </Text>
           </View>
           <ChevronRight size={17} color={colors.muted} />
@@ -163,7 +164,7 @@ export function TaskCard({
         )}
         {waiting && (
           <Text style={[s.small, { color: colors.blueDark, fontWeight: "600" }]}>
-            {task.status === "waiting_approval" ? "Review requested" : "Your input is needed"}
+            {task.status === "waiting_approval" ? "검토 요청" : "입력이 필요합니다"}
           </Text>
         )}
       </Card>
@@ -187,18 +188,17 @@ export function ChatWork() {
 }
 export function AgentActivityScreen() {
   const { data } = useAgentWorkspace();
-  const [filter, setFilter] = useState("All");
+  const [filter, setFilter] = useState("전체");
   const tasks = [...(data?.tasks || [])]
     .filter(
-      (task) =>
-        filter === "All" || (filter === "In progress" ? activeTask(task) : !activeTask(task)),
+      (task) => filter === "전체" || (filter === "진행 중" ? activeTask(task) : !activeTask(task)),
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return (
     <View style={{ gap: 20 }}>
       <AgentStatus />
       <View style={[s.row, { gap: 8 }]}>
-        {["All", "In progress", "Finished"].map((item) => (
+        {["전체", "진행 중", "완료됨"].map((item) => (
           <Button key={item} small primary={filter === item} onPress={() => setFilter(item)}>
             {item}
           </Button>
@@ -210,11 +210,11 @@ export function AgentActivityScreen() {
       {!tasks.length && (
         <Empty
           icon={ListChecks}
-          title="A place for the work"
-          detail="Delegate a task in Chat. Its plan, progress and results stay here."
+          title="작업을 모아 보는 공간"
+          detail="대화에서 작업을 맡기면 계획, 진행 상황과 결과가 여기에 표시됩니다."
         />
       )}
-      <SectionHeading title="Reviews & receipts" />
+      <SectionHeading title="검토와 실행 기록" />
       <ActivityScreen />
     </View>
   );
@@ -240,7 +240,7 @@ export function EvidenceList({ items }: { items: Evidence[] }) {
                 void Linking.openURL(item.url || "").catch((e) => setError(errorText(e)))
               }
             >
-              Open source
+              출처 열기
             </Button>
           )}
           {item.kind === "mail" && workspace.mail.some((mail) => mail.id === item.id) && (
@@ -251,7 +251,7 @@ export function EvidenceList({ items }: { items: Evidence[] }) {
                 if (mail) open({ type: "mail", mail });
               }}
             >
-              View email
+              메일 보기
             </Button>
           )}
           {item.kind === "file" && workspace.files.some((file) => file.id === item.id) && (
@@ -262,7 +262,7 @@ export function EvidenceList({ items }: { items: Evidence[] }) {
                 if (file) open({ type: "file", file });
               }}
             >
-              View file
+              파일 보기
             </Button>
           )}
         </View>
@@ -341,11 +341,11 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             (value) => typeof value !== "string" && typeof value !== "boolean",
           )
         )
-          throw new Error("Form fields must be a JSON object with text or true/false values.");
+          throw new Error("양식 필드는 텍스트 또는 true/false 값을 가진 JSON 객체여야 합니다.");
         parsed = raw as Record<string, string | boolean>;
       }
       await act("input", {
-        answer: answer.trim() || "Provided the requested fields.",
+        answer: answer.trim() || "요청한 필드 값을 입력했습니다.",
         fields: parsed,
       });
     } catch (e) {
@@ -359,7 +359,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
       await refreshWorkspace();
       const snapshot = await api.request<typeof workspace>("/api/workspace");
       const action = snapshot.actions.find((item) => item.id === task?.actionId);
-      if (!action) throw new Error("This review is not available yet. Refresh and try again.");
+      if (!action) throw new Error("아직 검토할 수 없습니다. 새로고침 후 다시 시도하세요.");
       open({ type: "review", action });
     } catch (e) {
       setError(errorText(e));
@@ -379,9 +379,11 @@ export function TaskDetail({ taskId }: { taskId: string }) {
     .filter(Boolean);
   return (
     <Sheet
-      title={task?.title || "Task"}
+      title={task?.title || "작업"}
       subtitle={
-        task ? `${statusLabel(task.status)} · ${stamp(task.updatedAt)}` : "Loading saved progress…"
+        task
+          ? `${statusLabel(task.status)} · ${stamp(task.updatedAt)}`
+          : "저장된 진행 상황을 불러오는 중…"
       }
       onClose={close}
     >
@@ -396,7 +398,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           {task.teamContext && (
             <Card style={{ gap: 12, backgroundColor: colors.lavender }}>
               <View style={s.between}>
-                <Text style={s.heading}>Model team</Text>
+                <Text style={s.heading}>모델 팀</Text>
                 <Text style={s.small}>{statusLabel(task.teamContext.status)}</Text>
               </View>
               {task.teamContext.roleRuns.map((run) => (
@@ -434,7 +436,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 busy={busy}
                 onPress={() => void act("control", { action: "pause" })}
               >
-                Pause
+                일시 중지
               </Button>
             )}
             {task.status === "paused" && (
@@ -444,7 +446,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 busy={busy}
                 onPress={() => void act("control", { action: "resume" })}
               >
-                Resume
+                다시 시작
               </Button>
             )}
             {task.status === "failed" && (
@@ -454,7 +456,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 busy={busy}
                 onPress={() => void act("control", { action: "retry" })}
               >
-                Retry task
+                작업 다시 시도
               </Button>
             )}
             {activeTask(task) && (
@@ -465,22 +467,22 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 busy={busy}
                 onPress={() => void act("control", { action: "cancel" })}
               >
-                Cancel task
+                작업 취소
               </Button>
             )}
           </View>
           {task.status === "waiting_approval" && (
             <Card style={{ backgroundColor: colors.lavender, gap: 12 }}>
-              <Text style={s.heading}>Ready for your review</Text>
-              <Text style={s.muted}>Review the exact action and account before it proceeds.</Text>
+              <Text style={s.heading}>검토할 준비가 됐습니다</Text>
+              <Text style={s.muted}>실행 전에 작업 내용과 계정을 확인하세요.</Text>
               <Button primary busy={busy} onPress={() => void review()}>
-                Review action
+                작업 검토
               </Button>
             </Card>
           )}
           {task.status === "waiting_input" && (
             <Card style={{ backgroundColor: colors.sky, gap: 10 }}>
-              <Text style={s.heading}>{task.question || "A detail from you will help"}</Text>
+              <Text style={s.heading}>{task.question || "추가 정보가 필요합니다"}</Text>
               {fieldNames.map((name) =>
                 missing.some(
                   (f) => typeof f === "object" && f && f.name === name && f.type === "checkbox",
@@ -504,26 +506,26 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               )}
               {!fieldNames.length && (
                 <Field
-                  label="Your answer"
+                  label="답변"
                   value={answer}
                   onChangeText={setAnswer}
                   multiline
-                  placeholder="Add the missing details…"
+                  placeholder="필요한 정보를 입력하세요…"
                 />
               )}
               {task.kind === "document" && !fieldNames.length && (
                 <>
                   <Button small onPress={() => setShowFieldJson(!showFieldJson)}>
-                    Form field values
+                    양식 필드 값
                   </Button>
                   {showFieldJson && (
                     <Field
-                      label="Fields (JSON: field name to value)"
+                      label="필드 값(JSON: 필드 이름과 값)"
                       value={fieldJson}
                       onChangeText={setFieldJson}
                       multiline
                       autoCapitalize="none"
-                      placeholder={'{"full_name":"Your name","consent":true}'}
+                      placeholder={'{"full_name":"이름","consent":true}'}
                     />
                   )}
                 </>
@@ -534,13 +536,13 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 disabled={!answer.trim() && !Object.keys(fields).length && !fieldJson.trim()}
                 onPress={() => void submitInput()}
               >
-                Continue task
+                작업 계속하기
               </Button>
             </Card>
           )}
           {!!task.plan.length && (
             <Card style={{ gap: 15 }}>
-              <Text style={s.heading}>Plan</Text>
+              <Text style={s.heading}>계획</Text>
               {task.plan.map((step, index) => (
                 <View key={step.id} style={[s.row, { gap: 10, alignItems: "flex-start" }]}>
                   <Text
@@ -572,11 +574,11 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           <ErrorNotice error={task.error ?? undefined} />
           {detail?.browsers?.map((browser) => (
             <Card key={browser.id} style={{ gap: 10 }}>
-              <Text style={s.heading}>{browser.title || "Agent browser"}</Text>
+              <Text style={s.heading}>{browser.title || "에이전트 브라우저"}</Text>
               <Text style={s.small}>{browser.url}</Text>
               {browser.status === "active" && browser.previewUrl && (
                 <Image
-                  accessibilityLabel="Agent browser preview"
+                  accessibilityLabel="에이전트 브라우저 미리 보기"
                   source={{ uri: api.url(browser.previewUrl) }}
                   style={{ width: "100%", aspectRatio: 1.6, borderRadius: 12 }}
                 />
@@ -600,8 +602,8 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 }}
               >
                 {["running", "scheduled", "queued"].includes(task.status)
-                  ? "Pause and open browser"
-                  : "Open browser"}
+                  ? "일시 중지하고 브라우저 열기"
+                  : "브라우저 열기"}
               </Button>
             </Card>
           ))}
@@ -609,7 +611,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             <LinkRow
               key={file.id}
               title={file.name}
-              detail={`${file.pageCount} pages · PDF`}
+              detail={`${file.pageCount}페이지 · PDF`}
               icon={FileText}
               onPress={() => open({ type: "file", file })}
             />
@@ -623,13 +625,13 @@ export function TaskDetail({ taskId }: { taskId: string }) {
           ))}
           {!!task.evidence.length && (
             <View style={{ gap: 14 }}>
-              <Text style={s.heading}>Sources</Text>
+              <Text style={s.heading}>출처</Text>
               <EvidenceList items={task.evidence} />
             </View>
           )}
           {!!detail?.messages.length && (
             <View style={{ gap: 12 }}>
-              <Text style={s.heading}>Team thread</Text>
+              <Text style={s.heading}>팀 대화</Text>
               {detail.messages.map((message) => (
                 <Card key={message.id} style={{ gap: 7, backgroundColor: colors.surfaceMuted }}>
                   <View style={s.between}>
@@ -642,7 +644,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               ))}
             </View>
           )}
-          <Text style={s.heading}>Timeline</Text>
+          <Text style={s.heading}>타임라인</Text>
           {detail?.events.map((event) => (
             <View
               key={event.id}
@@ -659,7 +661,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             </View>
           ))}
           {!detail?.events.length && (
-            <Text style={s.muted}>The worker will record each step here.</Text>
+            <Text style={s.muted}>워커가 각 단계를 여기에 기록합니다.</Text>
           )}
         </View>
       )}
@@ -735,7 +737,7 @@ export function ArtifactCard({ artifact }: { artifact: AgentArtifact }) {
         </View>
       ))}
       <Button small onPress={() => setExpanded(!expanded)}>
-        {expanded ? "Show summary" : "Explore full result"}
+        {expanded ? "요약 보기" : "전체 결과 보기"}
       </Button>
     </Card>
   );
@@ -754,9 +756,9 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
     try {
       await mutate("/goals", {
         title: goalTitle.trim(),
-        category: "Finances",
-        description: `Inspired by ${artifact.title}: ${artifact.summary}`,
-        milestones: ["Choose a savings target", "Review spending each week"],
+        category: "재무",
+        description: `참고: ${artifact.title}: ${artifact.summary}`,
+        milestones: ["저축 목표 선택", "매주 지출 검토"],
       });
       setGoalSaved(true);
     } catch (error) {
@@ -766,7 +768,7 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
     }
   };
   const amount = (value: unknown) =>
-    Number(value ?? 0).toLocaleString(undefined, {
+    Number(value ?? 0).toLocaleString(UI_LOCALE, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -786,7 +788,7 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open finance tracker: ${artifact.title}`}
+        accessibilityLabel={`재무 관리 열기: ${artifact.title}`}
         accessibilityState={{ expanded: details }}
         onPress={() => setDetails(!details)}
       >
@@ -812,17 +814,17 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
             </Svg>
           </View>
           <Text style={{ color: "#D4DCFC", fontSize: 11, lineHeight: 18, marginBottom: 20 }}>
-            Read from your imported transactions.{"\n"}
+            가져온 거래 내역을 바탕으로 분석했습니다.{"\n"}
             {String(period?.from ?? "")} — {String(period?.to ?? "")}
             {"\n"}
-            {transactions.length} transactions, categorized and summarized.
+            {transactions.length} 건의 거래를 분류하고 요약했습니다.
           </Text>
           <View style={[s.row, { gap: 7 }]}>
             {(
               [
-                ["Income", "income"],
-                ["Spending", "spending"],
-                ["Remaining", "saved"],
+                ["수입", "income"],
+                ["지출", "spending"],
+                ["잔액", "saved"],
               ] as const
             ).map(([label, key]) => (
               <View
@@ -844,7 +846,7 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
                 >
                   {amount(artifact.data[key])}
                 </Text>
-                <Text style={{ color: "#7E8289", fontSize: 8, marginTop: 4 }}>source currency</Text>
+                <Text style={{ color: "#7E8289", fontSize: 8, marginTop: 4 }}>원본 통화</Text>
               </View>
             ))}
           </View>
@@ -852,15 +854,15 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
         <View style={[s.row, { gap: 11, paddingHorizontal: 8, paddingTop: 13, paddingBottom: 4 }]}>
           <Text style={{ fontSize: 25 }}>💸</Text>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[s.text, { fontWeight: "600" }]}>Finance tracker</Text>
-            <Text style={s.small}>Spending, savings, and a plan for what’s next.</Text>
+            <Text style={[s.text, { fontWeight: "600" }]}>재무 관리</Text>
+            <Text style={s.small}>지출, 저축과 앞으로의 계획을 살펴보세요.</Text>
           </View>
           <ChevronRight size={17} color={colors.muted} />
         </View>
       </Pressable>
       {details && (
         <View style={{ gap: 16, padding: 10 }}>
-          <Text style={s.label}>Where your money went</Text>
+          <Text style={s.label}>지출 내역</Text>
           {categories.map((category) => {
             const row = record(category);
             if (!row) return null;
@@ -883,18 +885,16 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
               </View>
             );
           })}
-          <Text style={s.small}>
-            Amounts use your source currency. This summary covers the imported dates.
-          </Text>
+          <Text style={s.small}>금액은 원본 통화 기준이며 가져온 기간의 내역을 요약합니다.</Text>
           {goalSaved ? (
-            <Text style={s.text}>Your savings goal is saved in Goals.</Text>
+            <Text style={s.text}>저축 목표를 저장했습니다.</Text>
           ) : (
             <View style={{ gap: 10 }}>
               <Field
-                label="Turn this into a savings goal"
+                label="저축 목표로 만들기"
                 value={goalTitle}
                 onChangeText={setGoalTitle}
-                placeholder="What would you like to save for?"
+                placeholder="어떤 목표를 위해 저축할까요?"
               />
               <ErrorNotice error={goalError} />
               <Button
@@ -903,12 +903,12 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
                 disabled={!goalTitle.trim()}
                 onPress={() => void saveGoal()}
               >
-                Create savings goal
+                저축 목표 만들기
               </Button>
             </View>
           )}
           <Button small onPress={() => setExpanded(!expanded)}>
-            {expanded ? "Hide transactions" : "View transactions"}
+            {expanded ? "거래 내역 숨기기" : "거래 내역 보기"}
           </Button>
           {expanded &&
             transactions.slice(0, 100).map((transaction) => {
@@ -926,9 +926,7 @@ function FinanceArtifact({ artifact }: { artifact: AgentArtifact }) {
               ) : null;
             })}
           {expanded && transactions.length > 100 && (
-            <Text style={s.small}>
-              Showing the first 100 transactions. The totals include every row.
-            </Text>
+            <Text style={s.small}>처음 100건을 표시합니다. 합계에는 모든 내역이 포함됩니다.</Text>
           )}
         </View>
       )}
@@ -971,33 +969,33 @@ export function DelegateSheet() {
   }
   return (
     <Sheet
-      title="Hand over an outcome"
-      subtitle="OpenMuse saves a plan and keeps working on the server."
+      title="작업 맡기기"
+      subtitle="OpenMuse가 계획을 저장하고 서버에서 작업을 계속합니다."
       onClose={close}
     >
       <View style={[s.row, { flexWrap: "wrap", gap: 8, marginBottom: 20 }]}>
         {(["plan", "document", "finance", "agent"] as const).map((item) => (
           <Button small primary={kind === item} key={item} onPress={() => setKind(item)}>
-            {item === "agent" ? "General task" : statusLabel(item)}
+            {item === "agent" ? "일반 작업" : statusLabel(item)}
           </Button>
         ))}
       </View>
       <Field
-        label="What would you like done?"
+        label="어떤 일을 맡길까요?"
         value={prompt}
         onChangeText={setPrompt}
         multiline
         placeholder={
           kind === "document"
-            ? "Fill the attached form and prepare a reply for my review"
+            ? "첨부된 양식을 작성하고 검토할 답장을 준비해 주세요"
             : kind === "finance"
-              ? "Summarize my spending and suggest a savings plan"
-              : "Make a practical plan for my week"
+              ? "지출을 요약하고 저축 계획을 제안해 주세요"
+              : "이번 주의 실천 가능한 계획을 세워 주세요"
         }
       />
       {kind === "document" && (
         <View style={{ gap: 8, marginBottom: 18 }}>
-          <Text style={s.heading}>Choose the email with the PDF</Text>
+          <Text style={s.heading}>PDF가 첨부된 메일 선택</Text>
           {workspace.mail
             .filter((mail) => mail.attachments.length)
             .map((mail) => (
@@ -1009,16 +1007,14 @@ export function DelegateSheet() {
               />
             ))}
           {!workspace.mail.some((mail) => mail.attachments.length) && (
-            <Text style={s.muted}>
-              Connect mail in Apps and select a message with a PDF attachment.
-            </Text>
+            <Text style={s.muted}>앱에서 메일을 연결한 뒤 PDF가 첨부된 메일을 선택하세요.</Text>
           )}
         </View>
       )}
       {kind === "finance" && (
         <>
           <Field
-            label="Transaction CSV"
+            label="거래 내역 CSV"
             value={csv}
             onChangeText={setCsv}
             multiline
@@ -1033,24 +1029,23 @@ export function DelegateSheet() {
                 )
               }
             >
-              Try example transactions
+              예시 거래 내역 사용
             </Button>
           )}
           <Text style={[s.small, { marginVertical: 12 }]}>
-            Positive amounts are expenses; negative amounts are income. Imported data only. No bank
-            connection is implied.
+            양수는 지출, 음수는 수입입니다. 가져온 데이터만 사용하며 은행에 연결하지 않습니다.
           </Text>
         </>
       )}
       {kind === "agent" && !workspace.runtime.configured && (
         <Text style={[s.muted, { marginBottom: 16 }]}>
-          General tasks and plans require a configured model. Document jobs, page watches and
-          spending summaries have guided workflows.
+          일반 작업과 계획에는 모델 연결이 필요합니다. 문서 작업, 페이지 확인과 지출 요약에는 안내된
+          절차를 사용합니다.
         </Text>
       )}
       {(["agent", "plan"] as AgentTask["kind"][]).includes(kind) && !!data?.models?.length && (
         <View style={{ gap: 8, marginBottom: 16 }}>
-          <Text style={s.heading}>Model for this task</Text>
+          <Text style={s.heading}>이 작업에 사용할 모델</Text>
           <ModelChoices
             models={data.models}
             value={modelId}
@@ -1070,7 +1065,7 @@ export function DelegateSheet() {
         }
         onPress={() => void submit()}
       >
-        Delegate task
+        작업 맡기기
       </Button>
     </Sheet>
   );
@@ -1095,9 +1090,9 @@ export function IdeasScreen() {
     <View style={{ gap: 20 }}>
       <AgentStatus />
       <View style={s.between}>
-        <Text style={s.small}>Inspired by your connected apps</Text>
+        <Text style={s.small}>연결된 앱에서 찾은 아이디어</Text>
         <Button small icon={RefreshCw} busy={busy} onPress={() => void refreshIdeas()}>
-          Find ideas
+          아이디어 찾기
         </Button>
       </View>
       <ErrorNotice error={error} />
@@ -1107,8 +1102,8 @@ export function IdeasScreen() {
       {!ideas.length && (
         <Empty
           icon={Lightbulb}
-          title="Room for a good idea"
-          detail="Find ideas from the sources you have granted access to. Each suggestion includes its evidence."
+          title="좋은 아이디어를 위한 공간"
+          detail="접근을 허용한 정보에서 아이디어를 찾습니다. 각 제안에는 근거가 포함됩니다."
         />
       )}
       {(data?.ideas || [])
@@ -1116,7 +1111,7 @@ export function IdeasScreen() {
         .map((idea) => (
           <Card key={idea.id} style={{ gap: 7 }}>
             <Text style={s.heading}>{idea.title}</Text>
-            <Chip tint={colors.green}>Started</Chip>
+            <Chip tint={colors.green}>시작됨</Chip>
             {!!idea.taskId && <TaskLink taskId={idea.taskId} />}
           </Card>
         ))}
@@ -1134,7 +1129,7 @@ function TaskLink({ taskId, onOpen }: { taskId: string; onOpen?: () => void }) {
         open({ type: "task", taskId });
       }}
     >
-      View task
+      작업 보기
     </Button>
   );
 }
@@ -1162,7 +1157,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
     <View style={{ paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.line }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`View idea: ${idea.title}`}
+        accessibilityLabel={`아이디어 보기: ${idea.title}`}
         accessibilityState={{ expanded }}
         onPress={() => setExpanded(!expanded)}
         style={{ flexDirection: "row", gap: 14 }}
@@ -1188,7 +1183,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
           <EvidenceList items={idea.evidence} />
           {editing && (
             <Field
-              label="What should OpenMuse do?"
+              label="OpenMuse가 어떤 일을 할까요?"
               value={prompt}
               onChangeText={setPrompt}
               multiline
@@ -1202,13 +1197,13 @@ function IdeaCard({ idea }: { idea: Idea }) {
               disabled={!prompt.trim()}
               onPress={() => void act("accept")}
             >
-              Start this
+              이 작업 시작
             </Button>
             <Button disabled={busy} onPress={() => setEditing(!editing)}>
-              {editing ? "Keep edits" : "Edit"}
+              {editing ? "수정 내용 유지" : "수정"}
             </Button>
             <Button disabled={busy} onPress={() => void act("dismiss")}>
-              Dismiss
+              닫기
             </Button>
           </View>
         </View>
@@ -1241,17 +1236,17 @@ export function GoalsScreen() {
                 backgroundColor: "#24A46B",
               }}
             />
-            <Text style={[s.heading, { color: "#189A58" }]}>Tracking</Text>
+            <Text style={[s.heading, { color: "#189A58" }]}>추적 중</Text>
           </View>
-          <Button small icon={Plus} onPress={() => setAdding("Tracking")}>
-            Track
+          <Button small icon={Plus} onPress={() => setAdding("추적 중")}>
+            추적
           </Button>
         </View>
         {(showAll ? monitors : monitors.slice(0, 3)).map((item) => (
           <Pressable
             key={item.id}
             accessibilityRole="button"
-            accessibilityLabel={`Open tracking: ${item.title}`}
+            accessibilityLabel={`추적 항목 열기: ${item.title}`}
             onPress={() => setSelectedMonitor(item.id)}
             style={[s.row, { gap: 12, paddingVertical: 13 }]}
           >
@@ -1260,7 +1255,7 @@ export function GoalsScreen() {
               <Text style={s.text}>{item.title}</Text>
               <Text numberOfLines={1} style={s.muted}>
                 {item.status === "active"
-                  ? `Checking every ${item.intervalMinutes} minutes`
+                  ? `확인 간격: ${item.intervalMinutes}분`
                   : statusLabel(item.status)}
               </Text>
             </View>
@@ -1269,12 +1264,12 @@ export function GoalsScreen() {
         ))}
         {!monitors.length && (
           <Text style={[s.muted, { paddingVertical: 10 }]}>
-            Ticket prices, a reservation, a page you’re watching.
+            티켓 가격, 예약 현황과 관심 있는 페이지를 확인하세요.
           </Text>
         )}
         {monitors.length > 3 && (
           <Button small onPress={() => setShowAll(!showAll)}>
-            {showAll ? "Show less" : `Show ${monitors.length - 3} more`}
+            {showAll ? "간단히 보기" : `추가 ${monitors.length - 3}개 보기`}
           </Button>
         )}
       </View>
@@ -1291,13 +1286,13 @@ export function GoalsScreen() {
               backgroundColor: "#3D9BDE",
             }}
           />
-          <Text style={[s.heading, { color: colors.blueDark }]}>Goals</Text>
+          <Text style={[s.heading, { color: colors.blueDark }]}>목표</Text>
         </View>
         {data?.goals.map((item) => (
           <Pressable
             key={item.id}
             accessibilityRole="button"
-            accessibilityLabel={`Open goal: ${item.title}`}
+            accessibilityLabel={`목표 열기: ${item.title}`}
             onPress={() => setSelectedGoal(item.id)}
             style={[s.row, { gap: 12, paddingVertical: 13 }]}
           >
@@ -1317,22 +1312,22 @@ export function GoalsScreen() {
         ))}
         {!data?.goals.length && (
           <Text style={[s.muted, { paddingVertical: 10 }]}>
-            Big plans start with one small step.
+            작은 실천부터 큰 목표를 시작하세요.
           </Text>
         )}
       </View>
       <View style={{ height: 1, backgroundColor: colors.line }} />
-      <Text style={s.heading}>Create a goal</Text>
+      <Text style={s.heading}>목표 만들기</Text>
       {[
-        { name: "Health", icon: Heart },
-        { name: "Relationships", icon: Users },
-        { name: "Finances", icon: CircleDollarSign },
-        { name: "Something else", icon: Target },
+        { name: "건강", icon: Heart },
+        { name: "관계", icon: Users },
+        { name: "재무", icon: CircleDollarSign },
+        { name: "다른 목표", icon: Target },
       ].map((item) => (
         <Pressable
           key={item.name}
           accessibilityRole="button"
-          accessibilityLabel={`Create ${item.name.toLowerCase()} goal`}
+          accessibilityLabel={`만들기: ${item.name.toLowerCase()} 목표`}
           onPress={() => setAdding(item.name)}
           style={[s.row, { gap: 12, minHeight: 38 }]}
         >
@@ -1343,10 +1338,10 @@ export function GoalsScreen() {
       ))}
       {adding && (
         <Sheet
-          title={adding === "Tracking" ? "Track something" : "Create a goal"}
+          title={adding === "추적 중" ? "추적할 항목 추가" : "목표 만들기"}
           onClose={() => setAdding(undefined)}
         >
-          {adding === "Tracking" ? (
+          {adding === "추적 중" ? (
             <MonitorForm onDone={() => setAdding(undefined)} />
           ) : (
             <GoalForm category={adding} onDone={() => setAdding(undefined)} />
@@ -1396,26 +1391,26 @@ function GoalForm({ onDone, category }: { onDone: () => void; category?: string 
   return (
     <Card>
       <Field
-        label="Your goal"
+        label="목표"
         value={title}
         onChangeText={setTitle}
-        placeholder="Build a three-month emergency fund"
+        placeholder="3개월 생활비 비상금 모으기"
       />
       <Field
-        label="What does success look like?"
+        label="달성 기준을 입력하세요"
         value={description}
         onChangeText={setDescription}
         multiline
       />
       <Field
-        label="Milestones (one per line)"
+        label="중간 목표(한 줄에 하나씩)"
         value={milestones}
         onChangeText={setMilestones}
         multiline
       />
       <ErrorNotice error={error} />
       <Button primary disabled={!title.trim()} busy={busy} onPress={() => void save()}>
-        Create goal
+        목표 만들기
       </Button>
     </Card>
   );
@@ -1442,8 +1437,8 @@ function GoalCard({ goal, onOpenTask }: { goal: Goal; onOpenTask?: () => void })
     setError("");
     try {
       const task = await delegate({
-        title: `Plan: ${goal.title}`,
-        prompt: `Create a practical plan for this goal: ${goal.title}. ${goal.description}`,
+        title: `계획: ${goal.title}`,
+        prompt: `이 목표를 위한 실천 가능한 계획을 세워 주세요: ${goal.title}. ${goal.description}`,
         kind: "plan",
         goalId: goal.id,
         input: {},
@@ -1466,7 +1461,7 @@ function GoalCard({ goal, onOpenTask }: { goal: Goal; onOpenTask?: () => void })
       </View>
       <Text style={s.muted}>{goal.description}</Text>
       <Text style={s.small}>
-        {done} of {goal.milestones.length} milestones
+        {done} / {goal.milestones.length} 개 중간 목표
       </Text>
       {goal.milestones.map((milestone) => (
         <CheckRow
@@ -1490,15 +1485,15 @@ function GoalCard({ goal, onOpenTask }: { goal: Goal; onOpenTask?: () => void })
           busy={busy}
           onPress={() => void update({ status: goal.status === "active" ? "paused" : "active" })}
         >
-          {goal.status === "active" ? "Pause" : "Resume"}
+          {goal.status === "active" ? "일시 중지" : "다시 시작"}
         </Button>
         {goal.status !== "completed" && (
           <Button small busy={busy} onPress={() => void update({ status: "completed" })}>
-            Complete goal
+            목표 완료
           </Button>
         )}
         <Button small primary busy={busy} onPress={() => void plan()}>
-          Plan next steps
+          다음 단계 계획
         </Button>
       </View>
       {data?.tasks
@@ -1526,9 +1521,9 @@ function MonitorForm({ onDone }: { onDone: () => void }) {
     try {
       const minutes = Number(interval);
       if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080)
-        throw new Error("Use a check interval from 1 to 10080 minutes.");
+        throw new Error("확인 간격은 1~10080분으로 입력하세요.");
       if (!sample && !/^https?:\/\//i.test(url.trim()))
-        throw new Error("Enter an http or https address for a public page.");
+        throw new Error("공개 페이지의 http 또는 https 주소를 입력하세요.");
       await mutate("/monitors", {
         title: title.trim(),
         url: sample ? "sample://availability" : url.trim(),
@@ -1546,56 +1541,56 @@ function MonitorForm({ onDone }: { onDone: () => void }) {
   return (
     <Card>
       <Field
-        label="What are you watching?"
+        label="무엇을 추적할까요?"
         value={title}
         onChangeText={setTitle}
-        placeholder="A table at my favorite restaurant"
+        placeholder="좋아하는 식당의 예약 가능 여부"
       />
       {workspace.mode === "sample" && (
         <CheckRow
           checked={sample}
-          label="Try the built-in availability page"
+          label="기본 예약 가능 페이지 사용"
           onPress={() => setSample(!sample)}
         />
       )}
       {!sample && (
         <Field
-          label="Public page URL"
+          label="공개 페이지 URL"
           value={url}
           onChangeText={setUrl}
           autoCapitalize="none"
           placeholder="https://example.com/product"
         />
       )}
-      <Text style={[s.small, { marginBottom: 10 }]}>Notify me when</Text>
+      <Text style={[s.small, { marginBottom: 10 }]}>알림 조건</Text>
       <View style={[s.row, { gap: 7, flexWrap: "wrap", marginBottom: 16 }]}>
         {(["change", "contains", "price_below"] as const).map((item) => (
           <Button small primary={condition === item} key={item} onPress={() => setCondition(item)}>
             {item === "change"
-              ? "Page changes"
+              ? "페이지 변경"
               : item === "contains"
-                ? "Text appears"
-                : "Price drops below"}
+                ? "문구가 나타남"
+                : "기준 가격 아래로 하락"}
           </Button>
         ))}
       </View>
       {condition !== "change" && (
         <Field
-          label={condition === "contains" ? "Text to look for" : "Target price"}
+          label={condition === "contains" ? "찾을 문구" : "기준 가격"}
           value={value}
           onChangeText={setValue}
         />
       )}
       <Field
-        label="Check every (minutes)"
+        label="확인 간격(분)"
         value={interval}
         onChangeText={setInterval}
         keyboardType="number-pad"
       />
       <Text style={[s.small, { marginBottom: 14 }]}>
         {sample
-          ? "Changes to this built-in page stay in your workspace."
-          : "OpenMuse checks this public page on the server and saves meaningful changes in Notifications."}
+          ? "이 기본 페이지의 변경 사항은 워크스페이스 안에만 저장됩니다."
+          : "OpenMuse가 서버에서 공개 페이지를 확인하고 중요한 변경을 알림에 저장합니다."}
       </Text>
       <ErrorNotice error={error} />
       <Button
@@ -1606,7 +1601,7 @@ function MonitorForm({ onDone }: { onDone: () => void }) {
         }
         onPress={() => void save()}
       >
-        Start tracking
+        추적 시작
       </Button>
     </Card>
   );
@@ -1631,7 +1626,7 @@ function MonitorCard({ monitor, onOpenTask }: { monitor: Monitor; onOpenTask?: (
     setError("");
     try {
       await mutate("/sample-page", {
-        text: `Availability: a table is available. Updated ${new Date().toISOString()}`,
+        text: `예약 가능: 자리가 있습니다. 업데이트: ${new Date().toISOString()}`,
       });
       await mutate(`/monitors/${monitor.id}/control`, { action: "check" });
     } catch (e) {
@@ -1647,21 +1642,24 @@ function MonitorCard({ monitor, onOpenTask }: { monitor: Monitor; onOpenTask?: (
         <Chip tint={colors.sky}>{statusLabel(monitor.status)}</Chip>
       </View>
       <Text selectable style={s.small}>
-        {monitor.url.startsWith("sample:") ? "Built-in availability page" : monitor.url}
+        {monitor.url.startsWith("sample:") ? "기본 예약 가능 페이지" : monitor.url}
       </Text>
       <Text style={s.text}>
         {monitor.condition === "change"
-          ? "Watch for a page change"
+          ? "페이지 변경 추적"
           : monitor.condition === "contains"
-            ? `Watch for “${monitor.value}”`
-            : `Price below ${monitor.value}`}
+            ? `찾을 문구: “${monitor.value}”`
+            : `가격 기준: ${monitor.value}`}
       </Text>
       <Text style={s.small}>
-        Every {monitor.intervalMinutes} min · {monitor.checks} checks
+        확인 간격: {monitor.intervalMinutes} 분 · {monitor.checks} 회 확인
       </Text>
       <Text style={s.small}>
-        Last check: {stamp(monitor.lastCheckedAt)}
-        {monitor.status === "active" ? `\nNext check: ${stamp(monitor.nextCheckAt)}` : ""}
+        마지막 확인: {stamp(monitor.lastCheckedAt)}
+        {monitor.status === "active"
+          ? `
+다음 확인: ${stamp(monitor.nextCheckAt)}`
+          : ""}
       </Text>
       {!!monitor.lastValue && (
         <Text selectable numberOfLines={5} style={s.muted}>
@@ -1676,19 +1674,19 @@ function MonitorCard({ monitor, onOpenTask }: { monitor: Monitor; onOpenTask?: (
             busy={busy}
             onPress={() => void act(monitor.status === "active" ? "pause" : "resume")}
           >
-            {monitor.status === "active" ? "Pause" : "Resume"}
+            {monitor.status === "active" ? "일시 중지" : "다시 시작"}
           </Button>
           <Button small busy={busy} onPress={() => void act("check")}>
-            Check now
+            지금 확인
           </Button>
           <Button small danger busy={busy} onPress={() => void act("stop")}>
-            Stop tracking
+            추적 중지
           </Button>
         </View>
       )}
       {monitor.url.startsWith("sample:") && monitor.status !== "stopped" && (
         <Button small busy={busy} onPress={() => void changeSample()}>
-          Change availability
+          예약 가능 여부 변경
         </Button>
       )}
       <TaskLink taskId={monitor.taskId} onOpen={onOpenTask} />
@@ -1708,11 +1706,7 @@ export function NotificationsSheet() {
     }
   }
   return (
-    <Sheet
-      title="Notifications"
-      subtitle="Results and decisions that need your attention."
-      onClose={close}
-    >
+    <Sheet title="알림" subtitle="확인이 필요한 결과와 결정을 살펴보세요." onClose={close}>
       <View style={{ gap: 14 }}>
         <ErrorNotice error={error} />
         {data?.notifications.map((item) => (
@@ -1722,20 +1716,20 @@ export function NotificationsSheet() {
           >
             <View style={s.between}>
               <Text style={s.heading}>{item.title}</Text>
-              {!item.read && <Chip>New</Chip>}
+              {!item.read && <Chip>새 알림</Chip>}
             </View>
             <Text style={s.muted}>{item.body}</Text>
             <Text style={s.small}>{stamp(item.createdAt)}</Text>
             <Button small onPress={() => void read(item.id, item.taskId)}>
-              {item.taskId ? "View task" : item.read ? "Read" : "Mark read"}
+              {item.taskId ? "작업 보기" : item.read ? "읽음" : "읽음 표시"}
             </Button>
           </Card>
         ))}
         {!data?.notifications.length && (
           <Empty
             icon={Bell}
-            title="You're all caught up"
-            detail="Results, meaningful changes and requests for your input will appear here."
+            title="모든 알림을 확인했습니다"
+            detail="결과, 중요한 변경과 입력 요청이 여기에 표시됩니다."
           />
         )}
       </View>
@@ -1783,41 +1777,36 @@ export function AppsScreen() {
   const shortcuts = [
     {
       section: "mail" as const,
-      title: "Mail",
-      detail: "Read messages and prepare replies",
+      title: "메일",
+      detail: "메일 읽기와 답장 준비",
       icon: Mail,
     },
     {
       section: "calendar" as const,
-      title: "Calendar",
-      detail: "Events and reviewed invitations",
+      title: "일정",
+      detail: "일정과 검토할 초대",
       icon: CalendarDays,
     },
     {
       section: "browser" as const,
-      title: "Agent computer",
-      detail: "Persistent browser sessions",
+      title: "에이전트 컴퓨터",
+      detail: "저장되는 브라우저 세션",
       icon: Globe2,
     },
     {
       section: "files" as const,
-      title: "Files",
-      detail: "PDFs, forms and filled copies",
+      title: "파일",
+      detail: "PDF, 양식과 작성한 사본",
       icon: FileText,
     },
   ];
   return (
     <View style={{ gap: 22 }}>
       <AgentStatus />
-      <Field
-        label="Search apps"
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search connectors"
-      />
+      <Field label="앱 검색" value={query} onChangeText={setQuery} placeholder="커넥터 검색" />
       <ConnectionsScreen query={query} />
       <ConnectorSettings query={query} />
-      <Text style={s.heading}>On your computer</Text>
+      <Text style={s.heading}>에이전트 컴퓨터</Text>
       <Card style={{ paddingVertical: 3, backgroundColor: colors.surfaceMuted }}>
         {shortcuts
           .filter((item) =>
@@ -1836,16 +1825,14 @@ export function AppsScreen() {
           ))}
       </Card>
       <Card style={{ gap: 12 }}>
-        <SectionHeading title="Appearance" />
-        <Text style={s.muted}>
-          Follow this device or keep OpenMuse in a consistent light or dark theme.
-        </Text>
+        <SectionHeading title="화면 테마" />
+        <Text style={s.muted}>기기 설정에 맞추거나 라이트·다크 테마를 선택하세요.</Text>
         <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
           {(["system", "light", "dark"] as ThemePreference[]).map((item) => (
             <Pressable
               key={item}
               accessibilityRole="radio"
-              accessibilityLabel={`${statusLabel(item)} theme`}
+              accessibilityLabel={`${statusLabel(item)} 테마`}
               accessibilityState={{ checked: preference === item }}
               onPress={() => setPreference(item)}
               style={{ flexGrow: 1, minWidth: 86 }}
@@ -1867,25 +1854,25 @@ export function AppsScreen() {
         </View>
         <Text style={s.small}>
           {preference === "system"
-            ? `Currently using the ${resolved} device appearance.`
-            : `Using ${resolved} appearance on web and native.`}
+            ? `현재 기기의 ${statusLabel(resolved)} 테마를 사용합니다.`
+            : `웹과 앱에서 ${statusLabel(resolved)} 테마를 사용합니다.`}
         </Text>
       </Card>
       <ModelTeamSettings />
       <RuntimeSettings />
       <Button onPress={() => setSettings(!settings)}>
-        {settings ? "Close agent settings" : "Personality & memory"}
+        {settings ? "에이전트 설정 닫기" : "성격과 기억"}
       </Button>
       {settings && (
         <>
           <Card style={{ gap: 10 }}>
-            <SectionHeading title="Your agent" />
+            <SectionHeading title="내 에이전트" />
             <View style={[s.row, { gap: 16, justifyContent: "center", marginBottom: 12 }]}>
               {(["sky", "sand", "lilac"] as const).map((item) => (
                 <Pressable
                   key={item}
                   accessibilityRole="radio"
-                  accessibilityLabel={`${statusLabel(item)} avatar`}
+                  accessibilityLabel={`${statusLabel(item)} 아바타`}
                   accessibilityState={{ checked: avatar === item }}
                   onPress={() => setAvatar(item)}
                   style={{
@@ -1898,7 +1885,7 @@ export function AppsScreen() {
                 </Pressable>
               ))}
             </View>
-            <Field label="Name" value={name} onChangeText={setName} />
+            <Field label="이름" value={name} onChangeText={setName} />
             <View style={[s.row, { gap: 8 }]}>
               {(["warm", "concise", "thoughtful"] as const).map((item) => (
                 <Button key={item} small primary={tone === item} onPress={() => setTone(item)}>
@@ -1907,14 +1894,11 @@ export function AppsScreen() {
               ))}
             </View>
             <CheckRow
-              label="Show background updates in chat"
+              label="대화에 백그라운드 업데이트 표시"
               checked={showChatUpdates}
               onPress={() => setShowChatUpdates(!showChatUpdates)}
             />
-            <Text style={s.small}>
-              Activity and notifications always keep the full record, including requests for
-              approval.
-            </Text>
+            <Text style={s.small}>활동과 알림에는 승인 요청을 포함한 전체 기록이 저장됩니다.</Text>
             <Button
               busy={busy}
               disabled={!name.trim()}
@@ -1922,29 +1906,29 @@ export function AppsScreen() {
                 void save("/identity", { name: name.trim(), tone, avatar, showChatUpdates })
               }
             >
-              Save preferences
+              설정 저장
             </Button>
           </Card>
           <Card style={{ gap: 12 }}>
-            <SectionHeading title="Memory" />
-            <Text style={s.muted}>Context you can inspect, correct or forget.</Text>
+            <SectionHeading title="기억" />
+            <Text style={s.muted}>저장된 정보를 확인하고 수정하거나 삭제하세요.</Text>
             {data?.memories.map((item) => (
               <MemoryRow key={item.id} memory={item} />
             ))}
             <Field
-              label="Remember something about me"
+              label="나에 관한 정보 저장"
               value={memory}
               onChangeText={setMemory}
-              placeholder="I prefer morning meetings"
+              placeholder="오전 회의를 선호합니다"
             />
             <Button
               busy={busy}
               disabled={!memory.trim()}
               onPress={() =>
-                void save("/memories", { text: memory.trim(), source: "User added in Apps" })
+                void save("/memories", { text: memory.trim(), source: "사용자가 앱에서 추가함" })
               }
             >
-              Remember
+              기억하기
             </Button>
           </Card>
         </>
@@ -1976,7 +1960,7 @@ function MemoryRow({ memory }: { memory: AgentMemory }) {
       style={{ gap: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.line }}
     >
       {editing ? (
-        <Field label="Memory" value={text} onChangeText={setText} />
+        <Field label="기억" value={text} onChangeText={setText} />
       ) : (
         <Text style={s.text}>{memory.text}</Text>
       )}
@@ -1986,15 +1970,15 @@ function MemoryRow({ memory }: { memory: AgentMemory }) {
       <View style={[s.row, { gap: 8 }]}>
         {editing ? (
           <Button small busy={busy} disabled={!text.trim()} onPress={() => void act(false)}>
-            Save correction
+            수정 내용 저장
           </Button>
         ) : (
           <Button small onPress={() => setEditing(true)}>
-            Edit
+            수정
           </Button>
         )}
         <Button small danger busy={busy} onPress={() => void act(true)}>
-          Forget
+          기억 삭제
         </Button>
       </View>
       <ErrorNotice error={error} />

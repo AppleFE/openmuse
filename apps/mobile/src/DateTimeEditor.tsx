@@ -29,7 +29,7 @@ export default function DateTimeEditor({
         setTime(local.time);
       }
     } catch {
-      setError("Choose a valid time zone.");
+      setError("유효한 시간대를 선택하세요.");
     }
   }, [value, timeZone, allDay]);
   function change(nextDate: string, nextTime: string) {

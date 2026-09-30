@@ -43,7 +43,7 @@ export function WorkspaceTools() {
   });
   useRenderTool({
     name: "search_mail",
-    description: "Show the agent checking the mailbox",
+    description: "에이전트의 메일함 확인 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
       <MailToolCard search result={result} loading={status !== "complete"} />
@@ -51,7 +51,7 @@ export function WorkspaceTools() {
   });
   useRenderTool({
     name: "read_mail_thread",
-    description: "Show the email the agent read",
+    description: "에이전트가 읽은 메일 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
       <MailToolCard result={result} loading={status !== "complete"} />
@@ -59,7 +59,7 @@ export function WorkspaceTools() {
   });
   useRenderTool({
     name: "browse_web",
-    description: "Follow the agent as it reads a webpage",
+    description: "에이전트의 웹페이지 읽기 따라가기",
     parameters: displayParameters,
     render: ({ args, result, status }) => (
       <BrowserToolCard url={args.url} result={result} loading={status !== "complete"} />
@@ -67,42 +67,42 @@ export function WorkspaceTools() {
   });
   useRenderTool({
     name: "delegate_task",
-    description: "Display delegated work",
+    description: "위임한 작업 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
-      <ServerToolCard name="Task" result={result} loading={status !== "complete"} />
+      <ServerToolCard name="작업" result={result} loading={status !== "complete"} />
     ),
   });
   useRenderTool({
     name: "agent_status",
-    description: "Display saved agent progress",
+    description: "저장된 작업 진행 상황 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
-      <ServerToolCard name="Agent progress" result={result} loading={status !== "complete"} />
+      <ServerToolCard name="작업 진행 상황" result={result} loading={status !== "complete"} />
     ),
   });
   useRenderTool({
     name: "create_goal",
-    description: "Display a saved goal",
+    description: "저장된 목표 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
-      <ServerToolCard name="Goal" result={result} loading={status !== "complete"} />
+      <ServerToolCard name="목표" result={result} loading={status !== "complete"} />
     ),
   });
   useRenderTool({
     name: "watch_page",
-    description: "Display a saved page watch",
+    description: "저장된 페이지 추적 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
-      <ServerToolCard name="Tracking" result={result} loading={status !== "complete"} />
+      <ServerToolCard name="추적 중" result={result} loading={status !== "complete"} />
     ),
   });
   useRenderTool({
     name: "remember_fact",
-    description: "Display saved personal context",
+    description: "저장된 개인 정보 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
-      <ServerToolCard name="Memory" result={result} loading={status !== "complete"} />
+      <ServerToolCard name="기억" result={result} loading={status !== "complete"} />
     ),
   });
   return null;
@@ -139,27 +139,25 @@ function ServerToolCard({
   if (task) return <TaskThreadCard task={task} />;
   return (
     <Card style={{ padding: 16, gap: 10 }}>
-      <Text style={s.heading}>{loading ? `Saving ${name.toLowerCase()}…` : name}</Text>
+      <Text style={s.heading}>{loading ? `저장 중: ${name.toLowerCase()}…` : name}</Text>
       {parsed.success && parsed.data.error ? (
         <ErrorNotice error={parsed.data.error} />
       ) : (
         <Text style={s.muted}>
-          {loading ? "Waiting for the server." : "Open the workspace to see the saved result."}
+          {loading
+            ? "서버 응답을 기다리는 중입니다."
+            : "저장된 결과를 보려면 워크스페이스를 여세요."}
         </Text>
       )}
       <Button
         small
         onPress={() =>
           navigate(
-            name === "Goal" || name === "Tracking"
-              ? "goals"
-              : name === "Memory"
-                ? "apps"
-                : "activity",
+            name === "목표" || name === "추적 중" ? "goals" : name === "기억" ? "apps" : "activity",
           )
         }
       >
-        View {name.toLowerCase()}
+        보기 {name.toLowerCase()}
       </Button>
     </Card>
   );
@@ -224,7 +222,7 @@ export function ChatScreen({
         if (active) {
           setLoaded(false);
           setHistoryError(
-            `Could not load conversation. Your saved messages have not been changed. ${e instanceof Error ? e.message : String(e)}`,
+            `대화를 불러올 수 없습니다. 저장된 메시지는 유지됩니다. ${e instanceof Error ? e.message : String(e)}`,
           );
         }
       }
@@ -238,7 +236,7 @@ export function ChatScreen({
   const run = useCallback(
     async (message?: QueuedMessage) => {
       if (runLock.current || agent.isRunning || !isReady || !loaded)
-        throw new Error("The conversation is not ready yet.");
+        throw new Error("아직 대화를 준비하지 못했습니다.");
       runLock.current = true;
       setBusy(true);
       setError("");
@@ -296,7 +294,7 @@ export function ChatScreen({
     try {
       await copilotkit.stopAgent({ agent });
     } catch (e) {
-      setError(`Could not stop response: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`답변을 중지할 수 없습니다: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   function send() {
@@ -308,7 +306,9 @@ export function ChatScreen({
     enqueue(
       text +
         (files.length
-          ? `\n\nAttached documents: ${files.map((f) => `${f.name} (artifact ID: ${f.id})`).join(", ")}`
+          ? `
+
+첨부 문서: ${files.map((f) => `${f.name} (문서 ID: ${f.id})`).join(", ")}`
           : ""),
     );
     setDraft("");
@@ -345,7 +345,7 @@ export function ChatScreen({
           <>
             <ErrorNotice error={historyError} />
             <Button onPress={() => setHistoryAttempt((attempt) => attempt + 1)}>
-              Retry loading conversation
+              대화 불러오기 다시 시도
             </Button>
           </>
         )}
@@ -369,23 +369,23 @@ export function ChatScreen({
                 maxWidth: 350,
               }}
             >
-              A little help. A lot more room for life.
+              작은 도움으로 일상에 여유를 더하세요.
             </Text>
             <Text style={[s.muted, { maxWidth: 320, textAlign: "center", lineHeight: 23 }]}>
-              Tell me what’s on your mind. I can make a plan, work with your apps, and use my
-              computer to help.
+              어떤 일이 필요한지 알려 주세요. 계획을 세우고 연결된 앱과 에이전트 컴퓨터로
+              도와드릴게요.
             </Text>
             <View style={{ width: "100%", maxWidth: 360, marginTop: 14, gap: 8 }}>
               {[
                 {
-                  text: "Find cool things on Hacker News",
-                  action: () => enqueue("Check out Hacker News for cool stuff"),
+                  text: "Hacker News에서 흥미로운 소식 찾기",
+                  action: () => enqueue("Hacker News에서 흥미로운 소식을 찾아 주세요"),
                 },
                 {
-                  text: "Summarize copilotkit.ai",
-                  action: () => enqueue("Summarize copilotkit.ai"),
+                  text: "copilotkit.ai 요약하기",
+                  action: () => enqueue("copilotkit.ai 요약하기"),
                 },
-                { text: "Keep an eye on a website", action: () => navigate("goals") },
+                { text: "웹사이트 변화 추적", action: () => navigate("goals") },
               ].map((item) => (
                 <Button key={item.text} onPress={item.action}>
                   {item.text}
@@ -458,7 +458,7 @@ export function ChatScreen({
         {selection.id === mainId && <BackgroundUpdates />}
         {(busy || agent.isRunning) && (
           <View
-            accessibilityLabel="Agent is working"
+            accessibilityLabel="에이전트 작업 중"
             style={[
               s.row,
               {
@@ -499,7 +499,7 @@ export function ChatScreen({
                 .catch((e) => setError(e instanceof Error ? e.message : String(e)));
             }}
           >
-            Retry response
+            답변 다시 시도
           </Button>
         )}
       </ScrollView>
@@ -514,14 +514,14 @@ export function ChatScreen({
             list.current?.scrollToEnd({ animated: true });
           }}
         >
-          Latest messages
+          최근 메시지
         </Button>
       )}
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         {!!outbox.pending.length && (
           <View style={{ padding: 12, gap: 6 }}>
             <Text style={s.small}>
-              {outbox.paused ? "Messages on hold" : "Up next"} · Keep the app open until sent
+              {outbox.paused ? "보류 중인 메시지" : "전송 대기"} · 전송될 때까지 앱을 열어 두세요
             </Text>
             {outbox.pending.map((message) => (
               <View key={message.id} style={[s.row, { gap: 8 }]}>
@@ -530,7 +530,7 @@ export function ChatScreen({
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove queued message: ${message.text}`}
+                  accessibilityLabel={`대기 메시지 삭제: ${message.text}`}
                   hitSlop={10}
                   onPress={() => queue.remove(message.id)}
                   style={{ padding: 8 }}
@@ -548,14 +548,14 @@ export function ChatScreen({
                   flush();
                 }}
               >
-                Send queued messages
+                대기 중인 메시지 전송
               </Button>
             )}
           </View>
         )}
         {picking && (
           <Card style={{ marginBottom: 12, padding: 15 }}>
-            <Text style={s.heading}>Add a document</Text>
+            <Text style={s.heading}>문서 추가</Text>
             <ScrollView style={{ maxHeight: 230 }} keyboardShouldPersistTaps="handled">
               {w.files.length ? (
                 w.files.map((f) => (
@@ -573,7 +573,7 @@ export function ChatScreen({
                   />
                 ))
               ) : (
-                <Text style={s.muted}>Import a PDF in Files to use it in a conversation.</Text>
+                <Text style={s.muted}>대화에 사용할 PDF를 파일에서 가져오세요.</Text>
               )}
             </ScrollView>
             <Button
@@ -581,7 +581,7 @@ export function ChatScreen({
               onPress={() => setPicking(false)}
               style={{ alignSelf: "flex-end", marginTop: 8 }}
             >
-              Done
+              완료
             </Button>
           </Card>
         )}
@@ -613,7 +613,7 @@ export function ChatScreen({
                   <Pressable
                     key={f.id}
                     accessibilityRole="button"
-                    accessibilityLabel={`Remove attachment: ${f.name}`}
+                    accessibilityLabel={`첨부 파일 삭제: ${f.name}`}
                     onPress={() => setAttachments((ids) => ids.filter((id) => id !== f.id))}
                     style={[
                       s.row,
@@ -642,7 +642,7 @@ export function ChatScreen({
           <View style={[s.row, { gap: 7, alignItems: "flex-end" }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Attach a document"
+              accessibilityLabel="문서 첨부"
               accessibilityState={{ expanded: picking }}
               onPress={() => setPicking(!picking)}
               style={({ pressed }) => ({
@@ -659,7 +659,7 @@ export function ChatScreen({
               </Text>
             </Pressable>
             <TextInput
-              accessibilityLabel="Message OpenMuse"
+              accessibilityLabel="OpenMuse에 메시지 보내기"
               value={draft}
               onChangeText={setDraft}
               onContentSizeChange={(event) =>
@@ -667,12 +667,12 @@ export function ChatScreen({
               }
               placeholder={
                 !isReady
-                  ? "Connecting…"
+                  ? "연결 중…"
                   : !loaded
                     ? historyError
-                      ? "Conversation unavailable"
-                      : "Loading conversation…"
-                    : "Message…"
+                      ? "대화를 사용할 수 없습니다"
+                      : "대화를 불러오는 중…"
+                    : "메시지 입력…"
               }
               placeholderTextColor={colors.subtle}
               selectionColor={colors.blueDark}
@@ -708,7 +708,7 @@ export function ChatScreen({
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={replying ? "Stop reply" : "Send message"}
+              accessibilityLabel={replying ? "답변 중지" : "메시지 전송"}
               disabled={!replying && (!draft.trim() || !loaded || !isReady)}
               onPress={replying ? () => void stop() : send}
               style={({ pressed }) => ({

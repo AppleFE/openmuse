@@ -44,6 +44,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
+import { UI_LOCALE } from "./src/locale";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThemeProvider, useTheme } from "./src/theme";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
@@ -51,28 +52,28 @@ import { Button, Card, colors, ErrorNotice, Field, IconButton, Mascot, s } from 
 import { type Detail, useWorkspace, WorkspaceContext } from "./src/workspace";
 
 const nav: { id: Section; label: string; icon: LucideIcon }[] = [
-  { id: "chat", label: "Chat", icon: MessageCircle },
-  { id: "activity", label: "Activity", icon: PanelsTopLeft },
-  { id: "ideas", label: "Ideas", icon: Lightbulb },
-  { id: "goals", label: "Goals", icon: SquareCheck },
-  { id: "apps", label: "Apps", icon: Shapes },
+  { id: "chat", label: "대화", icon: MessageCircle },
+  { id: "activity", label: "활동", icon: PanelsTopLeft },
+  { id: "ideas", label: "아이디어", icon: Lightbulb },
+  { id: "goals", label: "목표", icon: SquareCheck },
+  { id: "apps", label: "앱", icon: Shapes },
 ];
 const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
-  activity: { title: "Activity", subtitle: "Plans, progress, decisions and results." },
-  ideas: { title: "Ideas", subtitle: "Useful next steps, grounded in your world." },
+  activity: { title: "활동", subtitle: "계획, 진행 상황, 결정과 결과를 확인하세요." },
+  ideas: { title: "아이디어", subtitle: "연결된 정보를 바탕으로 다음 할 일을 제안합니다." },
   goals: {
-    title: "Goals",
-    subtitle: "Longer-term goals and things to keep an eye on.",
+    title: "목표",
+    subtitle: "장기 목표와 관심 있는 일을 관리하세요.",
   },
   apps: {
-    title: "Apps",
-    subtitle: "Connections, capabilities and what your agent remembers.",
+    title: "앱",
+    subtitle: "연결된 앱, 사용 가능한 기능과 에이전트의 기억을 관리하세요.",
   },
-  connections: { title: "Apps", subtitle: "Connections and capabilities." },
-  mail: { title: "Mail", subtitle: "The conversations behind your work." },
-  calendar: { title: "Calendar", subtitle: "Time for what matters." },
-  browser: { title: "Browser", subtitle: "Your connected browsing sessions." },
-  files: { title: "Files", subtitle: "Documents, forms and filled copies." },
+  connections: { title: "앱", subtitle: "연결된 앱과 사용 가능한 기능을 관리하세요." },
+  mail: { title: "메일", subtitle: "업무에 필요한 메일을 확인하세요." },
+  calendar: { title: "일정", subtitle: "중요한 일을 위한 시간을 마련하세요." },
+  browser: { title: "브라우저", subtitle: "저장된 브라우저 세션을 확인하세요." },
+  files: { title: "파일", subtitle: "문서, 양식과 작성한 사본을 관리하세요." },
 };
 export default function App() {
   return (
@@ -83,6 +84,11 @@ export default function App() {
 }
 function MuseApp() {
   const { resolved } = useTheme();
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.documentElement.lang = UI_LOCALE;
+    }
+  }, []);
   const [token, setToken] = useState("");
   const [accessKey, setAccessKey] = useState("");
   const [busy, setBusy] = useState(true);
@@ -142,27 +148,26 @@ function MuseApp() {
             <Text
               style={{ fontSize: 32, color: colors.text, letterSpacing: -1, fontWeight: "500" }}
             >
-              Welcome to OpenMuse.
+              OpenMuse에 오신 것을 환영합니다.
             </Text>
-            <Text style={[s.muted, { textAlign: "center" }]}>A little room for your day.</Text>
+            <Text style={[s.muted, { textAlign: "center" }]}>하루에 여유를 더하세요.</Text>
             {busy ? (
               <ActivityIndicator color={colors.blueDark} />
             ) : (
               <Card style={{ width: "100%" }}>
                 <ErrorNotice error={error} />
                 <Field
-                  label="Workspace access key"
+                  label="워크스페이스 접속 키"
                   value={accessKey}
                   onChangeText={setAccessKey}
                   secureTextEntry
-                  placeholder="Required when the server is protected"
+                  placeholder="서버에 설정된 접속 키를 입력하세요"
                 />
                 <Button primary onPress={() => void connect(accessKey || undefined)}>
-                  Open workspace
+                  워크스페이스 열기
                 </Button>
                 <Text style={[s.small, { marginTop: 15 }]}>
-                  Local workspaces open without a key unless their owner enabled protection. Make
-                  sure your OpenMuse server is running at {API_URL}.
+                  접속 보호가 설정된 서버에는 접속 키가 필요합니다. OpenMuse 서버 주소: {API_URL}.
                 </Text>
               </Card>
             )}
@@ -227,13 +232,13 @@ function WorkspaceApp({ token, onUnauthorized }: { token: string; onUnauthorized
           <>
             <ErrorNotice error={error} />
             <Button onPress={() => void refresh().catch((e) => setError(String(e)))}>
-              Try again
+              다시 시도
             </Button>
           </>
         ) : (
           <>
             <ActivityIndicator color={colors.blueDark} />
-            <Text style={s.muted}>Opening your workspace…</Text>
+            <Text style={s.muted}>워크스페이스를 여는 중…</Text>
           </>
         )}
       </SafeAreaView>
@@ -297,13 +302,13 @@ function WorkspaceShell({
   const agentName = data?.identity.name || "OpenMuse";
   const status = activeTask
     ? activeTask.status === "waiting_approval"
-      ? `Ready to review · ${activeTask.title}`
+      ? `검토 준비됨 · ${activeTask.title}`
       : activeTask.status === "waiting_input"
-        ? `Needs your input · ${activeTask.title}`
+        ? `입력 필요 · ${activeTask.title}`
         : activeTask.plan.find((step) => step.status === "running")?.title || activeTask.title
     : data?.tasks.some((task) => task.status === "queued")
-      ? "Picking up your next task…"
-      : "Here when you need me";
+      ? "다음 작업을 준비하는 중…"
+      : "필요할 때 언제든 도와드릴게요";
   const title = titles[section] || titles.apps;
   const Screen =
     section === "mail"
@@ -337,14 +342,14 @@ function WorkspaceShell({
             <View style={{ position: "absolute", left: 0, top: 16 }}>
               <IconButton
                 icon={Menu}
-                label="Open conversations and menu"
+                label="대화 목록과 메뉴 열기"
                 onPress={() => setThreadsOpen(true)}
               />
             </View>
             <View pointerEvents="box-none" style={{ alignItems: "center", gap: 1 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Open ${agentName} activity and approvals`}
+                accessibilityLabel={`열기: ${agentName} 활동과 승인 요청`}
                 onPress={() => navigate("activity")}
                 style={({ pressed }) => ({
                   alignItems: "center",
@@ -375,7 +380,7 @@ function WorkspaceShell({
             <View style={{ position: "absolute", right: 0, top: 16 }}>
               <IconButton
                 icon={Bell}
-                label={`Notifications, ${pending} unread or pending`}
+                label={`알림, ${pending}개 읽지 않음 또는 대기 중`}
                 onPress={() => open({ type: "notifications" })}
               />
               {pending > 0 && (
@@ -408,7 +413,7 @@ function WorkspaceShell({
                     style={{ alignSelf: "flex-start", marginBottom: 18 }}
                     onPress={() => navigate("apps")}
                   >
-                    Back to Apps
+                    앱으로 돌아가기
                   </Button>
                 )}
                 <Text style={[s.title, { fontSize: 25, marginBottom: 22 }]}>{title?.title}</Text>
@@ -418,7 +423,7 @@ function WorkspaceShell({
                     <AppsScreen />
                     {Platform.OS === "web" && (
                       <Button danger style={{ marginTop: 18 }} onPress={onSignOut}>
-                        Sign out
+                        로그아웃
                       </Button>
                     )}
                   </>
@@ -437,12 +442,12 @@ function WorkspaceShell({
               <AgentStatus />
               <ErrorNotice error={threadsError} />
               {threadsError ? (
-                <Button onPress={retryThreads}>Retry main chat</Button>
+                <Button onPress={retryThreads}>기본 대화 다시 연결</Button>
               ) : threadsLoading ? (
                 <ActivityIndicator color={colors.blueDark} />
               ) : null}
               {!threadsLoading && selection.id !== mainId && (
-                <Text style={[s.small, { textAlign: "center", marginBottom: 8 }]}>Side chat</Text>
+                <Text style={[s.small, { textAlign: "center", marginBottom: 8 }]}>별도 대화</Text>
               )}
               {visited.map((thread) => (
                 <View
@@ -531,7 +536,7 @@ function WorkspaceShell({
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Dismiss notification"
+                accessibilityLabel="알림 닫기"
                 onPress={clearToast}
               >
                 <X size={16} color={colors.inverseText} />

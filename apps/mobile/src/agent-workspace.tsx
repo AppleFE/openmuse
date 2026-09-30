@@ -92,6 +92,6 @@ export function AgentWorkspaceProvider({ children }: { children: ReactNode }) {
 }
 export function useAgentWorkspace() {
   const context = useContext(AgentContext);
-  if (!context) throw new Error("Agent workspace is unavailable");
+  if (!context) throw new Error("에이전트 워크스페이스를 사용할 수 없습니다");
   return context;
 }

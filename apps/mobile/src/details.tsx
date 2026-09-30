@@ -38,6 +38,7 @@ import { browserAddress, browserSite } from "./browser-address";
 import { ComputerSheet } from "./computer";
 import DateTimeEditor from "./DateTimeEditor";
 import { localDateTime, zonedInstant } from "./date-time";
+import { UI_LOCALE, uiLabel } from "./locale";
 import PdfReader from "./PdfReader";
 import {
   Button,
@@ -71,14 +72,14 @@ export function Details({ detail }: { detail: Detail }) {
   if (detail.type === "review") return <ReviewDetail initial={detail.action} />;
   if (detail.type === "browser") return <BrowserDetail initial={detail.browser} />;
   return (
-    <Sheet title="Your workspace" subtitle="A little room for everything." onClose={close}>
+    <Sheet title="내 워크스페이스" subtitle="모든 일을 위한 여유로운 공간." onClose={close}>
       {[
-        { section: "mail" as const, title: "Mail", icon: MailIcon },
-        { section: "calendar" as const, title: "Calendar", icon: CalendarDays },
-        { section: "browser" as const, title: "Browser", icon: Globe2 },
-        { section: "files" as const, title: "Files", icon: FileText },
-        { section: "activity" as const, title: "Activity", icon: Clock3 },
-        { section: "connections" as const, title: "Connections", icon: ShieldCheck },
+        { section: "mail" as const, title: "메일", icon: MailIcon },
+        { section: "calendar" as const, title: "일정", icon: CalendarDays },
+        { section: "browser" as const, title: "브라우저", icon: Globe2 },
+        { section: "files" as const, title: "파일", icon: FileText },
+        { section: "activity" as const, title: "활동", icon: Clock3 },
+        { section: "connections" as const, title: "연결", icon: ShieldCheck },
       ].map((item) => (
         <LinkRow
           key={item.section}
@@ -135,13 +136,13 @@ function MailDetail({ mail: m }: { mail: Mail }) {
   return (
     <Sheet
       title={m.subject}
-      subtitle={`${thread.length} message${thread.length === 1 ? "" : "s"} in this conversation`}
+      subtitle={`${thread.length}개 메시지가 있는 메일 대화`}
       onClose={close}
     >
       {loading && (
         <View style={[s.row, { gap: 10, paddingBottom: 20 }]}>
           <ActivityIndicator color={colors.blueDark} />
-          <Text style={s.muted}>Loading the conversation…</Text>
+          <Text style={s.muted}>대화를 불러오는 중…</Text>
         </View>
       )}
       {thread.map((message) => (
@@ -150,7 +151,7 @@ function MailDetail({ mail: m }: { mail: Mail }) {
             <View style={{ gap: 4, flex: 1 }}>
               <Text style={s.heading}>{message.sender}</Text>
               <Text style={s.small}>{message.from}</Text>
-              <Text style={s.small}>To: {message.to.join(", ")}</Text>
+              <Text style={s.small}>받는 사람: {message.to.join(", ")}</Text>
             </View>
             <Text style={s.small}>
               {dateLabel(message.date)} · {timeLabel(message.date)}
@@ -166,7 +167,7 @@ function MailDetail({ mail: m }: { mail: Mail }) {
               <LinkRow
                 key={id}
                 title={file.name}
-                detail={`${file.pageCount} pages · PDF attachment`}
+                detail={`${file.pageCount}페이지 · PDF 첨부 파일`}
                 icon={FileText}
                 onPress={() => open({ type: "file", file })}
               />
@@ -177,14 +178,14 @@ function MailDetail({ mail: m }: { mail: Mail }) {
                 icon={FileText}
                 onPress={() => void importAttachment(id)}
               >
-                {decodeURIComponent(id.split(":").slice(2).join(":")) || "Open attachment"}
+                {decodeURIComponent(id.split(":").slice(2).join(":")) || "첨부 파일 열기"}
               </Button>
             );
           })}
         </Card>
       ))}
       <ErrorNotice error={error} />
-      {!!error && <Button onPress={() => setRetry(retry + 1)}>Reload conversation</Button>}
+      {!!error && <Button onPress={() => setRetry(retry + 1)}>대화 새로고침</Button>}
       <Button
         primary
         icon={Reply}
@@ -205,7 +206,7 @@ function MailDetail({ mail: m }: { mail: Mail }) {
           })
         }
       >
-        Write a reply
+        답장 작성
       </Button>
     </Sheet>
   );
@@ -257,7 +258,7 @@ function EmailEditor({ draft }: { draft?: Partial<EmailDraft> & { id?: string } 
           ...(draft?.id ? { id: draft.id } : {}),
         });
         await refresh();
-        notify("Draft saved in OpenMuse.");
+        notify("OpenMuse에 초안을 저장했습니다.");
         close();
       }
     } catch (e) {
@@ -268,12 +269,12 @@ function EmailEditor({ draft }: { draft?: Partial<EmailDraft> & { id?: string } 
   }
   return (
     <Sheet
-      title={draft?.threadId ? "Write a reply" : "A new message"}
-      subtitle={`From ${w.profile.email} · saved privately in OpenMuse`}
+      title={draft?.threadId ? "답장 작성" : "새 메일"}
+      subtitle={`출처: ${w.profile.email} · OpenMuse에 비공개 저장됨`}
       onClose={close}
     >
       <Field
-        label="To"
+        label="받는 사람"
         value={to}
         onChangeText={setTo}
         placeholder="person@example.com"
@@ -283,40 +284,40 @@ function EmailEditor({ draft }: { draft?: Partial<EmailDraft> & { id?: string } 
       <View style={{ flexDirection: "row", gap: 16 }}>
         <View style={{ flex: 1 }}>
           <Field
-            label="Cc"
+            label="참조"
             value={cc}
             onChangeText={setCc}
-            placeholder="Optional"
+            placeholder="선택 사항"
             autoCapitalize="none"
           />
         </View>
         <View style={{ flex: 1 }}>
           <Field
-            label="Bcc"
+            label="숨은 참조"
             value={bcc}
             onChangeText={setBcc}
-            placeholder="Optional"
+            placeholder="선택 사항"
             autoCapitalize="none"
           />
         </View>
       </View>
       <Field
-        label="Subject"
+        label="제목"
         value={subject}
         onChangeText={setSubject}
-        placeholder="What’s on your mind?"
+        placeholder="어떤 내용을 전할까요?"
       />
       <Field
-        label="Message"
+        label="메시지"
         value={body}
         onChangeText={setBody}
         multiline
-        placeholder="Start your message…"
+        placeholder="메시지를 입력하세요…"
         style={{ minHeight: 210 }}
       />
       {w.files.length > 0 && (
         <Card style={{ padding: 16, marginBottom: 18 }}>
-          <Text style={[s.heading, { fontSize: 13, marginBottom: 5 }]}>Attachments</Text>
+          <Text style={[s.heading, { fontSize: 13, marginBottom: 5 }]}>첨부 파일</Text>
           {w.files.map((f) => (
             <CheckRow
               key={f.id}
@@ -342,7 +343,7 @@ function EmailEditor({ draft }: { draft?: Partial<EmailDraft> & { id?: string } 
           disabled={!!busy}
           onPress={() => void save(true)}
         >
-          Review email
+          메일 검토
         </Button>
         <Button
           icon={Save}
@@ -350,11 +351,11 @@ function EmailEditor({ draft }: { draft?: Partial<EmailDraft> & { id?: string } 
           disabled={!!busy}
           onPress={() => void save(false)}
         >
-          Save draft
+          초안 저장
         </Button>
       </View>
       <Text style={[s.small, { marginTop: 13 }]}>
-        You’ll review the exact recipients, message, and attachments before anything is sent.
+        전송 전에 받는 사람, 메시지와 첨부 파일을 확인할 수 있습니다.
       </Text>
     </Sheet>
   );
@@ -437,20 +438,18 @@ function EventEditor({
   }
   return (
     <Sheet
-      title={e ? "Make a little time" : "Something to look forward to"}
-      subtitle={
-        e ? "Edit this event, then review your changes." : "Create an event in your calendar."
-      }
+      title={e ? "시간 마련하기" : "기대할 만한 일정"}
+      subtitle={e ? "일정을 수정한 뒤 변경 내용을 검토하세요." : "캘린더에 일정을 추가하세요."}
       onClose={close}
     >
       <Field
-        label="Event title"
+        label="일정 제목"
         value={title}
         onChangeText={setTitle}
-        placeholder="What are you making time for?"
+        placeholder="어떤 일을 위한 시간인가요?"
       />
       <CheckRow
-        label="All-day event"
+        label="종일 일정"
         checked={allDay}
         onPress={() => {
           try {
@@ -472,46 +471,41 @@ function EventEditor({
         }}
       />
       <DateTimeEditor
-        label="Starts"
+        label="시작"
         value={start}
         onChange={setStart}
         timeZone={zone}
         allDay={allDay}
       />
-      <DateTimeEditor label="Ends" value={end} onChange={setEnd} timeZone={zone} allDay={allDay} />
+      <DateTimeEditor label="종료" value={end} onChange={setEnd} timeZone={zone} allDay={allDay} />
       {allDay && (
         <Text style={[s.small, { marginBottom: 15 }]}>
-          The end date is the day after the last day of your event.
+          종료 날짜는 일정의 마지막 날 다음 날입니다.
         </Text>
       )}
+      <Field label="시간대" value={zone} onChangeText={setZone} placeholder="America/Los_Angeles" />
       <Field
-        label="Time zone"
-        value={zone}
-        onChangeText={setZone}
-        placeholder="America/Los_Angeles"
-      />
-      <Field
-        label="Location or meeting link"
+        label="장소 또는 회의 링크"
         value={location}
         onChangeText={setLocation}
-        placeholder="Optional"
+        placeholder="선택 사항"
       />
       <Field
-        label="Attendees"
+        label="참석자"
         value={attendees}
         onChangeText={setAttendees}
-        placeholder="Email addresses, separated by commas"
+        placeholder="이메일 주소를 쉼표로 구분하세요"
       />
       <Field
-        label="Notes"
+        label="메모"
         value={description}
         onChangeText={setDescription}
         multiline
-        placeholder="Anything else to keep in mind?"
+        placeholder="기억할 내용을 입력하세요"
       />
       {!!conflicts.length && (
         <Card style={{ backgroundColor: colors.orange, padding: 16, marginBottom: 16 }}>
-          <Text style={s.heading}>This time overlaps</Text>
+          <Text style={s.heading}>시간이 겹칩니다</Text>
           {conflicts.map((c) => (
             <Text key={c.id} style={s.muted}>
               {c.title} · {timeLabel(c.start, c.timeZone)}–{timeLabel(c.end, c.timeZone)}
@@ -522,11 +516,11 @@ function EventEditor({
       <ErrorNotice error={error} />
       <View style={[s.row, { gap: 10, flexWrap: "wrap" }]}>
         <Button primary icon={ShieldCheck} busy={busy} onPress={() => void propose()}>
-          Review {e ? "changes" : "event"}
+          검토 {e ? "changes" : "event"}
         </Button>
         {e && (
           <Button icon={Trash2} disabled={busy} danger onPress={() => void propose(true)}>
-            Review deletion
+            삭제 검토
           </Button>
         )}
       </View>
@@ -570,7 +564,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
         if (action.kind === "calendar.update") {
           const eventId = action.data.eventId;
           if (typeof eventId !== "string" || !eventId)
-            throw new Error("The event reference is missing. Open the event in Calendar again.");
+            throw new Error("일정 참조 정보가 없습니다. 일정에서 다시 여세요.");
           next = { type: "event", event: { ...draft, id: eventId } };
         } else next = { type: "event", draft };
       }
@@ -589,11 +583,11 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
   const email = action.kind === "email.send";
   return (
     <Sheet
-      title={pending ? "One last look" : action.title}
+      title={pending ? "마지막 확인" : action.title}
       subtitle={
         w.mode === "sample"
-          ? "This action stays in your local workspace."
-          : "Review this exact action before it changes your connected account."
+          ? "이 작업은 로컬 워크스페이스 안에서만 처리됩니다."
+          : "연결된 계정을 변경하기 전에 작업 내용을 확인하세요."
       }
       onClose={close}
     >
@@ -610,39 +604,39 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
         </Chip>
       </View>
       <Card style={{ gap: 13 }}>
-        <ReviewLine label="Account" value={action.account || w.profile.email} />
+        <ReviewLine label="계정" value={action.account || w.profile.email} />
         {email ? (
           <>
-            <ReviewLine label="To" value={arrayText(d.to)} />
-            <ReviewLine label="Cc" value={arrayText(d.cc) || "None"} />
-            <ReviewLine label="Bcc" value={arrayText(d.bcc) || "None"} />
-            <ReviewLine label="Subject" value={String(d.subject || "")} />
+            <ReviewLine label="받는 사람" value={arrayText(d.to)} />
+            <ReviewLine label="참조" value={arrayText(d.cc) || "없음"} />
+            <ReviewLine label="숨은 참조" value={arrayText(d.bcc) || "없음"} />
+            <ReviewLine label="제목" value={String(d.subject || "")} />
             <View style={s.divider} />
             <Text selectable style={[s.text, { lineHeight: 25 }]}>
               {String(d.body || "")}
             </Text>
             <View style={s.divider} />
-            <Text style={s.label}>Attachments</Text>
+            <Text style={s.label}>첨부 파일</Text>
             {Array.isArray(d.attachmentIds) && d.attachmentIds.length ? (
               d.attachmentIds.map((id) => {
                 const file = w.files.find((f) => f.id === id);
                 return (
                   <Text key={String(id)} style={s.text}>
-                    {file?.name || String(id)} · version {String(id).slice(-8)}
+                    {file?.name || String(id)} · 버전 {String(id).slice(-8)}
                   </Text>
                 );
               })
             ) : (
-              <Text style={s.muted}>No attachments</Text>
+              <Text style={s.muted}>첨부 파일 없음</Text>
             )}
           </>
         ) : (
           <>
-            <ReviewLine label="Event" value={String(d.title || "")} />
+            <ReviewLine label="일정" value={String(d.title || "")} />
             {action.kind !== "calendar.delete" && (
               <>
                 <ReviewLine
-                  label="Starts"
+                  label="시작"
                   value={
                     d.allDay
                       ? String(d.start || "")
@@ -650,25 +644,25 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
                   }
                 />
                 <ReviewLine
-                  label="Ends"
+                  label="종료"
                   value={
                     d.allDay
                       ? `${String(d.end || "")} (exclusive)`
                       : `${dateLabel(String(d.end || ""), { year: "numeric", month: "short", day: "numeric", timeZone: String(d.timeZone || "UTC") })} · ${timeLabel(String(d.end || ""), String(d.timeZone || "UTC"))}`
                   }
                 />
-                <ReviewLine label="Time zone" value={String(d.timeZone || "")} />
-                <ReviewLine label="All day" value={d.allDay ? "Yes" : "No"} />
-                <ReviewLine label="Location" value={String(d.location || "None")} />
-                <ReviewLine label="Attendees" value={arrayText(d.attendees) || "Just you"} />
-                <ReviewLine label="Notes" value={String(d.description || "None")} />
+                <ReviewLine label="시간대" value={String(d.timeZone || "")} />
+                <ReviewLine label="종일" value={d.allDay ? "예" : "아니요"} />
+                <ReviewLine label="장소" value={String(d.location || "없음")} />
+                <ReviewLine label="참석자" value={arrayText(d.attendees) || "나만 참석"} />
+                <ReviewLine label="메모" value={String(d.description || "없음")} />
               </>
             )}
-            <ReviewLine label="Calendar" value={String(d.calendarId || "primary")} />
+            <ReviewLine label="일정" value={String(d.calendarId || "primary")} />
             <Text style={s.small}>
               {action.kind === "calendar.delete"
-                ? "This removes the event and may notify its attendees."
-                : "Attendees may receive an invitation or update from your connected calendar."}
+                ? "일정을 삭제하며 참석자에게 알림이 전송될 수 있습니다."
+                : "연결된 캘린더에서 참석자에게 초대나 변경 알림을 보낼 수 있습니다."}
             </Text>
           </>
         )}
@@ -684,8 +678,8 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
       {pending ? (
         <>
           <Text style={[s.small, { marginVertical: 17 }]}>
-            Review expires{" "}
-            {new Date(action.expiresAt).toLocaleString(undefined, {
+            검토 만료:{" "}
+            {new Date(action.expiresAt).toLocaleString(UI_LOCALE, {
               year: "numeric",
               month: "short",
               day: "numeric",
@@ -693,29 +687,25 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
               minute: "2-digit",
               timeZoneName: "short",
             })}
-            . Your approval applies only to the details shown above.
+            . 승인은 위에 표시된 내용에만 적용됩니다.
           </Text>
           <View style={[s.row, { gap: 10, flexWrap: "wrap" }]}>
             <Button primary icon={Check} busy={busy} onPress={() => void decide("approve")}>
-              {w.mode === "sample"
-                ? "Approve locally"
-                : email
-                  ? "Approve & send"
-                  : "Approve change"}
+              {w.mode === "sample" ? "로컬에서 승인" : email ? "승인하고 전송" : "변경 승인"}
             </Button>
             {action.kind !== "calendar.delete" && (
               <Button icon={Edit3} disabled={busy} onPress={() => void edit()}>
-                Edit details
+                세부 내용 수정
               </Button>
             )}
             <Button icon={X} disabled={busy} onPress={() => void decide("deny")}>
-              Don’t proceed
+              진행하지 않기
             </Button>
           </View>
         </>
       ) : (
         <Button style={{ alignSelf: "flex-start", marginTop: 19 }} onPress={close}>
-          Done
+          완료
         </Button>
       )}
     </Sheet>
@@ -775,7 +765,7 @@ function FileDetail({ file: f }: { file: Artifact }) {
       });
       if (await Sharing.isAvailableAsync())
         await Sharing.shareAsync(target, { mimeType: "application/pdf", UTI: "com.adobe.pdf" });
-      else throw new Error("Sharing is not available on this device.");
+      else throw new Error("이 기기에서는 공유할 수 없습니다.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -783,32 +773,32 @@ function FileDetail({ file: f }: { file: Artifact }) {
   return (
     <Sheet
       title={f.name}
-      subtitle={`${f.pageCount} pages · ${Math.max(1, Math.round(f.size / 1024))} KB · ${f.source}`}
+      subtitle={`${f.pageCount}페이지 · ${Math.max(1, Math.round(f.size / 1024))} KB · ${f.source}`}
       onClose={close}
       wide
     >
       <PdfReader url={url} token={api.token} pageCount={f.pageCount} />
       <View style={[s.row, { gap: 10, marginVertical: 18, flexWrap: "wrap" }]}>
         <Button icon={Download} onPress={() => void share()}>
-          {Platform.OS === "web" ? "Open / download" : "Save or share"}
+          {Platform.OS === "web" ? "열기 / 다운로드" : "저장 또는 공유"}
         </Button>
         <Button
           icon={Send}
           onPress={() => open({ type: "email", draft: { attachmentIds: [f.id] } })}
         >
-          Attach to email
+          메일에 첨부
         </Button>
       </View>
       {f.fields && f.fields.length > 0 && (
         <Card>
-          <SectionHeading title="Fill this form" />
+          <SectionHeading title="양식 작성" />
           <Text style={[s.muted, { marginBottom: 18 }]}>
-            Add your details below. Saving creates a new copy and keeps the original intact.
+            정보를 입력하세요. 저장하면 원본을 유지한 채 새 사본을 만듭니다.
           </Text>
           {f.fields.map((field) =>
             field.type === "unsupported" ? (
               <Text key={field.name} style={s.muted}>
-                {field.name} · this field type is not supported
+                {field.name} · 지원하지 않는 필드 형식
               </Text>
             ) : field.type === "checkbox" ? (
               <CheckRow
@@ -827,14 +817,14 @@ function FileDetail({ file: f }: { file: Artifact }) {
             ),
           )}
           <Button primary icon={Save} busy={busy} onPress={() => void fill()}>
-            Save filled copy
+            작성한 사본 저장
           </Button>
         </Card>
       )}
       <ErrorNotice error={error} />
       <Text style={[s.small, { marginTop: 15 }]}>
-        Added {dateLabel(f.createdAt)}
-        {f.parentId ? " · filled copy" : ""}
+        추가됨 {dateLabel(f.createdAt)}
+        {f.parentId ? " · 작성한 사본" : ""}
       </Text>
     </Sheet>
   );
@@ -888,8 +878,8 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
       const files = result.files;
       notify(
         files.length
-          ? `${files.length} PDF download${files.length === 1 ? "" : "s"} added to Files.`
-          : "No new PDF downloads in this session.",
+          ? `다운로드한 PDF ${files.length}개를 파일에 추가했습니다.`
+          : "이 세션에 새 PDF 다운로드가 없습니다.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -919,14 +909,14 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
   return (
     <Sheet
       title={browserSite(browser.url)}
-      subtitle={`${browser.status} · updated ${timeLabel(browser.updatedAt)}`}
+      subtitle={`${uiLabel(browser.status)} · 업데이트: ${timeLabel(browser.updatedAt)}`}
       onClose={close}
       wide
     >
       <View style={[s.row, { gap: 10, marginBottom: 16 }]}>
         <View style={{ flex: 1 }}>
           <Field
-            label="Website address"
+            label="웹사이트 주소"
             value={url}
             onChangeText={setUrl}
             autoCapitalize="none"
@@ -935,18 +925,22 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
           />
         </View>
         <Button primary busy={busy} disabled={loading || !url.trim()} onPress={() => void mutate()}>
-          {browser.status === "closed" ? "Reopen" : browser.status === "error" ? "Reconnect" : "Go"}
+          {browser.status === "closed"
+            ? "다시 열기"
+            : browser.status === "error"
+              ? "다시 연결"
+              : "이동"}
         </Button>
       </View>
       <ErrorNotice error={error} />
       {loading ? (
         <View style={[s.row, { gap: 10, paddingVertical: 24 }]}>
           {error ? (
-            <Button onPress={() => setRetry(retry + 1)}>Retry connection</Button>
+            <Button onPress={() => setRetry(retry + 1)}>다시 연결</Button>
           ) : (
             <>
               <ActivityIndicator color={colors.blueDark} />
-              <Text style={s.muted}>Connecting to your browser…</Text>
+              <Text style={s.muted}>브라우저에 연결하는 중…</Text>
             </>
           )}
         </View>
@@ -961,13 +955,11 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
       ) : (
         <Empty
           icon={Globe2}
-          title={
-            browser.status === "closed" ? "This session is closed" : "Preview is not available"
-          }
+          title={browser.status === "closed" ? "닫힌 세션입니다" : "미리 보기를 사용할 수 없습니다"}
           detail={
             browser.status === "closed"
-              ? "Your profile and downloads are saved. Reopen to continue where you left off."
-              : "Reconnect to continue with your saved browser profile."
+              ? "프로필과 다운로드가 저장됐습니다. 다시 열어 이어서 작업하세요."
+              : "다시 연결하여 저장된 브라우저 프로필로 계속하세요."
           }
         />
       )}
@@ -977,22 +969,22 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
             icon={ExternalLink}
             onPress={() => void Linking.openURL(api.url(browser.consoleUrl || ""))}
           >
-            Open browser in a window
+            브라우저를 새 창에서 열기
           </Button>
         )}
         {!loading && (
           <Button icon={RotateCw} disabled={busy} onPress={() => setRetry(retry + 1)}>
-            Refresh connection
+            연결 새로고침
           </Button>
         )}
         {!loading && browser.status !== "closed" && (
           <Button icon={Download} busy={busy} onPress={() => void importDownloads()}>
-            Import PDF downloads
+            다운로드한 PDF 가져오기
           </Button>
         )}
         {!loading && browser.status !== "closed" && (
           <Button icon={X} danger busy={busy} onPress={() => void mutate(true)}>
-            Close session
+            세션 닫기
           </Button>
         )}
       </View>

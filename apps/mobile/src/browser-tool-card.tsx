@@ -24,11 +24,11 @@ function resultValue(result: unknown) {
 }
 
 function siteLabel(url: unknown) {
-  if (typeof url !== "string") return "Opening a page";
+  if (typeof url !== "string") return "페이지를 여는 중";
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
-    return "Opening a page";
+    return "페이지를 여는 중";
   }
 }
 
@@ -89,7 +89,7 @@ export function BrowserToolCard({
   const failure = toolError.success
     ? toolError.data.error
     : !loading && !visited
-      ? "The browser did not return a page. Try your request again."
+      ? "브라우저가 페이지를 반환하지 않았습니다. 다시 요청하세요."
       : "";
   return (
     <Card
@@ -106,26 +106,26 @@ export function BrowserToolCard({
           <Globe2 size={21} color={colors.blueDark} />
         </View>
         <View style={{ flex: 1, gap: 1 }}>
-          <Text style={[s.text, { fontWeight: "600" }]}>Browser</Text>
+          <Text style={[s.text, { fontWeight: "600" }]}>브라우저</Text>
           <Text numberOfLines={1} style={[s.small, { fontSize: 12 }]}>
             {working
-              ? "Reading the page…"
+              ? "페이지를 읽는 중…"
               : loading
-                ? "Browsing paused"
+                ? "브라우저 탐색 일시 중지"
                 : failure
-                  ? "Couldn’t read the page"
+                  ? "페이지를 읽을 수 없습니다"
                   : siteLabel(visited?.url)}
           </Text>
         </View>
         {working ? (
           <ActivityIndicator size="small" color={colors.blueDark} />
         ) : visited ? (
-          <Check size={17} color="#47896C" accessibilityLabel="Page read" />
+          <Check size={17} color="#47896C" accessibilityLabel="페이지 읽기 완료" />
         ) : null}
       </View>
       {preview ? (
         <Image
-          accessibilityLabel={`Browser preview: ${visited?.title}`}
+          accessibilityLabel={`브라우저 미리 보기: ${visited?.title}`}
           source={{ uri: api.url(preview) }}
           style={{
             width: "100%",
@@ -153,14 +153,14 @@ export function BrowserToolCard({
           ) : visited ? (
             <Text style={s.small}>
               {browser && browser.url !== visited.url
-                ? "Page visited. The browser has moved on."
+                ? "방문한 페이지입니다. 브라우저는 다른 페이지로 이동했습니다."
                 : browser?.status === "closed"
-                  ? "Session saved. Take control to reopen it."
+                  ? "세션이 저장됐습니다. 직접 제어하여 다시 열 수 있습니다."
                   : browser?.status === "error"
-                    ? "Session needs attention. Take control to reconnect."
+                    ? "세션을 확인해야 합니다. 직접 제어하여 다시 연결하세요."
                     : previewFailed
-                      ? "Preview unavailable. You can still take control."
-                      : "Connecting to the saved session…"}
+                      ? "미리 보기를 사용할 수 없습니다. 직접 제어할 수는 있습니다."
+                      : "저장된 세션에 연결하는 중…"}
             </Text>
           ) : null}
         </View>
@@ -173,12 +173,12 @@ export function BrowserToolCard({
           onPress={() => browser && open({ type: "browser", browser })}
           style={{ backgroundColor: colors.card, minHeight: 38, paddingVertical: 8 }}
         >
-          Take control
+          직접 제어
         </Button>
       )}
       {!!error && (
         <Button small icon={RotateCw} onPress={() => setRetry((attempt) => attempt + 1)}>
-          Reconnect preview
+          미리 보기 다시 연결
         </Button>
       )}
     </Card>

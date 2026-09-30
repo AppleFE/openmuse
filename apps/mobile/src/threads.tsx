@@ -265,7 +265,7 @@ export function ThreadsProvider({ children }: { children: ReactNode }) {
 
 export function useMuseThread() {
   const context = useContext(ThreadContext);
-  if (!context) throw new Error("Threads provider is unavailable");
+  if (!context) throw new Error("대화 기록을 사용할 수 없습니다");
   return context;
 }
 
@@ -315,7 +315,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
   return (
     <Sheet
       title="OpenMuse"
-      subtitle={workspace.mode === "sample" ? "Your workspace" : workspace.profile.name}
+      subtitle={workspace.mode === "sample" ? "내 워크스페이스" : workspace.profile.name}
       onClose={onClose}
     >
       <View style={{ gap: 14 }}>
@@ -323,7 +323,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
           <>
             <ErrorNotice error={mainError} />
             {mainError ? (
-              <Button onPress={retry}>Retry main chat</Button>
+              <Button onPress={retry}>기본 대화 다시 연결</Button>
             ) : (
               <ActivityIndicator color={colors.blueDark} />
             )}
@@ -332,8 +332,8 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
           <>
             <LinkRow
               icon={MessageCircle}
-              title="Main chat"
-              detail="Your ongoing conversation"
+              title="기본 대화"
+              detail="계속 이어가는 대화"
               onPress={() => {
                 select({ id: mainId, existing: true });
                 onClose();
@@ -350,19 +350,19 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                 })
               }
             >
-              New side chat
+              새 별도 대화
             </Button>
             <View style={[s.between, { marginTop: 12 }]}>
-              <Text style={s.heading}>Side chats</Text>
+              <Text style={s.heading}>별도 대화</Text>
               <Button small onPress={() => setArchived(!archived)}>
-                {archived ? "Show active" : "Archived"}
+                {archived ? "활성 대화 보기" : "보관함"}
               </Button>
             </View>
             {isLoading && <ActivityIndicator color={colors.blueDark} />}
             <ErrorNotice error={error || threadsError} />
             {!!threadsError && (
               <Button small onPress={refetch}>
-                Retry conversations
+                대화 다시 연결
               </Button>
             )}
             {threads
@@ -379,7 +379,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                 >
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`Open conversation: ${thread.name || "Untitled conversation"}`}
+                    accessibilityLabel={`대화 열기: ${thread.name || "제목 없는 대화"}`}
                     accessibilityState={{ selected: selection.id === thread.id }}
                     onPress={() =>
                       void mutate(async () => {
@@ -391,12 +391,10 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                     style={[s.row, { gap: 10 }]}
                   >
                     <MessageCircle size={19} color={colors.text} />
-                    <Text style={[s.text, { flex: 1 }]}>
-                      {thread.name || "Untitled conversation"}
-                    </Text>
+                    <Text style={[s.text, { flex: 1 }]}>{thread.name || "제목 없는 대화"}</Text>
                   </Pressable>
                   {editing === thread.id && (
-                    <Field label="Conversation name" value={name} onChangeText={setName} />
+                    <Field label="대화 이름" value={name} onChangeText={setName} />
                   )}
                   <View style={[s.row, { gap: 8 }]}>
                     <Button
@@ -411,7 +409,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                         }
                       }}
                     >
-                      {editing === thread.id ? "Save name" : "Rename"}
+                      {editing === thread.id ? "이름 저장" : "이름 변경"}
                     </Button>
                     <Button
                       small
@@ -427,7 +425,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                         })
                       }
                     >
-                      {thread.archived ? "Restore" : "Archive"}
+                      {thread.archived ? "복원" : "보관"}
                     </Button>
                   </View>
                 </View>
@@ -437,26 +435,26 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
               !threads.some((thread) => thread.id !== mainId && thread.archived === archived) && (
                 <Text style={s.muted}>
                   {archived
-                    ? "No archived conversations."
-                    : "Keep a separate topic here. Your main chat is always available."}
+                    ? "보관된 대화가 없습니다."
+                    : "별도의 주제로 대화하세요. 기본 대화는 항상 사용할 수 있습니다."}
                 </Text>
               )}
             <ErrorNotice error={fetchMoreError} />
             {hasMore && (
               <Button small busy={isFetchingMore} onPress={fetchMore}>
-                Load more conversations
+                대화 더 불러오기
               </Button>
             )}
             <Text style={s.small}>
-              Side chats keep their own conversation context. Your agent’s saved memory is shared.
+              별도 대화는 서로 다른 대화 내용을 유지하며 에이전트의 기억은 공유합니다.
             </Text>
           </>
         )}
         <View style={s.divider} />
         <LinkRow
           icon={Plus}
-          title="Delegate task"
-          detail="A plan, document, or spending summary"
+          title="작업 맡기기"
+          detail="계획, 문서 또는 지출 요약"
           onPress={() => {
             onClose();
             open({ type: "delegate" });
@@ -464,18 +462,18 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
         />
         <LinkRow
           icon={Monitor}
-          title="Agent computer"
-          detail="Browser, sessions and documents"
+          title="에이전트 컴퓨터"
+          detail="브라우저, 세션과 문서"
           onPress={() => {
             onClose();
             open({ type: "computer" });
           }}
         />
-        <LinkRow icon={CalendarDays} title="Calendar" onPress={() => go("calendar")} />
-        <LinkRow icon={FileText} title="Files" onPress={() => go("files")} />
-        <LinkRow icon={Settings2} title="Apps & settings" onPress={() => go("apps")} />
+        <LinkRow icon={CalendarDays} title="일정" onPress={() => go("calendar")} />
+        <LinkRow icon={FileText} title="파일" onPress={() => go("files")} />
+        <LinkRow icon={Settings2} title="앱과 설정" onPress={() => go("apps")} />
         <Button small icon={RefreshCw} onPress={() => void mutate(refresh)}>
-          Refresh workspace
+          워크스페이스 새로고침
         </Button>
       </View>
     </Sheet>

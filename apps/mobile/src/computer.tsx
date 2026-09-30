@@ -25,7 +25,7 @@ export function ComputerEntry() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Agent computer — take control"
+      accessibilityLabel="에이전트 컴퓨터 직접 제어"
       onPress={() => open({ type: "computer" })}
       style={[
         s.row,
@@ -41,8 +41,8 @@ export function ComputerEntry() {
     >
       <Monitor size={13} color={colors.muted} />
       <Text style={{ fontSize: 12, color: colors.muted }}>
-        Computer
-        {!available ? " · offline" : active ? " · take control" : " · ready"}
+        컴퓨터
+        {!available ? " · 오프라인" : active ? " · 직접 제어" : " · 준비됨"}
       </Text>
       <View
         style={{
@@ -76,19 +76,19 @@ export function BrowserThreadCard({ browser }: { browser: BrowserSession }) {
           <Globe2 size={21} color={colors.blueDark} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[s.text, { fontWeight: "600" }]}>Browser</Text>
+          <Text style={[s.text, { fontWeight: "600" }]}>브라우저</Text>
           <Text numberOfLines={1} style={s.small}>
             {browser.status === "closed"
-              ? "Session saved"
+              ? "세션 저장됨"
               : browser.status === "error"
-                ? "Needs attention"
+                ? "확인 필요"
                 : browser.title}
           </Text>
         </View>
       </View>
       {browser.previewUrl && browser.status === "active" && !failed ? (
         <Image
-          accessibilityLabel={`Browser preview: ${browser.title}`}
+          accessibilityLabel={`브라우저 미리 보기: ${browser.title}`}
           source={{ uri: browser.previewUrl }}
           style={{
             width: "100%",
@@ -111,16 +111,18 @@ export function BrowserThreadCard({ browser }: { browser: BrowserSession }) {
         >
           <Globe2 size={30} color={colors.muted} />
           <Text numberOfLines={2} style={[s.muted, { textAlign: "center" }]}>
-            {failed ? "Preview unavailable. Open the browser to reconnect." : browser.url}
+            {failed
+              ? "미리 보기를 사용할 수 없습니다. 브라우저를 열어 다시 연결하세요."
+              : browser.url}
           </Text>
         </View>
       )}
       <Button onPress={() => open({ type: "browser", browser })}>
         {browser.status === "closed"
-          ? "Reopen browser"
+          ? "브라우저 다시 열기"
           : browser.status === "error"
-            ? "Reconnect browser"
-            : "Take control"}
+            ? "브라우저 다시 연결"
+            : "직접 제어"}
       </Button>
     </Card>
   );
@@ -165,47 +167,47 @@ export function ComputerSheet() {
   }
   return (
     <Sheet
-      title="Agent computer"
-      subtitle="Your agent works here. Step in whenever you need."
+      title="에이전트 컴퓨터"
+      subtitle="에이전트가 작업하는 공간입니다. 필요할 때 직접 제어하세요."
       onClose={close}
     >
       <View style={{ gap: 20 }}>
-        {tab === "Browser" && (
+        {tab === "브라우저" && (
           <View
             style={[s.row, { gap: 12, padding: 18, borderRadius: 20, backgroundColor: colors.sky }]}
           >
             <Monitor size={28} color={colors.blueDark} />
             <View style={{ flex: 1 }}>
-              <Text style={s.heading}>{available ? "Browser connected" : "Browser offline"}</Text>
+              <Text style={s.heading}>{available ? "브라우저 연결됨" : "브라우저 오프라인"}</Text>
               <Text style={s.muted}>
                 {available
-                  ? "Your agent’s browser and documents, in one place."
-                  : "Start the browser worker to connect this computer."}
+                  ? "에이전트의 브라우저와 문서를 한곳에서 확인하세요."
+                  : "이 컴퓨터에 연결하려면 브라우저 워커를 시작하세요."}
               </Text>
             </View>
           </View>
         )}
         <View style={[s.row, { gap: 8 }]}>
-          {(["Browser", "Terminal", "Files"] as const).map((item) => (
+          {(["브라우저", "터미널", "파일"] as const).map((item) => (
             <Button
               key={item}
               primary={tab === item}
-              icon={item === "Browser" ? Globe2 : item === "Terminal" ? Terminal : FolderOpen}
+              icon={item === "브라우저" ? Globe2 : item === "터미널" ? Terminal : FolderOpen}
               onPress={() => setTab(item)}
             >
               {item}
             </Button>
           ))}
         </View>
-        <View style={{ display: tab === "Browser" ? "none" : "flex" }}>
-          <LinuxWorkspace tab={tab === "Files" ? "Files" : "Terminal"} />
+        <View style={{ display: tab === "브라우저" ? "none" : "flex" }}>
+          <LinuxWorkspace tab={tab === "파일" ? "파일" : "터미널"} />
         </View>
         <ErrorNotice error={error} />
-        {tab === "Browser" ? (
+        {tab === "브라우저" ? (
           <>
             <View>
               <Field
-                label="Website address"
+                label="웹사이트 주소"
                 value={url}
                 onChangeText={setUrl}
                 placeholder="https://example.com"
@@ -220,7 +222,7 @@ export function ComputerSheet() {
                 disabled={!available || !url.trim()}
                 onPress={() => void create()}
               >
-                Open a browser session
+                브라우저 세션 열기
               </Button>
             </View>
             {[...workspace.browsers]
@@ -230,25 +232,24 @@ export function ComputerSheet() {
               ))}
             {!workspace.browsers.length && (
               <Text style={s.muted}>
-                Open a page here or ask your agent to research something. Its browsing sessions will
-                appear here.
+                페이지를 열거나 에이전트에게 조사를 요청하세요. 탐색 세션이 여기에 표시됩니다.
               </Text>
             )}
             <Text style={s.small}>
-              Browsing sessions keep their own logins and downloads. Open one to take over, then
-              return to your conversation.
+              브라우저 세션마다 로그인과 다운로드가 저장됩니다. 직접 제어한 뒤 대화로 돌아갈 수
+              있습니다.
             </Text>
           </>
-        ) : tab === "Files" ? (
+        ) : tab === "파일" ? (
           <>
-            <Text style={s.heading}>Documents</Text>
-            <Text style={s.small}>PDFs saved from mail, browser downloads, and your uploads.</Text>
+            <Text style={s.heading}>문서</Text>
+            <Text style={s.small}>메일, 브라우저 다운로드와 업로드에서 저장한 PDF입니다.</Text>
             {workspace.files.map((file) => (
               <LinkRow
                 key={file.id}
                 icon={FileText}
                 title={file.name}
-                detail={`${file.pageCount} pages · PDF`}
+                detail={`${file.pageCount}페이지 · PDF`}
                 onPress={() => open({ type: "file", file })}
               />
             ))}
@@ -259,7 +260,7 @@ export function ComputerSheet() {
                 navigate("files");
               }}
             >
-              Import a document
+              문서 가져오기
             </Button>
           </>
         ) : null}
@@ -272,7 +273,7 @@ export function ComputerSheet() {
               .catch((e) => setError(String(e)))
           }
         >
-          Refresh computer
+          컴퓨터 새로고침
         </Button>
       </View>
     </Sheet>

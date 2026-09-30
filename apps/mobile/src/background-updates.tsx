@@ -30,11 +30,11 @@ export function BackgroundUpdates() {
       <View style={[s.between, { gap: 12 }]}>
         <View style={[s.row, { gap: 7 }]}>
           <Bell size={14} color={colors.blueDark} />
-          <Text style={s.small}>An update for you</Text>
+          <Text style={s.small}>새 업데이트</Text>
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Dismiss background update"
+          accessibilityLabel="백그라운드 업데이트 닫기"
           disabled={busy}
           onPress={() => void dismiss()}
           hitSlop={10}
@@ -51,11 +51,11 @@ export function BackgroundUpdates() {
           icon={ArrowRight}
           onPress={() => update.taskId && open({ type: "task", taskId: update.taskId })}
         >
-          View task
+          작업 보기
         </Button>
         {updates.length > 1 && (
           <Button small onPress={() => open({ type: "notifications" })}>
-            {updates.length - 1} more updates
+            {updates.length - 1} 개 추가 업데이트
           </Button>
         )}
       </View>

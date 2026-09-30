@@ -20,13 +20,14 @@ import type {
   ComputerSnapshot,
 } from "../../../packages/domain/src/computer";
 import { useComputerDraft } from "./computer-drafts";
+import { uiLabel } from "./locale";
 import { Button, Card, colors, Empty, ErrorNotice, Field, LinkRow, s, timeLabel } from "./ui";
 import { useWorkspace } from "./workspace";
 
 const mono = Platform.OS === "ios" ? "Menlo" : "monospace";
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
+export function LinuxWorkspace({ tab }: { tab: "터미널" | "파일" }) {
   const { api } = useWorkspace();
   const [snapshot, setSnapshot] = useState<ComputerSnapshot>();
   const [error, setError] = useState("");
@@ -125,17 +126,17 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
         <View style={[s.row, { gap: 12 }]}>
           <Terminal size={24} color={colors.blueDark} />
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={s.heading}>Your Linux workspace</Text>
+            <Text style={s.heading}>내 Linux 워크스페이스</Text>
             <Text style={s.muted}>
               {running
-                ? "Running · files persist when stopped"
+                ? "실행 중 · 중지해도 파일이 유지됩니다"
                 : snapshot?.status === "stopped"
-                  ? "Stopped · your files are saved"
+                  ? "중지됨 · 파일이 저장됐습니다"
                   : snapshot?.status === "unconfigured"
-                    ? "Set up the computer to get started"
+                    ? "시작하려면 컴퓨터를 설정하세요"
                     : snapshot?.status === "error"
-                      ? "Connection needs attention"
-                      : "Connecting…"}
+                      ? "연결 상태를 확인해야 합니다"
+                      : "연결 중…"}
             </Text>
           </View>
           {!snapshot && !error && <ActivityIndicator color={colors.blueDark} />}
@@ -145,11 +146,11 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
           <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
             {running ? (
               <Button icon={Power} busy={busy} onPress={() => void control("stop")}>
-                Stop computer
+                컴퓨터 중지
               </Button>
             ) : (
               <Button primary icon={Play} busy={busy} onPress={() => void control("start")}>
-                Start computer
+                컴퓨터 시작
               </Button>
             )}
             <Button
@@ -161,7 +162,7 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                   .catch((e) => setError(message(e)))
               }
             >
-              Refresh
+              새로고침
             </Button>
           </View>
         )}
@@ -175,12 +176,12 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
               .catch((e) => setError(message(e)))
           }
         >
-          Retry connection
+          다시 연결
         </Button>
       )}
       {snapshot?.enabled && (
         <>
-          <View style={{ display: tab === "Terminal" ? "flex" : "none", gap: 16 }}>
+          <View style={{ display: tab === "터미널" ? "flex" : "none", gap: 16 }}>
             {editingCommand || command.length > 0 || snapshot.commands.length === 0 ? (
               <View
                 style={{
@@ -190,11 +191,9 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                   gap: 8,
                 }}
               >
-                <Text style={{ color: colors.muted, fontSize: 12, fontFamily: mono }}>
-                  TERMINAL
-                </Text>
+                <Text style={{ color: colors.muted, fontSize: 12, fontFamily: mono }}>터미널</Text>
                 <Field
-                  label="Working directory"
+                  label="작업 디렉터리"
                   value={cwd}
                   onChangeText={setCwd}
                   autoCapitalize="none"
@@ -202,7 +201,7 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                   style={{ fontFamily: mono }}
                 />
                 <Field
-                  label="Command"
+                  label="명령"
                   value={command}
                   onChangeText={setCommand}
                   placeholder="pwd"
@@ -222,7 +221,7 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                       setCommand((text) => text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"'))
                     }
                   >
-                    Use straight quotes
+                    일반 따옴표 사용
                   </Button>
                 )}
                 <Button
@@ -232,10 +231,11 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                   disabled={!running || !command.trim() || busy}
                   onPress={() => void run()}
                 >
-                  Run command
+                  명령 실행
                 </Button>
                 <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
-                  Runs on your computer. Network access is off. Use Browser for the web.
+                  에이전트 컴퓨터에서 실행됩니다. 네트워크가 차단되어 있으므로 웹 탐색에는
+                  브라우저를 사용하세요.
                 </Text>
               </View>
             ) : (
@@ -245,19 +245,19 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
                 disabled={!running || busy || !!commandRunning}
                 onPress={() => setEditingCommand(true)}
               >
-                New command
+                새 명령
               </Button>
             )}
             {!!commandRunning && (
               <Text style={s.muted}>
-                Working… The result will appear here. Stop the computer to end running commands.
+                작업 중… 결과가 여기에 표시됩니다. 실행 중인 명령을 끝내려면 컴퓨터를 중지하세요.
               </Text>
             )}
             {snapshot.commands.length === 0 ? (
               <Empty
                 icon={Terminal}
-                title="Ready for your first command"
-                detail="Run scripts, work with files, or ask your agent to create something here."
+                title="첫 명령을 실행해 보세요"
+                detail="스크립트를 실행하고 파일을 관리하거나 에이전트에게 작업을 맡기세요."
               />
             ) : (
               [...snapshot.commands]
@@ -267,12 +267,12 @@ export function LinuxWorkspace({ tab }: { tab: "Terminal" | "Files" }) {
             )}
             {snapshot.commands.length > 5 && (
               <Button small onPress={() => setShowHistory(!showHistory)}>
-                {showHistory ? "Show recent commands" : "Earlier commands"}
+                {showHistory ? "최근 명령 보기" : "이전 명령"}
               </Button>
             )}
           </View>
-          <View style={{ display: tab === "Files" ? "flex" : "none" }}>
-            <ComputerFiles running={!!running} active={tab === "Files"} />
+          <View style={{ display: tab === "파일" ? "flex" : "none" }}>
+            <ComputerFiles running={!!running} active={tab === "파일"} />
           </View>
         </>
       )}
@@ -298,8 +298,8 @@ function CommandReceipt({ run }: { run: ComputerCommand }) {
             },
           ]}
         >
-          {run.status.replace("_", " ")}
-          {run.exitCode !== undefined ? ` · exit ${run.exitCode}` : ""}
+          {uiLabel(run.status)}
+          {run.exitCode !== undefined ? ` · 종료 코드 ${run.exitCode}` : ""}
         </Text>
         <Text style={s.small}>{timeLabel(run.startedAt)}</Text>
       </View>
@@ -327,18 +327,18 @@ function CommandReceipt({ run }: { run: ComputerCommand }) {
             </Text>
           )}
           {!run.stdout && !run.stderr && run.status !== "running" && (
-            <Text style={s.small}>No output</Text>
+            <Text style={s.small}>출력 없음</Text>
           )}
           {run.truncated && (
             <Text style={s.small}>
-              Output reached the display limit. Write large results to a file.
+              표시 가능한 출력 한도에 도달했습니다. 큰 결과는 파일에 저장하세요.
             </Text>
           )}
         </>
       )}
       {!!(run.stdout || run.stderr) && (
         <Button small onPress={() => setExpanded(!expanded)}>
-          {expanded ? "Hide output" : "Show output"}
+          {expanded ? "출력 숨기기" : "출력 보기"}
         </Button>
       )}
     </Card>
@@ -417,7 +417,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
         path: `${path}/${file.name.replace(/[\\/]/g, "_")}`,
       });
       setImporting(false);
-      setNotice("Document copied to your computer.");
+      setNotice("문서를 컴퓨터에 복사했습니다.");
       setRetry((value) => value + 1);
     } catch (e) {
       setError(message(e));
@@ -453,7 +453,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
             ? { ...current, saved: sent.text, savedPath: sent.path }
             : current,
         );
-      setNotice("File saved to your computer.");
+      setNotice("파일을 컴퓨터에 저장했습니다.");
       setRetry((value) => value + 1);
     } catch (e) {
       setError(message(e));
@@ -478,7 +478,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
   return (
     <View style={{ gap: 12 }}>
       <View style={s.between}>
-        <Text style={s.heading}>Workspace files</Text>
+        <Text style={s.heading}>워크스페이스 파일</Text>
         {(busy || loading) && <ActivityIndicator color={colors.blueDark} />}
       </View>
       <Text selectable style={[s.small, { fontFamily: mono }]}>
@@ -487,12 +487,12 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
       <ErrorNotice error={error} />
       {!!notice && <Text style={[s.small, { color: colors.success }]}>{notice}</Text>}
       {!running && (
-        <Text style={s.muted}>Start the computer to browse or edit its saved files.</Text>
+        <Text style={s.muted}>저장된 파일을 살펴보거나 수정하려면 컴퓨터를 시작하세요.</Text>
       )}
       {editor ? (
         <>
           <Field
-            label="File path"
+            label="파일 경로"
             value={editor.path}
             onChangeText={(value) => setEditor({ ...editor, path: value })}
             autoCorrect={false}
@@ -500,7 +500,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
             style={{ fontFamily: mono }}
           />
           <Field
-            label="File contents"
+            label="파일 내용"
             value={editor.text}
             onChangeText={(value) => setEditor({ ...editor, text: value })}
             multiline
@@ -519,7 +519,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
               disabled={!running || !editor.path.trim()}
               onPress={() => void save()}
             >
-              Save file
+              파일 저장
             </Button>
             <Button
               disabled={busy}
@@ -529,7 +529,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                 setNotice("");
               }}
             >
-              {dirty ? "Discard edits" : "Back to files"}
+              {dirty ? "수정 취소" : "파일 목록으로 돌아가기"}
             </Button>
           </View>
         </>
@@ -543,7 +543,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                 icon={ArrowLeft}
                 onPress={() => setPath(path.slice(0, path.lastIndexOf("/")) || "/workspace")}
               >
-                Up
+                상위 폴더
               </Button>
             )}
             <Button
@@ -560,7 +560,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                 });
               }}
             >
-              New file
+              새 파일
             </Button>
             <Button
               small
@@ -568,7 +568,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
               icon={FolderPlus}
               onPress={() => setFolder("")}
             >
-              New folder
+              새 폴더
             </Button>
             <Button
               small
@@ -576,7 +576,7 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
               icon={RefreshCw}
               onPress={() => setRetry(retry + 1)}
             >
-              Refresh files
+              파일 새로고침
             </Button>
             <Button
               small
@@ -584,14 +584,14 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
               icon={Upload}
               onPress={() => setImporting(!importing)}
             >
-              {importing ? "Hide documents" : "Copy a document here"}
+              {importing ? "문서 숨기기" : "문서를 여기에 복사"}
             </Button>
           </View>
           {importing && (
             <Card>
-              <Text style={s.heading}>Choose a saved PDF</Text>
+              <Text style={s.heading}>저장된 PDF 선택</Text>
               <Text style={[s.small, { marginTop: 6 }]}>
-                Copies into this folder. A file with the same name will be replaced.
+                이 폴더에 복사합니다. 같은 이름의 파일이 있으면 덮어씁니다.
               </Text>
               {workspace.files.map((file) => (
                 <LinkRow
@@ -602,14 +602,14 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                 />
               ))}
               {!workspace.files.length && (
-                <Text style={s.muted}>Add a document from mail or Files first.</Text>
+                <Text style={s.muted}>먼저 메일이나 파일에서 문서를 추가하세요.</Text>
               )}
             </Card>
           )}
           {folder !== undefined && (
             <Card style={{ gap: 8 }}>
               <Field
-                label="Folder name"
+                label="폴더 이름"
                 value={folder}
                 onChangeText={setFolder}
                 autoCapitalize="none"
@@ -622,10 +622,10 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                   busy={busy}
                   onPress={() => void mkdir()}
                 >
-                  Create folder
+                  폴더 만들기
                 </Button>
                 <Button disabled={busy} onPress={() => setFolder(undefined)}>
-                  Cancel
+                  취소
                 </Button>
               </View>
             </Card>
@@ -639,9 +639,9 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
                 title={entry.name}
                 detail={
                   entry.type === "directory"
-                    ? "Folder"
+                    ? "폴더"
                     : entry.type === "symlink"
-                      ? "Symbolic link"
+                      ? "심볼릭 링크"
                       : `${Math.max(1, Math.ceil(entry.size / 1024))} KB`
                 }
                 onPress={() => {
@@ -662,8 +662,8 @@ function ComputerFiles({ running, active }: { running: boolean; active: boolean 
             directory.entries.length === 0 && (
               <Empty
                 icon={Folder}
-                title="A little space to create"
-                detail="Add a file here, or ask your agent to make one in its workspace."
+                title="작업을 위한 공간"
+                detail="파일을 추가하거나 에이전트에게 워크스페이스에서 만들도록 요청하세요."
               />
             )}
         </>

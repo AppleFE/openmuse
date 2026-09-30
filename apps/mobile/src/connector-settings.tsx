@@ -8,6 +8,7 @@ import type {
   ConnectorProviderInfo,
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
+import { uiLabel } from "./locale";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -36,11 +37,11 @@ function displayValue(value: unknown) {
 
 function status(connector: ConnectorView, provider: ConnectorProviderInfo | undefined) {
   if (provider?.secretFields.length && !connector.hasSecret)
-    return { label: "Unconfigured", color: colors.muted };
-  if (!connector.check) return { label: "Unconfigured", color: colors.muted };
+    return { label: "설정 안 됨", color: colors.muted };
+  if (!connector.check) return { label: "설정 안 됨", color: colors.muted };
   return connector.check.ok
-    ? { label: "Connected", color: colors.success }
-    : { label: "Error", color: colors.danger };
+    ? { label: "연결됨", color: colors.success }
+    : { label: "오류", color: colors.danger };
 }
 
 function ConnectorField({
@@ -76,8 +77,8 @@ function ConnectorField({
           <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: colors.card }} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.text}>{field.label}</Text>
-          {!!field.description && <Text style={s.small}>{field.description}</Text>}
+          <Text style={s.text}>{uiLabel(field.label)}</Text>
+          {!!field.description && <Text style={s.small}>{uiLabel(field.description)}</Text>}
         </View>
       </Pressable>
     );
@@ -85,17 +86,19 @@ function ConnectorField({
   return (
     <View>
       <Field
-        label={`${field.label}${field.required ? "" : " (optional)"}`}
+        label={`${uiLabel(field.label)}${field.required ? "" : " (선택)"}`}
         value={displayValue(value)}
         onChangeText={onChange}
         secureTextEntry={secret}
         autoCapitalize="none"
         autoCorrect={false}
         multiline={field.name === "ca"}
-        placeholder={secret ? "Stored securely on the server" : field.description}
+        placeholder={secret ? "서버에 안전하게 저장됩니다" : uiLabel(field.description ?? "")}
       />
       {!!field.description && !secret && (
-        <Text style={[s.small, { marginTop: -10, marginBottom: 14 }]}>{field.description}</Text>
+        <Text style={[s.small, { marginTop: -10, marginBottom: 14 }]}>
+          {uiLabel(field.description)}
+        </Text>
       )}
     </View>
   );
@@ -165,12 +168,12 @@ function ConnectorEditor({
 
   return (
     <Sheet
-      title={`${connector ? "Edit" : "Connect"} ${provider.label}`}
-      subtitle={provider.description}
+      title={`${connector ? "수정" : "연결"} ${provider.label}`}
+      subtitle={uiLabel(provider.description)}
       onClose={onClose}
     >
       <View style={{ gap: 4 }}>
-        <Field label="Connection name" value={name} onChangeText={setName} />
+        <Field label="연결 이름" value={name} onChangeText={setName} />
         {provider.configFields.map((field) => (
           <ConnectorField
             key={field.name}
@@ -181,11 +184,11 @@ function ConnectorEditor({
         ))}
         {!!provider.secretFields.length && (
           <Card style={{ gap: 4, backgroundColor: colors.surfaceMuted }}>
-            <Text style={s.heading}>Credentials</Text>
+            <Text style={s.heading}>인증 정보</Text>
             <Text style={s.small}>
               {connector?.hasSecret
-                ? "Credentials are configured. Leave these fields empty to keep the stored values."
-                : "Credentials are sent only to your server and are never returned to this app."}
+                ? "인증 정보가 설정되어 있습니다. 기존 값을 유지하려면 비워 두세요."
+                : "인증 정보는 서버로만 전송되며 앱에 다시 반환되지 않습니다."}
             </Text>
             {provider.secretFields.map((field) => (
               <ConnectorField
@@ -207,7 +210,7 @@ function ConnectorEditor({
           disabled={!name.trim() || !configReady || !secretsReady}
           onPress={() => void save()}
         >
-          {connector ? "Save connection" : "Create connection"}
+          {connector ? "연결 저장" : "연결 만들기"}
         </Button>
       </View>
     </Sheet>
@@ -254,7 +257,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
     try {
       const result = await api.request<ConnectorCheck>(`/api/connectors/${connector.id}/test`, {});
       await refresh();
-      notify(result.ok ? `${connector.name} connected.` : `${connector.name}: ${result.detail}`);
+      notify(result.ok ? `${connector.name} 연결됨.` : `${connector.name}: ${result.detail}`);
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -273,7 +276,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
       await api.request(`/api/connectors/${connector.id}`, undefined, "DELETE");
       setConfirmingDelete(undefined);
       await refresh();
-      notify(`${connector.name} removed.`);
+      notify(`${connector.name} 삭제됨.`);
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -288,14 +291,16 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
       .includes(query.toLowerCase());
   });
   const matchingProviders = providers.filter((provider) =>
-    `${provider.label} ${provider.description}`.toLowerCase().includes(query.toLowerCase()),
+    `${provider.label} ${uiLabel(provider.description)}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
   );
 
   return (
     <View style={{ gap: 14 }}>
-      <SectionHeading title="Infrastructure connections" />
+      <SectionHeading title="인프라 연결" />
       <Text style={s.muted}>
-        Manage dedicated server-side connections. Credentials are write-only and never displayed.
+        서버의 연결을 관리합니다. 인증 정보는 입력만 가능하며 표시되지 않습니다.
       </Text>
       {matchingConnectors.map((connector) => {
         const provider = providers.find((item) => item.provider === connector.provider);
@@ -322,11 +327,11 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
             )}
             <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
               <Button small busy={busyId === connector.id} onPress={() => void test(connector)}>
-                Test connection
+                연결 테스트
               </Button>
               {provider && (
                 <Button small onPress={() => setEditing({ provider, connector })}>
-                  Edit
+                  수정
                 </Button>
               )}
               <Button
@@ -336,14 +341,14 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
                 busy={busyId === connector.id}
                 onPress={() => void remove(connector)}
               >
-                {confirmingDelete === connector.id ? "Confirm removal" : "Remove"}
+                {confirmingDelete === connector.id ? "삭제 확인" : "삭제"}
               </Button>
             </View>
           </Card>
         );
       })}
       {!matchingConnectors.length && connectors.length > 0 && (
-        <Text style={s.muted}>No configured connections match this search.</Text>
+        <Text style={s.muted}>검색 조건에 맞는 연결이 없습니다.</Text>
       )}
       <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
         {matchingProviders.map((provider) => {
@@ -355,14 +360,14 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
               icon={Icon}
               onPress={() => setEditing({ provider })}
             >
-              Add {provider.label}
+              추가 {provider.label}
             </Button>
           );
         })}
       </View>
-      {!providers.length && !error && <Text style={s.muted}>Loading connector options…</Text>}
+      {!providers.length && !error && <Text style={s.muted}>커넥터 옵션을 불러오는 중…</Text>}
       <ErrorNotice error={error} />
-      {!!error && <Button onPress={() => void refresh()}>Retry connections</Button>}
+      {!!error && <Button onPress={() => void refresh()}>연결 다시 시도</Button>}
       {editing && (
         <ConnectorEditor
           provider={editing.provider}

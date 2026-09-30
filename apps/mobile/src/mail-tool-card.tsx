@@ -50,7 +50,11 @@ export function MailToolCard({
           <Mail size={16} color={colors.muted} />
         )}
         <Text style={s.muted}>
-          {!active ? "Mail reading paused" : search ? "Checking your inbox…" : "Reading the email…"}
+          {!active
+            ? "메일 읽기 일시 중지"
+            : search
+              ? "받은편지함을 확인하는 중…"
+              : "메일을 읽는 중…"}
         </Text>
       </View>
     );
@@ -58,16 +62,15 @@ export function MailToolCard({
     const parsed = z
       .object({ matches: z.array(z.object({ id: z.string() })), truncated: z.boolean() })
       .safeParse(value);
-    if (!parsed.success)
-      return <ErrorNotice error="The mailbox did not return readable results." />;
+    if (!parsed.success) return <ErrorNotice error="읽을 수 있는 메일함 결과가 없습니다." />;
     const count = parsed.data.matches.length;
     return (
       <View style={[s.row, { gap: 9, padding: 12 }]}>
         <Search size={16} color={colors.muted} />
         <Text style={s.muted}>
           {count
-            ? `Found ${parsed.data.truncated ? "at least " : ""}${count} ${count === 1 ? "email" : "emails"}`
-            : "No matching emails"}
+            ? `검색 결과: ${parsed.data.truncated ? "최소 " : ""}${count} ${count === 1 ? "email" : "emails"}`
+            : "일치하는 메일 없음"}
         </Text>
       </View>
     );
@@ -75,9 +78,9 @@ export function MailToolCard({
   const parsed = z
     .object({ messages: z.array(messageSchema), truncated: z.boolean() })
     .safeParse(value);
-  if (!parsed.success) return <ErrorNotice error="The email could not be displayed." />;
+  if (!parsed.success) return <ErrorNotice error="메일을 표시할 수 없습니다." />;
   const message = parsed.data.messages.at(-1);
-  if (!message) return <Text style={s.muted}>No messages in this thread.</Text>;
+  if (!message) return <Text style={s.muted}>이 대화에 메시지가 없습니다.</Text>;
   return (
     <Card
       style={{
@@ -95,10 +98,10 @@ export function MailToolCard({
         <View style={{ flex: 1 }}>
           <Text style={[s.text, { fontWeight: "600" }]}>{message.sender}</Text>
           <Text style={s.small}>
-            Email ·{" "}
+            메일 ·{" "}
             {parsed.data.messages.length === 1
-              ? "1 message"
-              : `${parsed.data.messages.length} messages`}
+              ? "메시지 1개"
+              : `${parsed.data.messages.length}개 메시지`}
           </Text>
         </View>
       </View>
@@ -106,9 +109,9 @@ export function MailToolCard({
       <Text style={s.muted} numberOfLines={3}>
         {message.body}
       </Text>
-      {parsed.data.truncated && <Text style={s.small}>Showing an excerpt of this thread.</Text>}
+      {parsed.data.truncated && <Text style={s.small}>메일 대화의 일부를 표시합니다.</Text>}
       <Button small icon={Mail} onPress={() => open({ type: "mail", mail: message })}>
-        Open email
+        메일 열기
       </Button>
     </Card>
   );

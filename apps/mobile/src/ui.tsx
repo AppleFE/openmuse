@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { errorLabel, UI_LOCALE } from "./locale";
 import { colors } from "./theme";
 
 export { colors } from "./theme";
@@ -249,7 +250,7 @@ export function Empty({
 export function ErrorNotice({ error }: { error?: string }) {
   return error ? (
     <View accessibilityRole="alert" style={s.error}>
-      <Text style={[s.text, { color: colors.danger }]}>{error}</Text>
+      <Text style={[s.text, { color: colors.danger }]}>{errorLabel(error)}</Text>
     </View>
   ) : null;
 }
@@ -307,7 +308,7 @@ export function Sheet({
               <Text style={s.title}>{title}</Text>
               {!!subtitle && <Text style={s.muted}>{subtitle}</Text>}
             </View>
-            <IconButton icon={X} label="Close details" onPress={onClose} />
+            <IconButton icon={X} label="상세 화면 닫기" onPress={onClose} />
           </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -419,7 +420,7 @@ export function Mascot({
 }) {
   const palette = { sky: colors.sky, sand: colors.orange, lilac: colors.lavender }[variant];
   return (
-    <View accessibilityLabel="OpenMuse capybara" style={{ width: size, height: size }}>
+    <View accessibilityLabel="OpenMuse 카피바라" style={{ width: size, height: size }}>
       <View
         style={{
           position: "absolute",
@@ -444,27 +445,27 @@ export function dateLabel(value: string, options?: Intl.DateTimeFormatOptions) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString("en-US", options || { month: "short", day: "numeric" });
+    : date.toLocaleDateString(UI_LOCALE, options || { month: "short", day: "numeric" });
 }
 export function timeLabel(value: string, timeZone?: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone });
+    : date.toLocaleTimeString(UI_LOCALE, { hour: "numeric", minute: "2-digit", timeZone });
 }
 export function relativeDate(value: string) {
   const diff = Date.now() - new Date(value).getTime();
   return diff < 60_000
-    ? "Just now"
+    ? "방금"
     : diff < 3600_000
-      ? `${Math.floor(diff / 60_000)}m ago`
+      ? `${Math.floor(diff / 60_000)}분 전`
       : diff < 86400_000
-        ? `${Math.floor(diff / 3600_000)}h ago`
+        ? `${Math.floor(diff / 3600_000)}시간 전`
         : dateLabel(value);
 }
 
 export function resultSummary(value: string) {
   return /^Saved to (?:sample|local) sent mail(?: · .+)?$/.test(value)
-    ? "Reply saved in your local Sent mail."
+    ? "로컬 보낸편지함에 답장을 저장했습니다."
     : value;
 }
