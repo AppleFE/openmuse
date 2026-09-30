@@ -108,9 +108,8 @@ for label in $labels; do
   /usr/bin/plutil -lint "$source" >/dev/null
   /usr/bin/install -m 600 "$source" "$target"
   stop_loaded_service "$label"
-  /bin/launchctl bootstrap "$domain" "$target"
   /bin/launchctl enable "$domain/$label"
-  /bin/launchctl kickstart -k "$domain/$label"
+  /bin/launchctl bootstrap "$domain" "$target"
 done
 
 echo "Installed and started only the credential-ready com.openmuse.* LaunchAgents."

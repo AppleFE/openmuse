@@ -43,4 +43,5 @@ test("installer unloads each tracked job before the restricted stop request", ()
   const restrictedStop = stopFunction.indexOf('restricted_ssh "stop-$service"');
   assert.ok(bootout >= 0 && restrictedStop > bootout);
   assert.doesNotMatch(installer, /com\.openmuse\.colima/);
+  assert.doesNotMatch(installer, /kickstart/);
 });
