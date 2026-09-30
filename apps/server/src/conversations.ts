@@ -64,6 +64,7 @@ interface ActiveRun {
   threadId: string;
   runId: string;
   agent: AbstractAgent;
+  inputMessages: Message[];
   subject: ReplaySubject<BaseEvent>;
   stopRequested: boolean;
   resolveStop: () => void;
@@ -591,6 +592,7 @@ export class ConversationStoreRunner extends AgentRunner {
         threadId: request.threadId,
         runId: request.input.runId,
         agent: request.agent,
+        inputMessages: structuredClone(messages),
         subject,
         stopRequested: false,
         resolveStop,
@@ -733,27 +735,28 @@ export class ConversationStoreRunner extends AgentRunner {
           subscriber.complete();
           return;
         }
-        const emitted = new Set<string>();
-        for (const event of compactEvents(thread.events ?? [])) {
-          subscriber.next(event);
-          if ("messageId" in event && typeof event.messageId === "string")
-            emitted.add(event.messageId);
-        }
         const active = this.active.get(this.key(owner, request.threadId));
+        // Restore the authoritative messages in a read-only protocol run.
+        // Replaying only text events omits user submissions, and replaying
+        // deltas over a full snapshot would duplicate assistant output.
+        const runId = randomUUID();
+        subscriber.next({ type: EventType.RUN_STARTED, threadId: thread.id, runId });
+        subscriber.next({
+          type: EventType.MESSAGES_SNAPSHOT,
+          messages: structuredClone(active?.inputMessages ?? thread.messages),
+        });
+        if (thread.state)
+          subscriber.next({
+            type: EventType.STATE_SNAPSHOT,
+            snapshot: structuredClone(thread.state),
+          });
+        subscriber.next({ type: EventType.RUN_FINISHED, threadId: thread.id, runId });
         if (!active) {
           subscriber.complete();
           return;
         }
         liveSubscription = active.subject.subscribe({
-          next: (event) => {
-            if (
-              "messageId" in event &&
-              typeof event.messageId === "string" &&
-              emitted.has(event.messageId)
-            )
-              return;
-            subscriber.next(event);
-          },
+          next: (event) => subscriber.next(event),
           error: (error) => subscriber.error(error),
           complete: () => subscriber.complete(),
         });

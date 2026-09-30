@@ -12,7 +12,7 @@ import {
   type Message,
   type RunAgentInput,
 } from "@ag-ui/client";
-import { Observable } from "rxjs";
+import { EMPTY, Observable } from "rxjs";
 import { createApp } from "../apps/server/src/app.ts";
 import { createAuth } from "../apps/server/src/auth.ts";
 import type { Config } from "../apps/server/src/config.ts";
@@ -639,6 +639,113 @@ test("startup repairs legacy tool projections from server events without changin
   );
   await runner.recoverInterrupted();
   assert.deepEqual(await runner.get("legacy-owner", thread.id), repaired, "repair is idempotent");
+});
+
+test("SDK reconnect restores stored user messages and rich assistant history", async () => {
+  const auth = await createAuth(db, config(directory));
+  const runner = new ConversationStoreRunner(db, auth, config(directory));
+  const before = await runner.get("local-user", "sse-rich-thread");
+  class ReconnectingAgent extends AbstractAgent {
+    run() {
+      return EMPTY;
+    }
+    protected override connect(input: RunAgentInput) {
+      return runner.connect({ threadId: input.threadId, headers: headers() });
+    }
+  }
+  const agent = new ReconnectingAgent({ agentId: "default", threadId: before.id });
+  await agent.connectAgent();
+  assert.deepEqual(agent.messages, before.messages);
+  assert.ok(agent.messages.some((m) => m.role === "user" && m.id === "request-one"));
+  assert.ok(agent.messages.some((m) => m.role === "assistant" && m.toolCalls?.length));
+  assert.ok(agent.messages.some((m) => m.role === "tool"));
+});
+
+test("SDK reconnect to a live run restores its new user message without replaying partial text twice", async () => {
+  const auth = await createAuth(db, config(directory));
+  const runner = new ConversationStoreRunner(db, auth, {
+    ...config(directory),
+    chatRunTimeoutMs: 5000,
+  });
+  const thread = await runner.ensure("local-user", "live-reconnect-thread");
+  const oldUser: Message = { id: "live-old-user", role: "user", content: "Previous question" };
+  const newUser: Message = { id: "live-new-user", role: "user", content: "Current question" };
+  await db.put("local-user", "conversation-threads", {
+    ...thread,
+    messages: [oldUser],
+    state: { saved: true },
+  });
+  class WaitingAgent extends AbstractAgent {
+    readonly openMuseOwner = "local-user";
+    run(input: RunAgentInput) {
+      return new Observable<BaseEvent>((subscriber) => {
+        subscriber.next({
+          type: EventType.RUN_STARTED,
+          threadId: input.threadId,
+          runId: input.runId,
+        });
+        subscriber.next({
+          type: EventType.TEXT_MESSAGE_START,
+          messageId: "live-reply",
+          role: "assistant",
+        });
+        subscriber.next({
+          type: EventType.TEXT_MESSAGE_CONTENT,
+          messageId: "live-reply",
+          delta: "Partial answer",
+        });
+      });
+    }
+  }
+  class ReconnectingAgent extends AbstractAgent {
+    run() {
+      return EMPTY;
+    }
+    protected override connect(input: RunAgentInput) {
+      return runner.connect({ threadId: input.threadId, headers: headers() });
+    }
+  }
+  const completed = new Promise<void>((resolve, reject) =>
+    runner
+      .run({
+        threadId: thread.id,
+        agent: new WaitingAgent({ agentId: "default" }),
+        input: {
+          threadId: thread.id,
+          runId: "live-reconnect-run",
+          messages: [oldUser, newUser],
+          state: {},
+          tools: [],
+          context: [],
+        },
+      })
+      .subscribe({ complete: resolve, error: reject }),
+  );
+  const agent = new ReconnectingAgent({ agentId: "default", threadId: thread.id });
+  try {
+    for (let i = 0; i < 100 && !(await runner.isRunning({ threadId: thread.id })); i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(await runner.isRunning({ threadId: thread.id }), true);
+    const connected = agent.connectAgent();
+    for (let i = 0; i < 100 && !agent.messages.some((m) => m.id === "live-reply"); i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(
+      agent.messages.find((m) => m.id === oldUser.id),
+      oldUser,
+    );
+    assert.deepEqual(
+      agent.messages.find((m) => m.id === newUser.id),
+      newUser,
+    );
+    assert.equal(agent.messages.find((m) => m.id === "live-reply")?.content, "Partial answer");
+    assert.deepEqual(agent.state, { saved: true });
+    assert.equal(await runner.stopOwner("local-user", thread.id), true);
+    await Promise.all([connected, completed]);
+    assert.equal(agent.messages.find((m) => m.id === "live-reply")?.content, "Partial answer");
+  } finally {
+    await runner.stopOwner("local-user", thread.id);
+    await completed;
+  }
 });
 
 test("interrupted recovery materializes the checkpoint's user, partial text and tool arguments", async () => {
