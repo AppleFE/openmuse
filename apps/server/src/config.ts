@@ -136,10 +136,9 @@ export function readConfig(): Config {
       process.env.ALLOWED_ORIGINS ?? "http://localhost:8081,http://127.0.0.1:8081"
     ).split(","),
   };
-  if (
-    mode === "live" &&
-    (!config.accessKey || config.accessKey.length < 24 || !config.encryptionKey)
-  )
+  if (config.accessKey && config.accessKey.length < 24)
+    throw new Error("OPENMUSE_ACCESS_KEY must contain at least 24 characters");
+  if (mode === "live" && (!config.accessKey || !config.encryptionKey))
     throw new Error(
       "Live mode requires OPENMUSE_ACCESS_KEY (24+ characters) and TOKEN_ENCRYPTION_KEY (32-byte base64)",
     );

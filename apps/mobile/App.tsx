@@ -133,14 +133,14 @@ function MuseApp() {
                   value={accessKey}
                   onChangeText={setAccessKey}
                   secureTextEntry
-                  placeholder="Required for a live workspace"
+                  placeholder="Required when the server is protected"
                 />
                 <Button primary onPress={() => void connect(accessKey || undefined)}>
                   Open workspace
                 </Button>
                 <Text style={[s.small, { marginTop: 15 }]}>
-                  Local workspaces open without a key. Make sure your OpenMuse server is running at{" "}
-                  {API_URL}.
+                  Local workspaces open without a key unless their owner enabled protection. Make
+                  sure your OpenMuse server is running at {API_URL}.
                 </Text>
               </Card>
             )}

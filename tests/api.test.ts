@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import { EventType } from "@ag-ui/core";
 import { lastValueFrom, toArray } from "rxjs";
 import { createApp } from "../apps/server/src/app.ts";
+import { Auth } from "../apps/server/src/auth.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore, type Store } from "../apps/server/src/db.ts";
 import { ConversationAgent } from "../apps/server/src/engine/conversation.ts";
@@ -56,6 +57,24 @@ test("API protects private data and rejects unrelated web origins", async () => 
       })
     ).status,
     403,
+  );
+});
+test("sample deployments can opt into the owner access-key gate", async () => {
+  const accessKey = "sample-private-access-key-123456";
+  const protectedAuth = new Auth(db, { ...config, accessKey }, "test-signing-key");
+  await assert.rejects(() => protectedAuth.session(), /Access key is incorrect/);
+  await assert.rejects(
+    () => protectedAuth.session("incorrect-access-key-value"),
+    /Access key is incorrect/,
+  );
+  assert.equal(typeof (await protectedAuth.session(accessKey)).token, "string");
+});
+test("live auth remains fail-closed when passed a config without an access key", async () => {
+  const liveAuth = new Auth(db, { ...config, mode: "live", agentBackend: "model" }, "test-key");
+  await assert.rejects(() => liveAuth.session(), /Access key is incorrect/);
+  await assert.rejects(
+    () => liveAuth.session("supplied-but-not-configured"),
+    /Access key is incorrect/,
   );
 });
 test("sample workspace serves a real PDF and filling creates a new version", async () => {

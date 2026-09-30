@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openmuse.web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/ssh</string>
+    <string>-T</string>
+    <string>-o</string><string>BatchMode=yes</string>
+    <string>-o</string><string>IdentitiesOnly=yes</string>
+    <string>-o</string><string>ClearAllForwardings=yes</string>
+    <string>-o</string><string>HostKeyAlgorithms=ssh-ed25519</string>
+    <string>-o</string><string>StrictHostKeyChecking=yes</string>
+    <string>-o</string><string>ConnectTimeout=10</string>
+    <string>-o</string><string>ConnectionAttempts=1</string>
+    <string>-o</string><string>ServerAliveInterval=30</string>
+    <string>-o</string><string>ServerAliveCountMax=2</string>
+    <string>-o</string><string>UserKnownHostsFile=/Users/aeonge/.ssh/openmuse-launchd-known-hosts</string>
+    <string>-i</string><string>/Users/aeonge/.ssh/openmuse-launchd</string>
+    <string>aeonge@127.0.0.1</string>
+    <string>web</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/aeonge</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>PathState</key>
+    <dict>
+      <key>/Volumes/p41-1tb</key>
+      <true/>
+    </dict>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
