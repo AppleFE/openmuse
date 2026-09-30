@@ -24,7 +24,7 @@ fi
 if [ -x "$binary" ]; then
   version_output=$("$binary" --version 2>&1 || true)
   case "$version_output" in
-    *"client version is $version"*)
+    *"version is $version"*)
       echo "Ollama CLI $version is already installed under $runtime"
       exit 0
       ;;
@@ -64,7 +64,7 @@ if [ ! -x "$staged_binary" ]; then
 fi
 version_output=$("$staged_binary" --version 2>&1 || true)
 case "$version_output" in
-  *"client version is $version"*) ;;
+  *"version is $version"*) ;;
   *) echo "Ollama archive version check failed; refusing installation" >&2; exit 78 ;;
 esac
 architecture=$(/usr/bin/file "$staged_binary")
