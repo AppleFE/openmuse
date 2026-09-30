@@ -1534,6 +1534,94 @@ test("formal finish blocks an in-flight scoped command and permits its durable s
   }
 });
 
+test("same-batch computer command serializes before formal finish evidence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-same-batch-completion-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  let releaseCommand: (() => void) | undefined;
+  let commandStarted: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    commandStarted = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    releaseCommand = resolve;
+  });
+  const computer = computerFixture({
+    command: async () => {
+      commandStarted?.();
+      await released;
+      return { ...ok(), exitCode: 7 };
+    },
+  });
+  const server = await createApp(
+    db,
+    { ...configFor(directory), computerEnabled: true },
+    { docker: computer.runner },
+  );
+  try {
+    const taskId = "same-batch-completion-task";
+    let finishSettledBeforeCommand = false;
+    let finishResult: unknown;
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const command = input.tools.find((tool) => tool.name === "run_computer_command");
+          const finish = input.tools.find((tool) => tool.name === "finish_task");
+          assert.ok(command?.execute);
+          assert.ok(finish?.execute);
+          const commandPromise = command.execute({
+            operationId: "same-batch",
+            command: "exit 7",
+            cwd: "/workspace",
+          });
+          let finishSettled = false;
+          const finishPromise = finish
+            .execute({ summary: "Must not finish early." })
+            .then((value) => {
+              finishSettled = true;
+              return value;
+            });
+          await started;
+          await new Promise((resolve) => setImmediate(resolve));
+          finishSettledBeforeCommand = finishSettled;
+          releaseCommand?.();
+          const [commandResult, terminalResult] = await Promise.all([
+            commandPromise,
+            finishPromise,
+          ]);
+          assert.equal((commandResult as { status?: string }).status, "failed");
+          finishResult = terminalResult;
+          return "Attempted same-batch completion.";
+        },
+      },
+    });
+    let current: AgentTask = { ...standaloneTask(), id: taskId };
+    const result = await executeModelTask(server.agent, "owner", current, {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    });
+    assert.equal(finishSettledBeforeCommand, false);
+    assert.equal(result.status, "waiting_input");
+    assert.deepEqual(finishResult, {
+      complete: false,
+      error:
+        "A task-scoped computer command is not durably successful. Wait for it or recover with a later successful command, then verify the result before finishing.",
+      commandStatus: "failed",
+    });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
+  } finally {
+    releaseCommand?.();
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("formal finish remains valid for text-only tasks without computer receipts", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-text-completion-"));
   const db = await createStore({ dataDir: join(directory, "db") });
