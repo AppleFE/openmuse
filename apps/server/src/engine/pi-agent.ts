@@ -69,6 +69,10 @@ export interface PiAgentRunInput extends PiAgentRunCallbacks {
   prompt: string;
   tools: readonly CopilotToolDefinition[];
   abortTools?(): void;
+  completion?: {
+    isTerminal(): boolean;
+    retryPrompt: string;
+  };
 }
 
 const clipped = (value: string, max: number) =>
@@ -126,7 +130,12 @@ export class PiAgentRunner {
       "pi-agent-runs",
       checkpointId,
     );
-    if (existing?.status === "succeeded" && existing.output) return existing.output;
+    if (
+      existing?.status === "succeeded" &&
+      existing.output &&
+      (!input.completion || input.completion.isTerminal())
+    )
+      return existing.output;
     const durableSession = await this.db.get<{ id: string; sessionFile?: string }>(
       input.owner,
       "pi-agent-sessions",
@@ -203,7 +212,8 @@ export class PiAgentRunner {
             ? clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)
             : existing?.iteration === 0 && iteration === 0
               ? `Recover this interrupted run from its durable session without repeating completed side effects. Original bounded request:\n\n${clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)}`
-              : "Continue from the durable session. Finish or verify the requested result without repeating completed side effects.",
+              : (input.completion?.retryPrompt ??
+                "Continue from the durable session. Use the registered tools required by the request, then finish or verify the result without repeating completed side effects."),
         );
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
@@ -217,8 +227,13 @@ export class PiAgentRunner {
           toolCalls,
         );
         localBudget ||= termination.fallback;
-        const effective =
+        let effective =
           termination.value === "block" ? "block" : localBudget ? "complete" : termination.value;
+        if (input.completion) {
+          const terminal = input.completion.isTerminal();
+          if (!terminal && effective === "complete") effective = "continue";
+          else if (terminal && effective === "continue") effective = "complete";
+        }
         const persistedOutput = localBudget
           ? `${output}\n\n[Runtime note: Jev was unavailable; this completed under the one-turn local budget.]`
           : output;
@@ -239,7 +254,9 @@ export class PiAgentRunner {
         if (effective === "block") throw new Error("Jev blocked the runtime result");
       }
       throw new Error(
-        `Embedded pi reached its ${hardIterations}-iteration limit without completion`,
+        input.completion
+          ? `Embedded pi reached its ${hardIterations}-iteration limit without a terminal task tool outcome`
+          : `Embedded pi reached its ${hardIterations}-iteration limit without completion`,
       );
     } catch (error) {
       await this.persist(input.owner, {

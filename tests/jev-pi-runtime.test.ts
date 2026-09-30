@@ -713,6 +713,132 @@ test("shared pi runner persists non-team sessions, reuses completed runs, and re
   }
 });
 
+test("formal task completion reprompts narrative-only pi output until a terminal tool outcome", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-formal-completion-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const jev = new JevRuntime(new RuntimeSettingsService(db, config));
+    const prompts: string[] = [];
+    let terminal = false;
+    const runner = new PiAgentRunner(db, config, jev, async () => ({
+      prompt: async (prompt) => {
+        prompts.push(prompt);
+        if (prompts.length === 2) terminal = true;
+      },
+      abort: async () => {},
+      dispose: () => {},
+      getLastAssistantText: () =>
+        prompts.length === 1
+          ? "I would use the tools and then claim completion."
+          : "Completed only after the terminal tool outcome.",
+      subscribe: () => () => {},
+    }));
+    const taskValue = { ...standaloneTask(), id: "formal-completion-task" };
+    const retryPrompt = "Use the registered terminal task tool now.";
+    const output = await runner.run({
+      owner: "owner",
+      profile: model,
+      request: {
+        owner: "owner",
+        task: taskValue,
+        role: {
+          id: "agent",
+          label: "Delegated agent",
+          kind: "coder",
+          modelId: model.id,
+          systemPrompt: "Use reviewed tools",
+          dependsOn: [],
+        },
+        model: model.model,
+        capabilities: model.capabilities,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      },
+      sessionKey: `task:${taskValue.id}`,
+      runKey: `task:${taskValue.id}:formal`,
+      systemPrompt: "Use reviewed tools",
+      prompt: taskValue.prompt,
+      tools: [],
+      completion: { isTerminal: () => terminal, retryPrompt },
+    });
+    assert.equal(output, "Completed only after the terminal tool outcome.");
+    assert.equal(prompts.length, 2);
+    assert.equal(prompts[1], retryPrompt);
+    const [checkpoint] = await db.list<{ status: string; iteration: number }>(
+      "owner",
+      "pi-agent-runs",
+    );
+    assert.equal(checkpoint?.status, "succeeded");
+    assert.equal(checkpoint?.iteration, 2);
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("formal task completion fails at the existing iteration bound without a terminal tool", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-formal-bound-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", { pi: { maxIterations: 2 } });
+    const jev = new JevRuntime(settings);
+    let prompts = 0;
+    const runner = new PiAgentRunner(db, config, jev, async () => ({
+      prompt: async () => {
+        prompts += 1;
+      },
+      abort: async () => {},
+      dispose: () => {},
+      getLastAssistantText: () => "Narrative output without a terminal tool call.",
+      subscribe: () => () => {},
+    }));
+    const taskValue = { ...standaloneTask(), id: "formal-bound-task" };
+    await assert.rejects(
+      runner.run({
+        owner: "owner",
+        profile: model,
+        request: {
+          owner: "owner",
+          task: taskValue,
+          role: {
+            id: "agent",
+            label: "Delegated agent",
+            kind: "coder",
+            modelId: model.id,
+            systemPrompt: "Use reviewed tools",
+            dependsOn: [],
+          },
+          model: model.model,
+          capabilities: model.capabilities,
+          dependencyContext: {},
+          signal: new AbortController().signal,
+        },
+        sessionKey: `task:${taskValue.id}`,
+        runKey: `task:${taskValue.id}:formal`,
+        systemPrompt: "Use reviewed tools",
+        prompt: taskValue.prompt,
+        tools: [],
+        completion: { isTerminal: () => false, retryPrompt: "Use a terminal tool." },
+      }),
+      /2-iteration limit without a terminal task tool outcome/,
+    );
+    assert.equal(prompts, 2);
+    const [checkpoint] = await db.list<{ status: string; iteration: number; error?: string }>(
+      "owner",
+      "pi-agent-runs",
+    );
+    assert.equal(checkpoint?.status, "failed");
+    assert.equal(checkpoint?.iteration, 2);
+    assert.match(checkpoint?.error ?? "", /terminal task tool outcome/);
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("default pi admits adapted tools with Jev disabled and aborts in-flight execution", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-adapted-cancel-"));
   const db = await createStore({ dataDir: join(directory, "db") });

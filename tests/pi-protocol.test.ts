@@ -61,6 +61,13 @@ test("real embedded pi executes an adapted delegated-task tool over the model pr
   const fixture = await piProtocolFixture(t, [
     { tool: { name: "set_plan", arguments: { steps: ["Inspect", "Verify"] } } },
     { text: "The verification plan was saved through the real embedded pi tool loop." },
+    {
+      tool: {
+        name: "finish_task",
+        arguments: { summary: "The verification plan was saved and explicitly completed." },
+      },
+    },
+    { text: "The delegated task is explicitly complete." },
   ]);
   const db = await createStore({ dataDir: join(directory, "db") });
   const server = await createApp(db, configFor(directory));
@@ -86,13 +93,13 @@ test("real embedded pi executes an adapted delegated-task tool over the model pr
     },
   });
 
-  assert.equal(result.status, "waiting_input");
+  assert.equal(result.status, "succeeded");
   assert.deepEqual(
     current.plan.map(({ title }) => title),
     ["Inspect", "Verify"],
   );
   assert.ok(events.some((value) => value.includes("Agent update")));
-  assert.equal(fixture.requests.length, 2);
+  assert.equal(fixture.requests.length, 4);
   assert.ok(fixture.requests.every((request) => request.path === "/v1/responses"));
   assert.ok(
     fixture.requests.every((request) => request.authorization === "Bearer local-pi-protocol-key"),
@@ -111,6 +118,11 @@ test("real embedded pi executes an adapted delegated-task tool over the model pr
     "pi must not expose host shell or filesystem tools",
   );
   assert.match(JSON.stringify(fixture.requests[1]?.body.input), /function_call_output/);
+  assert.match(
+    JSON.stringify(fixture.requests[2]?.body.input),
+    /not complete|Use the registered tools/i,
+  );
+  assert.match(JSON.stringify(fixture.requests[3]?.body.input), /function_call_output/);
 });
 
 test("real embedded pi executes a conversation tool and emits valid tool-first AG-UI order", async (t) => {
