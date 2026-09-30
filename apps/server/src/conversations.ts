@@ -1,0 +1,753 @@
+import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import {
+  type AbstractAgent,
+  type BaseEvent,
+  compactEvents,
+  EventType,
+  type Message,
+} from "@ag-ui/client";
+import {
+  AgentRunner,
+  type AgentRunnerConnectRequest,
+  type AgentRunnerRunRequest,
+  type AgentRunnerStopRequest,
+  finalizeRunEvents,
+} from "@copilotkit/runtime/v2";
+import { Observable, ReplaySubject } from "rxjs";
+import type { Auth } from "./auth.ts";
+import type { Config } from "./config.ts";
+import type { Store } from "./db.ts";
+import { AppError } from "./errors.ts";
+
+const MAX_THREADS_PER_PAGE = 100;
+const MAX_MESSAGES = 1_000;
+const MAX_NEW_USER_MESSAGES = 50;
+const MAX_USER_MESSAGE_BYTES = 256 * 1024;
+const MAX_EVENTS_PER_RUN = 5_000;
+const MAX_RUN_BYTES = 8 * 1024 * 1024;
+const MAX_THREAD_EVENTS = 20_000;
+const MAX_THREAD_BYTES = 16 * 1024 * 1024;
+const THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
+
+export interface ConversationThread {
+  id: string;
+  name: string | null;
+  agentId: string;
+  organizationId: "";
+  createdById: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  activeRunId: string | null;
+  messages: Message[];
+  events: BaseEvent[];
+  state: Record<string, unknown> | null;
+}
+
+interface ConversationRun {
+  id: string;
+  threadId: string;
+  runId: string;
+  agentId: string;
+  status: "running" | "completed" | "stopped" | "failed" | "interrupted";
+  events: BaseEvent[];
+  messages: Message[];
+  state: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+}
+
+interface ActiveRun {
+  owner: string;
+  threadId: string;
+  runId: string;
+  agent: AbstractAgent;
+  subject: ReplaySubject<BaseEvent>;
+  stopRequested: boolean;
+  resolveStop: () => void;
+  stopped: Promise<void>;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+type OwnerBoundAgent = AbstractAgent & { openMuseOwner?: string };
+
+function assertThreadId(threadId: string) {
+  if (!THREAD_ID.test(threadId)) throw new AppError("Invalid conversation thread ID", 422);
+}
+
+function jsonBytes(value: unknown) {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+function eventState(events: BaseEvent[]): Record<string, unknown> | null {
+  const compacted = compactEvents(events);
+  for (let index = compacted.length - 1; index >= 0; index--) {
+    const event = compacted[index];
+    if (event.type !== EventType.STATE_SNAPSHOT) continue;
+    const snapshot = event.snapshot;
+    return snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? { ...snapshot }
+      : null;
+  }
+  return null;
+}
+
+function mergeMessages(stored: Message[], incoming: Message[]) {
+  const merged = new Map(stored.map((message) => [message.id, message]));
+  for (const message of incoming) if (!merged.has(message.id)) merged.set(message.id, message);
+  return [...merged.values()].slice(-MAX_MESSAGES);
+}
+
+function trustedInputMessages(stored: Message[], incoming: Message[]) {
+  const authoritative = new Map(stored.map((message) => [message.id, message]));
+  const seen = new Set<string>();
+  let newUsers = 0;
+  for (const candidate of incoming) {
+    if (!candidate || typeof candidate !== "object" || !THREAD_ID.test(candidate.id))
+      throw new AppError("Invalid conversation message ID", 422);
+    if (seen.has(candidate.id)) throw new AppError("Duplicate conversation message ID", 422);
+    seen.add(candidate.id);
+    const existing = authoritative.get(candidate.id);
+    if (existing) {
+      const supplied = candidate as unknown as Record<string, unknown>;
+      const canonical = existing as unknown as Record<string, unknown>;
+      const fields = ["role", "content", "toolCalls", "toolCallId", "name", "speakerRole"] as const;
+      for (const field of fields) {
+        if (field in supplied && !isDeepStrictEqual(supplied[field], canonical[field]))
+          throw new AppError("Stored conversation history cannot be modified by the client", 422);
+      }
+      continue;
+    }
+    if (candidate.role !== "user")
+      throw new AppError("Only new user messages may be submitted by the client", 422);
+    if (typeof candidate.content !== "string" && !Array.isArray(candidate.content))
+      throw new AppError("Invalid user message content", 422);
+    if (jsonBytes(candidate.content) > MAX_USER_MESSAGE_BYTES)
+      throw new AppError("User message is too large", 413);
+    newUsers += 1;
+    if (newUsers > MAX_NEW_USER_MESSAGES)
+      throw new AppError("Too many new user messages in one run", 413);
+    authoritative.set(candidate.id, {
+      id: candidate.id,
+      role: "user",
+      content: structuredClone(candidate.content),
+      ...(typeof candidate.name === "string" && candidate.name.length <= 100
+        ? { name: candidate.name }
+        : {}),
+    } as Message);
+  }
+  return [...authoritative.values()].slice(-MAX_MESSAGES);
+}
+
+function trustedInputState(stored: Record<string, unknown> | null, incoming: unknown) {
+  if (stored) return structuredClone(stored);
+  if (incoming === undefined || incoming === null) return {};
+  if (typeof incoming !== "object" || Array.isArray(incoming))
+    throw new AppError("Conversation state must be an object", 422);
+  if (jsonBytes(incoming) > MAX_USER_MESSAGE_BYTES)
+    throw new AppError("Conversation state is too large", 413);
+  const copy = structuredClone(incoming) as Record<string, unknown>;
+  const stack: unknown[] = [copy];
+  while (stack.length) {
+    const value = stack.pop();
+    if (!value || typeof value !== "object") continue;
+    for (const [key, child] of Object.entries(value)) {
+      if (/^(?:__proto__|prototype|constructor|_?openmuse|\$openmuse)$/i.test(key))
+        throw new AppError("Conversation state contains a reserved field", 422);
+      stack.push(child);
+    }
+  }
+  return copy;
+}
+
+function boundedThreadEvents(
+  events: BaseEvent[],
+  messages?: Message[],
+  state?: Record<string, unknown> | null,
+) {
+  let compacted = compactEvents(events);
+  let dropped = false;
+  const snapshots = () =>
+    messages
+      ? ([
+          { type: EventType.MESSAGES_SNAPSHOT, messages },
+          ...(state ? [{ type: EventType.STATE_SNAPSHOT, snapshot: state }] : []),
+        ] as BaseEvent[])
+      : [];
+  while (
+    compacted.length + snapshots().length > MAX_THREAD_EVENTS ||
+    jsonBytes([...compacted, ...snapshots()]) > MAX_THREAD_BYTES
+  ) {
+    dropped = true;
+    const nextRun = compacted.findIndex(
+      (event, index) => index > 0 && event.type === EventType.RUN_STARTED,
+    );
+    if (nextRun < 0) {
+      if (!compacted.length) break;
+      const target = Math.min(
+        MAX_THREAD_EVENTS - snapshots().length,
+        Math.max(0, Math.floor(compacted.length * 0.75)),
+      );
+      compacted = target ? compacted.slice(-target) : [];
+      continue;
+    }
+    compacted = compacted.slice(nextRun);
+  }
+  return dropped ? compactEvents([...compacted, ...snapshots()]) : compacted;
+}
+
+function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
+  const messages = new Map(input.map((message) => [message.id, structuredClone(message)]));
+  for (const baseEvent of events) {
+    const event = baseEvent as BaseEvent & {
+      messages?: Message[];
+      messageId?: string;
+      role?: Message["role"];
+      name?: string;
+      delta?: string;
+      parentMessageId?: string;
+      toolCallId?: string;
+      toolCallName?: string;
+      content?: string;
+    };
+    if (event.type === EventType.MESSAGES_SNAPSHOT) {
+      for (const message of event.messages ?? [])
+        messages.set(message.id, structuredClone(message));
+      continue;
+    }
+    if (event.type === EventType.TEXT_MESSAGE_START) {
+      if (!event.messageId || !event.role) continue;
+      messages.set(event.messageId, {
+        id: event.messageId,
+        role: event.role,
+        content: "",
+        ...(event.name ? { name: event.name } : {}),
+      } as Message);
+      continue;
+    }
+    if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
+      if (!event.messageId || typeof event.delta !== "string") continue;
+      const current = messages.get(event.messageId);
+      if (current && "content" in current && typeof current.content === "string")
+        current.content += event.delta;
+      continue;
+    }
+    if (event.type === EventType.TOOL_CALL_START) {
+      const parent = messages.get(event.parentMessageId ?? "");
+      if (parent?.role !== "assistant" || !event.toolCallId || !event.toolCallName) continue;
+      const assistant = parent as Message & {
+        toolCalls?: {
+          id: string;
+          type: "function";
+          function: { name: string; arguments: string };
+        }[];
+      };
+      assistant.toolCalls ??= [];
+      if (!assistant.toolCalls.some((call) => call.id === event.toolCallId))
+        assistant.toolCalls.push({
+          id: event.toolCallId,
+          type: "function",
+          function: { name: event.toolCallName, arguments: "" },
+        });
+      continue;
+    }
+    if (event.type === EventType.TOOL_CALL_ARGS) {
+      if (!event.toolCallId || typeof event.delta !== "string") continue;
+      for (const message of messages.values()) {
+        if (message.role !== "assistant") continue;
+        const call = message.toolCalls?.find((candidate) => candidate.id === event.toolCallId);
+        if (call) call.function.arguments += event.delta;
+      }
+      continue;
+    }
+    if (
+      event.type === EventType.TOOL_CALL_RESULT &&
+      event.messageId &&
+      event.toolCallId &&
+      typeof event.content === "string"
+    )
+      messages.set(event.messageId, {
+        id: event.messageId,
+        role: "tool",
+        toolCallId: event.toolCallId,
+        content: event.content,
+        ...(event.role ? { speakerRole: event.role } : {}),
+      } as Message);
+  }
+  return [...messages.values()].slice(-MAX_MESSAGES);
+}
+
+function cursorFor(thread: ConversationThread) {
+  return Buffer.from(JSON.stringify([thread.updatedAt, thread.id]), "utf8").toString("base64url");
+}
+
+function parseCursor(cursor: string) {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length !== 2 ||
+      typeof parsed[0] !== "string" ||
+      typeof parsed[1] !== "string"
+    )
+      throw new Error("invalid");
+    return parsed as [string, string];
+  } catch {
+    throw new AppError("Invalid conversation cursor", 422);
+  }
+}
+
+export class ConversationStoreRunner extends AgentRunner {
+  readonly ɵsupportsLocalThreadEndpoints = true;
+  private readonly active = new Map<string, ActiveRun>();
+
+  constructor(
+    private readonly db: Store,
+    private readonly auth: Auth,
+    private readonly config: Config,
+  ) {
+    super();
+  }
+
+  private key(owner: string, threadId: string) {
+    return `${owner}\u0000${threadId}`;
+  }
+
+  metadata(thread: ConversationThread) {
+    const { messages: _messages, events: _events, state: _state, ...metadata } = thread;
+    return metadata;
+  }
+
+  private async runOwner(agent: OwnerBoundAgent) {
+    if (agent.openMuseOwner) return agent.openMuseOwner;
+    const headers = (agent as unknown as { headers?: Record<string, string> }).headers;
+    return this.auth.owner(headers?.authorization ?? headers?.Authorization);
+  }
+
+  private async connectOwner(request: AgentRunnerConnectRequest) {
+    return this.auth.owner(request.headers?.authorization ?? request.headers?.Authorization);
+  }
+
+  async recoverInterrupted() {
+    const now = new Date().toISOString();
+    for (const { owner, value } of await this.db.scan<ConversationRun>("conversation-runs")) {
+      if (value.status !== "running") continue;
+      const events = [...value.events];
+      finalizeRunEvents(events, { interruptionMessage: "Server restarted during the run" });
+      await this.db.put(owner, "conversation-runs", {
+        ...value,
+        status: "interrupted",
+        events,
+        state: eventState(events),
+        error: "Server restarted during the run",
+        updatedAt: now,
+      });
+    }
+    for (const { owner, value } of await this.db.scan<ConversationThread>("conversation-threads")) {
+      if (!value.activeRunId) continue;
+      const run = await this.db.get<ConversationRun>(
+        owner,
+        "conversation-runs",
+        `${value.id}:${value.activeRunId}`,
+      );
+      const combined = [...(value.events ?? []), ...(run?.events ?? [])];
+      const state = eventState(combined) ?? value.state;
+      const events = boundedThreadEvents(combined, value.messages, state);
+      await this.db.put(owner, "conversation-threads", {
+        ...value,
+        activeRunId: null,
+        events,
+        state,
+        updatedAt: now,
+      });
+    }
+  }
+
+  async ensure(owner: string, threadId: string = randomUUID(), agentId = "default") {
+    assertThreadId(threadId);
+    const now = new Date().toISOString();
+    await this.db.insertIfAbsent(owner, "conversation-threads", {
+      id: threadId,
+      name: null,
+      agentId,
+      organizationId: "" as const,
+      createdById: owner,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+      activeRunId: null,
+      messages: [] as Message[],
+      events: [] as BaseEvent[],
+      state: null,
+    });
+    const thread = await this.db.get<ConversationThread>(owner, "conversation-threads", threadId);
+    if (!thread) throw new AppError("Conversation could not be created", 503);
+    return thread;
+  }
+
+  async create(owner: string, input: { id?: string; name?: string; agentId?: string }) {
+    const id = input.id ?? randomUUID();
+    assertThreadId(id);
+    const existing = await this.db.get(owner, "conversation-threads", id);
+    if (existing) throw new AppError("Conversation already exists", 409);
+    const thread = await this.ensure(owner, id, input.agentId ?? "default");
+    if (input.name !== undefined) return this.rename(owner, id, input.name);
+    return thread;
+  }
+
+  async get(owner: string, threadId: string) {
+    assertThreadId(threadId);
+    const thread = await this.db.get<ConversationThread>(owner, "conversation-threads", threadId);
+    if (!thread) throw new AppError("Conversation not found", 404);
+    return thread;
+  }
+
+  async list(
+    owner: string,
+    options: { agentId?: string; includeArchived?: boolean; limit?: number; cursor?: string },
+  ) {
+    const limit = Math.min(MAX_THREADS_PER_PAGE, Math.max(1, options.limit ?? 50));
+    let threads = (await this.db.list<ConversationThread>(owner, "conversation-threads"))
+      .filter((thread) => !options.agentId || thread.agentId === options.agentId)
+      .filter((thread) => options.includeArchived || !thread.archived)
+      .sort(
+        (left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),
+      );
+    if (options.cursor) {
+      const [updatedAt, id] = parseCursor(options.cursor);
+      const index = threads.findIndex(
+        (thread) => thread.updatedAt === updatedAt && thread.id === id,
+      );
+      if (index < 0) throw new AppError("Conversation cursor is no longer available", 409);
+      threads = threads.slice(index + 1);
+    }
+    const page = threads.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      threads: page.map((thread) => this.metadata(thread)),
+      nextCursor: threads.length > limit && last ? cursorFor(last) : null,
+    };
+  }
+
+  async rename(owner: string, threadId: string, name: string | null) {
+    const thread = await this.get(owner, threadId);
+    const updated = await this.db.compareAndSwap<ConversationThread>(
+      owner,
+      "conversation-threads",
+      threadId,
+      { archived: thread.archived },
+      { name, updatedAt: new Date().toISOString() },
+    );
+    if (!updated) throw new AppError("Conversation changed; refresh and try again", 409);
+    return updated;
+  }
+
+  async setArchived(owner: string, threadId: string, archived: boolean) {
+    const thread = await this.get(owner, threadId);
+    if (thread.activeRunId) throw new AppError("Stop the active run before archiving", 409);
+    if (thread.archived === archived) return thread;
+    const updated = await this.db.compareAndSwap<ConversationThread>(
+      owner,
+      "conversation-threads",
+      threadId,
+      { archived: !archived, activeRunId: null },
+      { archived, updatedAt: new Date().toISOString() },
+    );
+    if (!updated) throw new AppError("Conversation changed; refresh and try again", 409);
+    return updated;
+  }
+
+  async remove(owner: string, threadId: string) {
+    await this.get(owner, threadId);
+    if (!(await this.db.removeIdleConversation(owner, threadId)))
+      throw new AppError("Stop the active run before deleting", 409);
+  }
+
+  run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
+    const subject = new ReplaySubject<BaseEvent>(Infinity);
+    void this.startRun(request, subject);
+    return subject.asObservable();
+  }
+
+  private async startRun(request: AgentRunnerRunRequest, subject: ReplaySubject<BaseEvent>) {
+    let owner = "";
+    let active: ActiveRun | undefined;
+    const events: BaseEvent[] = [];
+    let messages: Message[] = [];
+    let writeChain = Promise.resolve();
+    let runRecord: ConversationRun | undefined;
+    let claimed = false;
+    let priorEvents: BaseEvent[] = [];
+    try {
+      assertThreadId(request.threadId);
+      owner = await this.runOwner(request.agent as OwnerBoundAgent);
+      const thread = await this.ensure(owner, request.threadId, request.agent.agentId ?? "default");
+      if (thread.archived) throw new AppError("Restore this conversation before running it", 409);
+      const claimedThread = await this.db.compareAndSwap<ConversationThread>(
+        owner,
+        "conversation-threads",
+        request.threadId,
+        { archived: false, activeRunId: null },
+        { activeRunId: request.input.runId, updatedAt: new Date().toISOString() },
+      );
+      if (!claimedThread) throw new AppError("Conversation already has an active run", 409);
+      claimed = true;
+      priorEvents = thread.events ?? [];
+
+      messages = trustedInputMessages(thread.messages ?? [], request.input.messages ?? []);
+      if (jsonBytes(messages) > MAX_RUN_BYTES)
+        throw new AppError("Conversation history is too large; start a new conversation", 413);
+      const state = trustedInputState(thread.state, request.input.state);
+      request.agent.setMessages(messages);
+      request.input = { ...request.input, messages, state };
+      const now = new Date().toISOString();
+      runRecord = {
+        id: `${request.threadId}:${request.input.runId}`,
+        threadId: request.threadId,
+        runId: request.input.runId,
+        agentId: request.agent.agentId ?? "default",
+        status: "running",
+        events,
+        messages,
+        state,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.db.put(owner, "conversation-runs", runRecord);
+
+      let resolveStop = () => {};
+      const stopped = new Promise<void>((resolve) => {
+        resolveStop = resolve;
+      });
+      const timer = setTimeout(
+        () => {
+          const current = this.active.get(this.key(owner, request.threadId));
+          if (!current || current.runId !== request.input.runId) return;
+          current.stopRequested = true;
+          try {
+            request.agent.abortRun();
+          } catch (error) {
+            console.error("Failed to abort timed-out conversation run", error);
+          } finally {
+            current.resolveStop();
+          }
+        },
+        this.config.chatRunTimeoutMs ?? 10 * 60 * 1000,
+      );
+      active = {
+        owner,
+        threadId: request.threadId,
+        runId: request.input.runId,
+        agent: request.agent,
+        subject,
+        stopRequested: false,
+        resolveStop,
+        stopped,
+        timer,
+      };
+      this.active.set(this.key(owner, request.threadId), active);
+
+      const checkpoint = () => {
+        if (!runRecord) return;
+        const snapshot: ConversationRun = {
+          ...runRecord,
+          events: [...events],
+          messages: materializeMessages(messages, events),
+          state: eventState(events),
+          updatedAt: new Date().toISOString(),
+        };
+        writeChain = writeChain.then(async () => {
+          await this.db.put(owner, "conversation-runs", snapshot);
+        });
+      };
+
+      await Promise.race([
+        request.agent.runAgent(request.input, {
+          onEvent: ({ event }) => {
+            if (events.length >= MAX_EVENTS_PER_RUN || jsonBytes(events) >= MAX_RUN_BYTES) {
+              if (active) {
+                active.stopRequested = true;
+                active.resolveStop();
+              }
+              request.agent.abortRun();
+              return;
+            }
+            events.push(event);
+            subject.next(event);
+            checkpoint();
+          },
+        }),
+        active.stopped,
+      ]);
+      await this.finalize(
+        owner,
+        request,
+        priorEvents,
+        events,
+        messages,
+        runRecord,
+        active,
+        writeChain,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (runRecord && active)
+        await this.finalize(
+          owner,
+          request,
+          priorEvents,
+          events,
+          messages,
+          runRecord,
+          active,
+          writeChain,
+          message,
+        );
+      else {
+        if (claimed)
+          await this.db.compareAndSwap<ConversationThread>(
+            owner,
+            "conversation-threads",
+            request.threadId,
+            { activeRunId: request.input.runId },
+            { activeRunId: null, updatedAt: new Date().toISOString() },
+          );
+        subject.next({ type: EventType.RUN_ERROR, message });
+        subject.complete();
+      }
+    }
+  }
+
+  private async finalize(
+    owner: string,
+    request: AgentRunnerRunRequest,
+    priorEvents: BaseEvent[],
+    events: BaseEvent[],
+    inputMessages: Message[],
+    run: ConversationRun,
+    active: ActiveRun,
+    writeChain: Promise<void>,
+    error?: string,
+  ) {
+    clearTimeout(active.timer);
+    const stopped = active.stopRequested;
+    const appended = finalizeRunEvents(events, {
+      stopRequested: stopped,
+      ...(error && !stopped ? { interruptionMessage: error } : {}),
+    });
+    for (const event of appended) subjectNext(active.subject, event);
+    await writeChain;
+    const compacted = compactEvents(events);
+    const allThreadEvents = compactEvents([...priorEvents, ...compacted]);
+    const agentMessages = Array.isArray(request.agent.messages) ? request.agent.messages : [];
+    const messages = materializeMessages(mergeMessages(inputMessages, agentMessages), compacted);
+    const now = new Date().toISOString();
+    const state = eventState(allThreadEvents) ?? run.state;
+    const threadEvents = boundedThreadEvents(allThreadEvents, messages, state);
+    const status = stopped ? "stopped" : error ? "failed" : "completed";
+    await this.db.put(owner, "conversation-runs", {
+      ...run,
+      status,
+      events: compacted,
+      messages,
+      state,
+      updatedAt: now,
+      ...(error ? { error } : {}),
+    });
+    await this.db.compareAndSwap<ConversationThread>(
+      owner,
+      "conversation-threads",
+      request.threadId,
+      { activeRunId: request.input.runId },
+      { activeRunId: null, events: threadEvents, messages, state, updatedAt: now },
+    );
+    const key = this.key(owner, request.threadId);
+    if (this.active.get(key)?.runId === request.input.runId) this.active.delete(key);
+    active.subject.complete();
+  }
+
+  connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
+    return new Observable((subscriber) => {
+      let liveSubscription: { unsubscribe(): void } | undefined;
+      void (async () => {
+        const owner = await this.connectOwner(request);
+        assertThreadId(request.threadId);
+        const thread = await this.db.get<ConversationThread>(
+          owner,
+          "conversation-threads",
+          request.threadId,
+        );
+        if (!thread) {
+          subscriber.complete();
+          return;
+        }
+        const emitted = new Set<string>();
+        for (const event of compactEvents(thread.events ?? [])) {
+          subscriber.next(event);
+          if ("messageId" in event && typeof event.messageId === "string")
+            emitted.add(event.messageId);
+        }
+        const active = this.active.get(this.key(owner, request.threadId));
+        if (!active) {
+          subscriber.complete();
+          return;
+        }
+        liveSubscription = active.subject.subscribe({
+          next: (event) => {
+            if (
+              "messageId" in event &&
+              typeof event.messageId === "string" &&
+              emitted.has(event.messageId)
+            )
+              return;
+            subscriber.next(event);
+          },
+          error: (error) => subscriber.error(error),
+          complete: () => subscriber.complete(),
+        });
+      })().catch((error) => subscriber.error(error));
+      return () => liveSubscription?.unsubscribe();
+    });
+  }
+
+  async isRunning(request: { threadId: string }) {
+    return [...this.active.values()].some((active) => active.threadId === request.threadId);
+  }
+
+  async stop(request: AgentRunnerStopRequest) {
+    const candidates = [...this.active.values()].filter(
+      (active) =>
+        active.threadId === request.threadId &&
+        (request.runId === undefined || active.runId === request.runId),
+    );
+    if (candidates.length !== 1) return false;
+    return this.stopActive(candidates[0]);
+  }
+
+  async stopOwner(owner: string, threadId: string, runId?: string) {
+    assertThreadId(threadId);
+    const active = this.active.get(this.key(owner, threadId));
+    if (!active || (runId !== undefined && active.runId !== runId)) return false;
+    return this.stopActive(active);
+  }
+
+  private stopActive(active: ActiveRun) {
+    if (active.stopRequested) return false;
+    active.stopRequested = true;
+    try {
+      active.agent.abortRun();
+      active.resolveStop();
+      return true;
+    } catch {
+      active.stopRequested = false;
+      return false;
+    }
+  }
+}
+
+function subjectNext(subject: ReplaySubject<BaseEvent>, event: BaseEvent) {
+  subject.next(event);
+}

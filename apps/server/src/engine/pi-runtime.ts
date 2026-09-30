@@ -2,7 +2,17 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { Model } from "@earendil-works/pi-ai";
+import {
+  type AssistantMessage,
+  createAssistantMessageEventStream,
+  type JsonObject,
+  type Model,
+  type OpenAICompletionsOptions,
+  type Provider,
+  type SimpleStreamOptions,
+  type Tool,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -12,7 +22,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ComputerService } from "../computer.ts";
-import type { Config } from "../config.ts";
+import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { ConnectorService } from "../connector-service.ts";
 import type { Store } from "../db.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
@@ -80,6 +90,263 @@ function modelParts(spec: string) {
   return { provider: match[1]?.toLowerCase() ?? "", id: match[2]?.trim() ?? "" };
 }
 
+const emptyUsage = () => ({
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+});
+
+function textContent(content: unknown) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (part && typeof part === "object" && "text" in part && typeof part.text === "string")
+        return part.text;
+      if (part && typeof part === "object" && "type" in part && part.type === "image")
+        return "[image omitted]";
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function ollamaTools(context: TranscriptContext): Tool[] {
+  const tools = new Map<string, Tool>();
+  for (const message of context.messages) {
+    if (message.role !== "system") continue;
+    for (const tool of message.toolsAdded ?? []) tools.set(tool.name, tool);
+    for (const tool of message.toolsRemoved ?? []) tools.delete(tool.name);
+  }
+  return [...tools.values()];
+}
+
+function ollamaMessages(context: TranscriptContext) {
+  return context.messages.map((message) => {
+    if (message.role === "system") {
+      const sections = Object.values(message.sections ?? {}).filter(
+        (value): value is string => typeof value === "string",
+      );
+      return { role: "system", content: [textContent(message.content), ...sections].join("\n") };
+    }
+    if (message.role === "user") return { role: "user", content: textContent(message.content) };
+    if (message.role === "toolResult")
+      return {
+        role: "tool",
+        tool_call_id: message.toolCallId,
+        name: message.toolName,
+        content: textContent(message.content),
+      };
+    const calls = message.content.filter((part) => part.type === "toolCall");
+    return {
+      role: "assistant",
+      content: textContent(message.content),
+      ...(calls.length
+        ? {
+            tool_calls: calls.map((call) => ({
+              id: call.id,
+              type: "function",
+              function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+            })),
+          }
+        : {}),
+    };
+  });
+}
+
+function ollamaStream(
+  model: Model<"openai-completions">,
+  context: TranscriptContext,
+  options?: SimpleStreamOptions | OpenAICompletionsOptions,
+) {
+  const stream = createAssistantMessageEventStream();
+  const output: AssistantMessage = {
+    role: "assistant",
+    content: [],
+    api: "openai-completions",
+    provider: model.provider,
+    model: model.id,
+    usage: emptyUsage(),
+    stopReason: "pending",
+    timestamp: Date.now(),
+  };
+  void (async () => {
+    try {
+      stream.push({ type: "start", partial: output });
+      const tools = ollamaTools(context);
+      const response = await fetch(`${model.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: options?.signal,
+        body: JSON.stringify({
+          model: model.id,
+          messages: ollamaMessages(context),
+          stream: true,
+          think: false,
+          stream_options: { include_usage: true },
+          ...(tools.length
+            ? {
+                tools: tools.map((tool) => ({
+                  type: "function",
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  },
+                })),
+              }
+            : {}),
+          ...(options?.temperature === undefined ? {} : { temperature: options.temperature }),
+          ...(options?.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
+        }),
+      });
+      if (!response.ok)
+        throw new Error(
+          `Ollama returned HTTP ${response.status}: ${(await response.text()).slice(0, 1000)}`,
+        );
+      if (!response.body) throw new Error("Ollama returned an empty response body");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let textBlock: Extract<AssistantMessage["content"][number], { type: "text" }> | undefined;
+      const toolBlocks = new Map<
+        number,
+        { block: Extract<AssistantMessage["content"][number], { type: "toolCall" }>; raw: string }
+      >();
+      let finishReason: string | undefined;
+      const consume = (data: string) => {
+        if (!data || data === "[DONE]") return;
+        const chunk = JSON.parse(data) as {
+          choices?: Array<{
+            delta?: {
+              content?: string;
+              tool_calls?: Array<{
+                index?: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }>;
+            };
+            finish_reason?: string | null;
+          }>;
+          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+        };
+        const choice = chunk.choices?.[0];
+        const delta = choice?.delta;
+        if (delta?.content) {
+          if (!textBlock) {
+            textBlock = { type: "text", text: "" };
+            output.content.push(textBlock);
+            stream.push({
+              type: "text_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
+          }
+          textBlock.text += delta.content;
+          stream.push({
+            type: "text_delta",
+            contentIndex: output.content.indexOf(textBlock),
+            delta: delta.content,
+            partial: output,
+          });
+        }
+        for (const call of delta?.tool_calls ?? []) {
+          const index = call.index ?? 0;
+          let current = toolBlocks.get(index);
+          if (!current) {
+            const block = {
+              type: "toolCall" as const,
+              id: call.id ?? `ollama-tool-${index}`,
+              name: call.function?.name ?? "",
+              arguments: {} as JsonObject,
+            };
+            current = { block, raw: "" };
+            toolBlocks.set(index, current);
+            output.content.push(block);
+            stream.push({
+              type: "toolcall_start",
+              contentIndex: output.content.length - 1,
+              partial: output,
+            });
+          }
+          if (call.id) current.block.id = call.id;
+          if (call.function?.name) current.block.name += call.function.name;
+          if (call.function?.arguments) {
+            current.raw += call.function.arguments;
+            stream.push({
+              type: "toolcall_delta",
+              contentIndex: output.content.indexOf(current.block),
+              delta: call.function.arguments,
+              partial: output,
+            });
+          }
+        }
+        if (choice?.finish_reason) finishReason = choice.finish_reason;
+        if (chunk.usage) {
+          output.usage.input = chunk.usage.prompt_tokens ?? 0;
+          output.usage.output = chunk.usage.completion_tokens ?? 0;
+          output.usage.totalTokens =
+            chunk.usage.total_tokens ?? output.usage.input + output.usage.output;
+        }
+      };
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary >= 0) {
+          const event = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          for (const line of event.split("\n"))
+            if (line.startsWith("data:")) consume(line.slice(5).trim());
+          boundary = buffer.indexOf("\n\n");
+        }
+      }
+      buffer += decoder.decode();
+      for (const line of buffer.split(/\r?\n/))
+        if (line.startsWith("data:")) consume(line.slice(5).trim());
+      if (textBlock)
+        stream.push({
+          type: "text_end",
+          contentIndex: output.content.indexOf(textBlock),
+          content: textBlock.text,
+          partial: output,
+        });
+      for (const current of toolBlocks.values()) {
+        if (current.raw) {
+          const parsed = JSON.parse(current.raw) as unknown;
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+            throw new Error("Ollama returned invalid tool arguments");
+          current.block.arguments = parsed as JsonObject;
+        }
+        stream.push({
+          type: "toolcall_end",
+          contentIndex: output.content.indexOf(current.block),
+          toolCall: current.block,
+          partial: output,
+        });
+      }
+      output.rawStopReason = finishReason;
+      output.stopReason = toolBlocks.size
+        ? "toolUse"
+        : finishReason === "length"
+          ? "length"
+          : "stop";
+      stream.push({ type: "done", reason: output.stopReason, message: output });
+      stream.end(output);
+    } catch (error) {
+      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+      output.errorMessage = error instanceof Error ? error.message : "Ollama request failed";
+      stream.push({ type: "error", reason: output.stopReason, error: output });
+      stream.end(output);
+    }
+  })();
+  return stream;
+}
+
 export async function configuredPiModel(
   config: Config,
   agentDir: string,
@@ -103,8 +370,10 @@ export async function configuredPiModel(
             process.env.GOOGLE_API_KEY)
           : provider === "opencodex"
             ? (config.openCodexApiKey ?? process.env.OPENCODEX_API_KEY)
-            : undefined;
-  if (!providerKey?.trim())
+            : provider === "ollama"
+              ? undefined
+              : undefined;
+  if (provider !== "ollama" && !providerKey?.trim())
     throw new Error(`No server-side credential is configured for ${provider}`);
   const builtin = runtime.getModel(provider, id);
   const customBase =
@@ -116,8 +385,12 @@ export async function configuredPiModel(
           ? process.env.GOOGLE_GENERATIVE_AI_BASE_URL
           : provider === "opencodex"
             ? (config.openCodexBaseUrl ?? process.env.OPENCODEX_BASE_URL)
-            : undefined;
+            : provider === "ollama"
+              ? (config.ollamaBaseUrl ?? process.env.OLLAMA_BASE_URL)
+              : undefined;
   if (builtin && !customBase) {
+    if (!providerKey?.trim())
+      throw new Error(`No server-side credential is configured for ${provider}`);
     await runtime.setRuntimeApiKey(provider, providerKey.trim());
     return { runtime, model: builtin as Model<string> };
   }
@@ -125,12 +398,15 @@ export async function configuredPiModel(
     throw new Error(
       `Configured model ${spec} is not in pi's catalog and has no compatible base URL`,
     );
-  const normalizedCustomBase =
+  let normalizedCustomBase =
     provider === "anthropic"
       ? customBase?.replace(/\/v1\/?$/, "")
       : provider === "google"
         ? customBase?.replace(/\/v1beta\/?$/, "")
         : customBase?.replace(/\/$/, "");
+  if (provider === "ollama" && normalizedCustomBase) {
+    normalizedCustomBase = `${normalizeOllamaBaseUrl(normalizedCustomBase)}/v1`;
+  }
   const baseUrl = normalizedCustomBase ?? builtin?.baseUrl;
   if (!baseUrl) throw new Error(`No base URL is configured for ${provider}`);
   const parsedBase = new URL(baseUrl);
@@ -141,12 +417,47 @@ export async function configuredPiModel(
       ? "anthropic-messages"
       : provider === "google"
         ? "google-generative-ai"
-        : "openai-responses";
+        : provider === "ollama"
+          ? "openai-completions"
+          : "openai-responses";
   const runtimeProvider = `openmuse-${provider}`;
+  if (provider === "ollama") {
+    const ollamaModel: Model<"openai-completions"> = {
+      id,
+      name: id,
+      provider: runtimeProvider,
+      api: "openai-completions",
+      baseUrl,
+      reasoning: builtin?.reasoning ?? true,
+      input: builtin?.input ?? ["text"],
+      cost: builtin?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8192,
+      maxTokens: 1024,
+    };
+    const ollamaProvider: Provider<"openai-completions"> = {
+      id: runtimeProvider,
+      name: "OpenMuse Ollama",
+      baseUrl,
+      auth: {
+        apiKey: {
+          name: "Keyless local Ollama",
+          check: async () => ({ type: "api_key", source: "OLLAMA_BASE_URL" }),
+          resolve: async () => ({ auth: { baseUrl }, source: "OLLAMA_BASE_URL" }),
+        },
+      },
+      getModels: () => [ollamaModel],
+      stream: ollamaStream,
+      streamSimple: ollamaStream,
+    };
+    runtime.registerNativeProvider(ollamaProvider);
+    const model = runtime.getModel(runtimeProvider, id);
+    if (!model) throw new Error(`Pi could not register configured model ${spec}`);
+    return { runtime, model: model as Model<string> };
+  }
   runtime.registerProvider(runtimeProvider, {
     name: `OpenMuse ${provider}`,
     baseUrl,
-    apiKey: providerKey.trim(),
+    ...(providerKey?.trim() ? { apiKey: providerKey.trim() } : {}),
     api,
     authHeader: true,
     models: [

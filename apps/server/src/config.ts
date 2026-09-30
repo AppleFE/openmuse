@@ -42,6 +42,8 @@ export interface Config {
   models?: ModelProfile[];
   openCodexBaseUrl?: string;
   openCodexApiKey?: string;
+  /** Explicit local Ollama origin; no API key is sent. */
+  ollamaBaseUrl?: string;
   /** Server-side Jev defaults; owner settings never expose the credential. */
   typesafeApiKey?: string;
   typesafeBaseUrl?: string;
@@ -49,7 +51,8 @@ export interface Config {
   agentBackend: "sample" | "model" | "agui";
   agentUrl?: string;
   agentToken?: string;
-  intelligenceApiKey?: string;
+  /** Hard limit for one foreground conversation run. */
+  chatRunTimeoutMs?: number;
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri: string;
@@ -62,25 +65,25 @@ export interface Config {
   allowedOrigins: string[];
 }
 
-export const intelligenceKeyRequiredMessage =
-  "OpenMuse requires CPK_INTELLIGENCE_API_KEY. " +
-  "Run `npx copilotkit@latest login` and `npx copilotkit@latest project select`, " +
-  "then set the generated server-only key. " +
-  "See https://docs.copilotkit.ai/intelligence/connect-your-runtime";
-
 export function required(name: string, message: string, value = process.env[name]): string {
   if (!value?.trim()) throw new Error(message);
   return value.trim();
 }
 
-export function assertApiDeploymentConfig(
-  config: Config,
-): asserts config is Config & { intelligenceApiKey: string } {
-  required(
-    "CPK_INTELLIGENCE_API_KEY",
-    intelligenceKeyRequiredMessage,
-    config.intelligenceApiKey ?? "",
-  );
+export function normalizeOllamaBaseUrl(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  const url = new URL(value.trim());
+  if (
+    url.protocol !== "http:" ||
+    !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+    url.username ||
+    url.password ||
+    (url.pathname !== "/" && url.pathname !== "") ||
+    url.search ||
+    url.hash
+  )
+    throw new Error("OLLAMA_BASE_URL must be a loopback HTTP origin without credentials");
+  return url.origin;
 }
 
 // Provider SDKs retry transient failures before the response starts, with
@@ -116,13 +119,14 @@ export function readConfig(): Config {
     models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
     openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
     openCodexApiKey: process.env.OPENCODEX_API_KEY,
+    ollamaBaseUrl: normalizeOllamaBaseUrl(process.env.OLLAMA_BASE_URL),
     typesafeApiKey: process.env.TYPESAFE_API_KEY,
     typesafeBaseUrl: process.env.TYPESAFE_BASE_URL,
     typesafeModel: process.env.TYPESAFE_DEFAULT_MODEL ?? "jev-latest",
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,
-    intelligenceApiKey: required("CPK_INTELLIGENCE_API_KEY", intelligenceKeyRequiredMessage),
+    chatRunTimeoutMs: Number(process.env.CHAT_RUN_TIMEOUT_MS ?? 10 * 60 * 1000),
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri: `${publicUrl}/api/google/callback`,
@@ -144,5 +148,12 @@ export function readConfig(): Config {
     );
   if (mode === "sample" && !["127.0.0.1", "localhost", "::1"].includes(config.host))
     throw new Error("Sample workspace is local-only. HOST must be a loopback address.");
+  const chatRunTimeoutMs = config.chatRunTimeoutMs ?? 10 * 60 * 1000;
+  if (
+    !Number.isFinite(chatRunTimeoutMs) ||
+    chatRunTimeoutMs < 1_000 ||
+    chatRunTimeoutMs > 60 * 60 * 1000
+  )
+    throw new Error("CHAT_RUN_TIMEOUT_MS must be between 1000 and 3600000");
   return config;
 }

@@ -44,6 +44,8 @@ function adapter(spec: string) {
         maxRetries: MODEL_MAX_RETRIES,
       });
     }
+    case "ollama":
+      throw new Error("Ollama conversation models run through the embedded Pi runtime");
     case "anthropic":
       // The AI SDK base URL ends in /v1; the Anthropic SDK adds /v1 itself.
       return anthropicText(id as AnthropicChatModel, {
@@ -76,7 +78,7 @@ export function unknownProvider(
     ? ` For a model on your OPENAI_BASE_URL gateway, use "openai/${spec.trim()}".`
     : "";
   return new Error(
-    `Unknown provider "${provider}" in "${spec}". Supported: openai, anthropic, google (gemini), opencodex.${hint}`,
+    `Unknown provider "${provider}" in "${spec}". Supported: openai, anthropic, google (gemini), opencodex, ollama.${hint}`,
   );
 }
 

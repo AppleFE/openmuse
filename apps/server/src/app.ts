@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MessageSchema } from "@ag-ui/core";
-import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { EventType, MessageSchema } from "@ag-ui/core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -16,9 +15,10 @@ import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
 import { computerRoutes } from "./computer-routes.ts";
+import type { Config } from "./config.ts";
 import { connectorRoutes } from "./connector-routes.ts";
 import { ConnectorService } from "./connector-service.ts";
-import { assertApiDeploymentConfig, type Config } from "./config.ts";
+import { ConversationStoreRunner } from "./conversations.ts";
 import type { Store } from "./db.ts";
 import { agentRoutes } from "./engine/routes.ts";
 import { AgentService } from "./engine/service.ts";
@@ -32,7 +32,6 @@ export async function createApp(
   config: Config,
   options: { docker?: DockerRunner } = {},
 ) {
-  assertApiDeploymentConfig(config);
   const auth = await createAuth(db, config),
     files = new Files(db, config, auth),
     google = new GoogleAuth(db, config),
@@ -57,8 +56,9 @@ export async function createApp(
     computer,
     connectors,
   );
-  const intelligence = new CopilotKitIntelligence({ apiKey: config.intelligenceApiKey });
-  const runtime = makeRuntime(config, agent, auth, intelligence);
+  const conversations = new ConversationStoreRunner(db, auth, config);
+  await conversations.recoverInterrupted();
+  const runtime = makeRuntime(config, agent, auth, conversations);
   const app = new Hono<{ Variables: { owner: string } }>();
   const origins = new Set([...config.allowedOrigins, new URL(config.publicUrl).origin]);
   app.use("*", async (c, next) => {
@@ -230,19 +230,91 @@ export async function createApp(
     });
     const main = await db.get<{ threadId: string }>(owner, "conversation-settings", "main");
     if (!main) throw new AppError("Main conversation could not be loaded", 503);
-    try {
-      await intelligence.getOrCreateThread({
-        threadId: main.threadId,
-        userId: owner,
-        agentId: "default",
-      });
-    } catch {
-      throw new AppError(
-        "Main conversation is unavailable. Check the Rich Threads connection and try again.",
-        502,
-      );
-    }
+    await conversations.ensure(owner, main.threadId, "default");
     return c.json({ threadId: main.threadId, existing: true });
+  });
+  app.get("/api/copilotkit/threads", async (c) => {
+    const limit = c.req.query("limit");
+    return c.json(
+      await conversations.list(c.get("owner"), {
+        agentId: c.req.query("agentId"),
+        includeArchived: c.req.query("includeArchived") === "true",
+        limit:
+          limit === undefined ? undefined : z.coerce.number().int().min(1).max(100).parse(limit),
+        cursor: c.req.query("cursor"),
+      }),
+    );
+  });
+  app.post("/api/copilotkit/threads", async (c) => {
+    const body = z
+      .object({
+        id: z.string().min(1).max(200).optional(),
+        name: z.string().trim().min(1).max(200).optional(),
+        agentId: z.string().min(1).max(100).optional(),
+      })
+      .parse(await c.req.json());
+    return c.json(conversations.metadata(await conversations.create(c.get("owner"), body)), 201);
+  });
+  app.post("/api/copilotkit/threads/clear", (c) =>
+    c.json(
+      { error: "Bulk thread deletion is not supported; delete owner-scoped threads by ID" },
+      405,
+    ),
+  );
+  app.patch("/api/copilotkit/threads/:id", async (c) => {
+    const body = z
+      .object({ name: z.string().trim().min(1).max(200).nullable() })
+      .parse(await c.req.json());
+    return c.json(
+      conversations.metadata(
+        await conversations.rename(c.get("owner"), c.req.param("id"), body.name),
+      ),
+    );
+  });
+  app.delete("/api/copilotkit/threads/:id", async (c) => {
+    await conversations.remove(c.get("owner"), c.req.param("id"));
+    return c.json({ threadId: c.req.param("id"), deleted: true });
+  });
+  app.post("/api/copilotkit/threads/:id/archive", async (c) =>
+    c.json(
+      conversations.metadata(
+        await conversations.setArchived(c.get("owner"), c.req.param("id"), true),
+      ),
+    ),
+  );
+  app.post("/api/copilotkit/threads/:id/restore", async (c) =>
+    c.json(
+      conversations.metadata(
+        await conversations.setArchived(c.get("owner"), c.req.param("id"), false),
+      ),
+    ),
+  );
+  app.get("/api/copilotkit/threads/:id/messages", async (c) => {
+    const thread = await conversations.get(c.get("owner"), c.req.param("id"));
+    return c.json({ messages: thread.messages });
+  });
+  app.get("/api/copilotkit/threads/:id/events", async (c) => {
+    const thread = await conversations.get(c.get("owner"), c.req.param("id"));
+    return c.json({ events: thread.events });
+  });
+  app.get("/api/copilotkit/threads/:id/state", async (c) => {
+    const thread = await conversations.get(c.get("owner"), c.req.param("id"));
+    return c.json({ state: thread.state });
+  });
+  app.post("/api/copilotkit/agent/:agentId/stop/:threadId", async (c) => {
+    const stopped = await conversations.stopOwner(c.get("owner"), c.req.param("threadId"));
+    return c.json(
+      stopped
+        ? {
+            stopped: true,
+            interrupt: {
+              type: EventType.RUN_ERROR,
+              message: "Run stopped by user",
+              code: "STOPPED",
+            },
+          }
+        : { stopped: false, message: `No active run for thread '${c.req.param("threadId")}'.` },
+    );
   });
   app.get("/api/conversation", async (c) =>
     c.json((await db.get(c.get("owner"), "conversations", "default")) ?? { messages: [] }),
@@ -366,5 +438,5 @@ export async function createApp(
   app.get("/", (c) =>
     c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
   );
-  return { app, auth, files, actions, workspace, agent, computer, connectors };
+  return { app, auth, files, actions, workspace, agent, computer, connectors, conversations };
 }

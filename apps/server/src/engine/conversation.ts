@@ -26,8 +26,11 @@ export class ConversationAgent extends AbstractAgent {
   ) {
     super({ agentId: "default" });
   }
+  get openMuseOwner() {
+    return this.owner;
+  }
   clone(): ConversationAgent {
-    return new ConversationAgent(this.config, this.service, this.owner, this.defaultModel);
+    return new ConversationAgent(this.config, this.service, this.openMuseOwner, this.defaultModel);
   }
   run(input: RunAgentInput): Observable<BaseEvent> {
     const latest = input.messages.filter((m) => m.role === "user").at(-1);
@@ -394,6 +397,14 @@ export class ConversationAgent extends AbstractAgent {
           })
           .then((usedPi) => {
             if (usedPi !== false || subscriber.closed) return;
+            if (profile?.provider === "ollama") {
+              subscriber.next({
+                type: EventType.RUN_ERROR,
+                message: "The local Ollama model requires the embedded Pi runtime to be enabled",
+              });
+              subscriber.complete();
+              return;
+            }
             const subscription = agent
               .run({ ...input, tools: input.tools.filter((t) => t.name === "open_workspace") })
               .subscribe(subscriber);

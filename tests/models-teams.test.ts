@@ -148,7 +148,6 @@ test("model selection skips missing provider credentials while keeping catalog e
       publicUrl: "http://localhost:8787",
       dataDir: ".",
       agentBackend: "model",
-      intelligenceApiKey: "test",
       googleRedirectUri: "http://localhost:8787/api/google/callback",
       allowedOrigins: [],
       models: [
@@ -324,7 +323,6 @@ test("model/team APIs persist selection and preserve retry and cancellation stat
     publicUrl: "http://localhost:8787",
     dataDir: directory,
     agentBackend: "model",
-    intelligenceApiKey: "test-project-key-never-sent",
     googleRedirectUri: "http://localhost:8787/api/google/callback",
     allowedOrigins: ["http://localhost:8081"],
     models: profiles,
@@ -439,7 +437,6 @@ test("queued standalone and team work execute immutable model snapshots after ca
     publicUrl: "http://localhost:8787",
     dataDir: directory,
     agentBackend: "model",
-    intelligenceApiKey: "test-project-key-never-sent",
     googleRedirectUri: "http://localhost:8787/api/google/callback",
     allowedOrigins: [],
     models: [

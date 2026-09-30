@@ -44,6 +44,30 @@ export class Store {
       id,
     ]);
   }
+  async removeConversationRuns(owner: string, threadId: string): Promise<void> {
+    await this.db.query(
+      "DELETE FROM records WHERE owner=$1 AND kind='conversation-runs' AND data->>'threadId'=$2",
+      [owner, threadId],
+    );
+  }
+  async removeIdleConversation(owner: string, threadId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `WITH deleted_thread AS (
+         DELETE FROM records
+         WHERE owner=$1 AND kind='conversation-threads' AND id=$2
+           AND data @> '{"activeRunId":null}'::jsonb
+         RETURNING id
+       ), deleted_runs AS (
+         DELETE FROM records
+         WHERE owner=$1 AND kind='conversation-runs' AND data->>'threadId'=$2
+           AND EXISTS (SELECT 1 FROM deleted_thread)
+         RETURNING id
+       )
+       SELECT jsonb_build_object('deleted', EXISTS (SELECT 1 FROM deleted_thread)) AS data`,
+      [owner, threadId],
+    );
+    return result.rows[0]?.data.deleted === true;
+  }
   async compareAndSwap<T>(
     owner: string,
     kind: string,

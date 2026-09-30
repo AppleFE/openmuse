@@ -139,7 +139,6 @@ test("OpenCodex profiles use its native Responses endpoint, data key, and select
       publicUrl: "http://localhost:1",
       dataDir: ".",
       agentBackend: "model",
-      intelligenceApiKey: "test",
       googleRedirectUri: "http://localhost:1/api/google/callback",
       allowedOrigins: [],
       models,

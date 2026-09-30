@@ -1,8 +1,8 @@
 import "./config.ts";
 import { HttpAgent } from "@ag-ui/client";
 import {
+  type AgentRunner,
   type AgentsFactory,
-  type CopilotKitIntelligence,
   CopilotRuntime,
   createCopilotHonoHandler,
 } from "@copilotkit/runtime/v2";
@@ -22,6 +22,7 @@ export function agentConfigured(config: Config) {
           process.env.GEMINI_API_KEY ??
           process.env.GOOGLE_GENERATIVE_AI_API_KEY,
       );
+    if (model.provider === "ollama") return Boolean(config.ollamaBaseUrl);
     return Boolean(config.openCodexBaseUrl && config.openCodexApiKey);
   });
   return (
@@ -43,7 +44,7 @@ export function makeRuntime(
   config: Config,
   service: AgentService,
   auth: Auth,
-  intelligence: CopilotKitIntelligence,
+  runner: AgentRunner,
 ) {
   const agents: AgentsFactory = async ({ request }) => {
     const owner = await auth.owner(request.headers.get("authorization") ?? undefined);
@@ -62,12 +63,7 @@ export function makeRuntime(
   };
   const runtime = new CopilotRuntime({
     agents,
-    intelligence,
-    identifyUser: async (request) => ({
-      id: await auth.owner(request.headers.get("authorization") ?? undefined),
-      name: "OpenMuse user",
-    }),
-    generateThreadNames: false,
+    runner,
   });
   return createCopilotHonoHandler({ runtime, basePath: "/api/copilotkit" });
 }

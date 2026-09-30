@@ -6,7 +6,7 @@ import {
   type ModelSnapshot,
   modelCapabilitySchema,
 } from "../../../../packages/domain/src/agent.ts";
-import type { Config } from "../config.ts";
+import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
 
@@ -29,7 +29,8 @@ function providerOf(model: string): ModelProvider {
     provider === "openai" ||
     provider === "anthropic" ||
     provider === "google" ||
-    provider === "opencodex"
+    provider === "opencodex" ||
+    provider === "ollama"
   )
     return provider;
   throw new Error(`Unsupported provider in model "${model}"`);
@@ -62,9 +63,14 @@ export function parseModelCatalog(raw: string | undefined, fallback?: string): M
     const value = profileInputSchema.parse(input);
     if (ids.has(value.id)) throw new Error(`Duplicate model id "${value.id}" in OPENMUSE_MODELS`);
     ids.add(value.id);
+    const provider = providerOf(value.model);
     return {
       ...value,
-      provider: providerOf(value.model),
+      provider,
+      capabilities:
+        provider === "ollama" && !value.capabilities.includes("coding")
+          ? [...value.capabilities, "coding" as const]
+          : value.capabilities,
       available: value.enabled,
       ...(value.enabled ? {} : { unavailableReason: "disabled" as const }),
     };
@@ -80,6 +86,7 @@ function hasProviderCredential(config: Config, provider: ModelProvider) {
         process.env.GEMINI_API_KEY ??
         process.env.GOOGLE_GENERATIVE_AI_API_KEY,
     );
+  if (provider === "ollama") return Boolean(normalizeOllamaBaseUrl(config.ollamaBaseUrl));
   return Boolean(config.openCodexBaseUrl && config.openCodexApiKey);
 }
 
