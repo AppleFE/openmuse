@@ -44,7 +44,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
-import { UI_LOCALE } from "./src/locale";
+import { UI_LOCALE, uiLabel } from "./src/locale";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThemeProvider, useTheme } from "./src/theme";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
@@ -305,7 +305,9 @@ function WorkspaceShell({
       ? `검토 준비됨 · ${activeTask.title}`
       : activeTask.status === "waiting_input"
         ? `입력 필요 · ${activeTask.title}`
-        : activeTask.plan.find((step) => step.status === "running")?.title || activeTask.title
+        : uiLabel(
+            activeTask.plan.find((step) => step.status === "running")?.title || activeTask.title,
+          )
     : data?.tasks.some((task) => task.status === "queued")
       ? "다음 작업을 준비하는 중…"
       : "필요할 때 언제든 도와드릴게요";

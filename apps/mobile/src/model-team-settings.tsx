@@ -373,7 +373,7 @@ export function ModelTeamSettings() {
               {team.roles.map((role) => (
                 <View key={role.id} style={[s.chip, { backgroundColor: colors.surfaceMuted }]}>
                   <Text style={s.chipText}>
-                    {role.label} · {role.modelId}
+                    {uiLabel(role.label)} · {role.modelId}
                   </Text>
                 </View>
               ))}

@@ -159,7 +159,9 @@ export function TaskCard({
         )}
         {(task.question || task.result || task.error || next?.title) && (
           <Text numberOfLines={compact ? 2 : 4} style={s.muted}>
-            {task.question || task.error || resultSummary(task.result || next?.title || "")}
+            {task.question ||
+              task.error ||
+              resultSummary(task.result || uiLabel(next?.title || ""))}
           </Text>
         )}
         {waiting && (
@@ -404,7 +406,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               {task.teamContext.roleRuns.map((run) => (
                 <View key={run.roleId} style={[s.between, { gap: 12 }]}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.text}>{run.roleLabel}</Text>
+                    <Text style={s.text}>{uiLabel(run.roleLabel)}</Text>
                     <Text style={s.small}>{run.modelId}</Text>
                   </View>
                   <Text
@@ -554,7 +556,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                     {step.status === "succeeded" ? "✓" : `${index + 1}.`}
                   </Text>
                   <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={s.text}>{step.title}</Text>
+                    <Text style={s.text}>{uiLabel(step.title)}</Text>
                     <Text style={s.small}>
                       {statusLabel(step.status)}
                       {step.detail ? ` · ${step.detail}` : ""}
@@ -635,7 +637,9 @@ export function TaskDetail({ taskId }: { taskId: string }) {
               {detail.messages.map((message) => (
                 <Card key={message.id} style={{ gap: 7, backgroundColor: colors.surfaceMuted }}>
                   <View style={s.between}>
-                    <Text style={[s.text, { fontWeight: "700" }]}>{message.roleLabel}</Text>
+                    <Text style={[s.text, { fontWeight: "700" }]}>
+                      {uiLabel(message.roleLabel)}
+                    </Text>
                     <Text style={s.small}>{message.modelId}</Text>
                   </View>
                   <AssistantResponse content={message.content} />
@@ -652,7 +656,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
             >
               <Text style={s.small}>
                 {stamp(event.date)} · {statusLabel(event.kind)}
-                {event.roleLabel ? ` · ${event.roleLabel}` : ""}
+                {event.roleLabel ? ` · ${uiLabel(event.roleLabel)}` : ""}
               </Text>
               <Text style={s.text}>{event.title}</Text>
               <Text selectable style={s.muted}>
