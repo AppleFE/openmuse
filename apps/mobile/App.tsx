@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -112,6 +113,8 @@ function MuseApp() {
   const logout = useCallback(() => {
     storeSessionToken();
     setAccessKey("");
+    setError("");
+    setBusy(false);
     setToken("");
   }, []);
   return (
@@ -248,6 +251,7 @@ function WorkspaceApp({ token, onUnauthorized }: { token: string; onUnauthorized
               clearToast={() => setToast("")}
               error={error}
               prompt={prompt}
+              onSignOut={onUnauthorized}
             />
           </ThreadsProvider>
         </ComputerDraftProvider>
@@ -261,12 +265,14 @@ function WorkspaceShell({
   clearToast,
   error,
   prompt,
+  onSignOut,
 }: {
   detail?: Detail;
   toast: string;
   clearToast: () => void;
   error: string;
   prompt?: { id: number; text: string };
+  onSignOut: () => void;
 }) {
   const { workspace, section, navigate, open } = useWorkspace();
   const { data } = useAgentWorkspace();
@@ -407,7 +413,18 @@ function WorkspaceShell({
                 )}
                 <Text style={[s.title, { fontSize: 25, marginBottom: 22 }]}>{title?.title}</Text>
                 <ErrorNotice error={error} />
-                <Screen />
+                {section === "apps" ? (
+                  <>
+                    <AppsScreen />
+                    {Platform.OS === "web" && (
+                      <Button danger style={{ marginTop: 18 }} onPress={onSignOut}>
+                        Sign out
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <Screen />
+                )}
               </ScrollView>
             )}
             <View
