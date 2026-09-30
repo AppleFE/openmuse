@@ -95,6 +95,7 @@ export async function executeModelTask(
   const tools = [
     ...computerTools(service.computer, service.files, owner, `task:${task.id}`, {
       signal: toolSignal,
+      serial,
       before: async () => {
         if (outcome) throw new Error("Task is waiting or finished; do not perform more actions");
         await ctx.guard();

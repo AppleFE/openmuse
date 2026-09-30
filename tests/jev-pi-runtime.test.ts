@@ -40,7 +40,7 @@ import type {
   TaskThreadMessage,
 } from "../packages/domain/src/agent.ts";
 import { JevClient } from "../packages/integrations/src/jev.ts";
-import { fixture as computerFixture, ok } from "./helpers/computer.ts";
+import { fixture as computerFixture, ok, sandbox } from "./helpers/computer.ts";
 
 process.env.OPENAI_API_KEY ??= "test-openai-server-key";
 
@@ -1371,6 +1371,80 @@ test("formal finish rejects durable failed computer evidence until a later recov
     assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
 
     unresolved = false;
+    const recovered = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(recovered.status, "succeeded");
+    assert.deepEqual(finishResults[1], { complete: true });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 1);
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("formal finish rejects a stopped-computer failure before receipt creation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-prereceipt-failure-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const inspection = sandbox(false);
+  const computer = computerFixture({ inspect: inspection });
+  const server = await createApp(
+    db,
+    { ...configFor(directory), computerEnabled: true },
+    { docker: computer.runner },
+  );
+  try {
+    const taskId = "prereceipt-failure-task";
+    const scope = `task:${taskId}`;
+    let runs = 0;
+    const finishResults: unknown[] = [];
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          runs++;
+          const command = input.tools.find((tool) => tool.name === "run_computer_command");
+          const finish = input.tools.find((tool) => tool.name === "finish_task");
+          assert.ok(command?.execute);
+          assert.ok(finish?.execute);
+          const commandResult = await command.execute({
+            operationId: runs === 1 ? "stopped" : "recovery",
+            command: runs === 1 ? "false" : "printf recovered",
+            cwd: "/workspace",
+          });
+          if (runs === 1)
+            assert.deepEqual(commandResult, {
+              error: "Start the computer before using its terminal or files",
+            });
+          finishResults.push(await finish.execute({ summary: "Recovered computer work." }));
+          return "Attempted formal completion.";
+        },
+      },
+    });
+    let current: AgentTask = { ...standaloneTask(), id: taskId };
+    const context = {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch: Partial<AgentTask>) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    };
+    const blocked = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(blocked.status, "waiting_input");
+    assert.equal(
+      (await server.agent.computer.completionEvidence("owner", scope)).unresolvedFailure?.status,
+      "pending",
+    );
+    assert.deepEqual(finishResults[0], {
+      complete: false,
+      error:
+        "A task-scoped computer command is not durably successful. Wait for it or recover with a later successful command, then verify the result before finishing.",
+      commandStatus: "pending",
+    });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
+
+    inspection.State.Running = true;
     const recovered = await executeModelTask(server.agent, "owner", current, context);
     assert.equal(recovered.status, "succeeded");
     assert.deepEqual(finishResults[1], { complete: true });

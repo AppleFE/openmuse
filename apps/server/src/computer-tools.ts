@@ -16,7 +16,11 @@ export function computerTools(
   files: Files,
   owner: string,
   scope: string,
-  options: { before?: () => Promise<void>; signal?: AbortSignal } = {},
+  options: {
+    before?: () => Promise<void>;
+    signal?: AbortSignal;
+    serial?: <T>(operation: () => Promise<T>) => Promise<T>;
+  } = {},
 ) {
   const tool = <T extends z.ZodType>(
     name: string,
@@ -28,13 +32,16 @@ export function computerTools(
       name,
       description,
       parameters,
-      execute: async (args) => {
-        try {
-          await options.before?.();
-          return await action(parameters.parse(args));
-        } catch (error) {
-          return { error: error instanceof Error ? error.message : "Computer operation failed" };
-        }
+      execute: (args) => {
+        const operation = async () => {
+          try {
+            await options.before?.();
+            return await action(parameters.parse(args));
+          } catch (error) {
+            return { error: error instanceof Error ? error.message : "Computer operation failed" };
+          }
+        };
+        return options.serial ? options.serial(operation) : operation();
       },
     });
   return [
