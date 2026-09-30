@@ -10,8 +10,8 @@ env_file=$repo/.env
 node=$root/runtime/node-current/bin/node
 
 case "$service" in
-  server|browser-worker|web) ;;
-  *) echo "usage: $0 server|browser-worker|web" >&2; exit 64 ;;
+  server|browser-worker|web|ollama) ;;
+  *) echo "usage: $0 server|browser-worker|web|ollama" >&2; exit 64 ;;
 esac
 
 attempt=0
@@ -24,6 +24,30 @@ done
 if [ "${mount_point:-}" != "$volume" ]; then
   echo "OpenMuse volume is not mounted at $volume; refusing to use the system disk" >&2
   exit 75
+fi
+
+if [ "$service" = ollama ]; then
+  ollama=$root/runtime/ollama/Ollama.app/Contents/Resources/ollama
+  models=$root/data/models/ollama
+  state=$root/data/ollama-home
+  for required in "$ollama" "$models" "$state"; do
+    if [ ! -e "$required" ]; then
+      echo "Required local inference path is missing: $required" >&2
+      exit 78
+    fi
+  done
+  [ -x "$ollama" ] || { echo "Ollama CLI is not executable: $ollama" >&2; exit 78; }
+  exec /usr/bin/env \
+    HOME="$state" \
+    OLLAMA_HOST=127.0.0.1:11434 \
+    OLLAMA_MODELS="$models" \
+    OLLAMA_NO_CLOUD=1 \
+    OLLAMA_KEEP_ALIVE=5m \
+    OLLAMA_NUM_PARALLEL=1 \
+    OLLAMA_MAX_LOADED_MODELS=1 \
+    OLLAMA_MAX_QUEUE=8 \
+    OLLAMA_CONTEXT_LENGTH=8192 \
+    "$ollama" serve
 fi
 
 for required in "$repo/package.json" "$env_file" "$node"; do

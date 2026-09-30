@@ -24,12 +24,11 @@ function config(overrides = {}) {
     ALLOWED_ORIGINS: "http://100.80.94.16:8081",
     DATA_DIR: join(root, "data", "app"),
     TASK_WORKER_ENABLED: "true",
-    CPK_INTELLIGENCE_API_KEY: secret,
-    OPENMUSE_ACCESS_KEY: "sample-owner-access-key-123456",
-    MODEL: "openai/test-model",
-    OPENAI_API_KEY: secret,
+    OPENMUSE_ACCESS_KEY: secret,
+    MODEL: "ollama/qwen3:4b",
+    OLLAMA_BASE_URL: "http://127.0.0.1:11434",
     BROWSER_WORKER_URL: "http://127.0.0.1:8790",
-    WORKER_TOKEN: "worker-token-at-least-32-characters-long",
+    WORKER_TOKEN: `${secret}-worker-token-with-extra-length`,
     WORKER_DATA_DIR: join(root, "data", "browser-profiles"),
     PLAYWRIGHT_BROWSERS_PATH: join(root, "caches", "playwright"),
     WEB_HOSTS: "127.0.0.1,100.80.94.16",
@@ -61,7 +60,7 @@ after(async () => {
   await rm(outside, { recursive: true, force: true });
 });
 
-test("accepts the private sample/model deployment without printing credentials", async () => {
+test("accepts a keyless local Ollama model without printing credentials", async () => {
   await writeFile(envFile, config());
   const result = validate();
   assert.equal(result.status, 0, result.stderr);
@@ -69,14 +68,13 @@ test("accepts the private sample/model deployment without printing credentials",
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(secret));
 });
 
-test("permits infrastructure preparation but explicitly blocks an uncredentialed API", async () => {
+test("permits infrastructure preparation but blocks a selected cloud model without its key", async () => {
   await writeFile(
     envFile,
-    config({ CPK_INTELLIGENCE_API_KEY: undefined, OPENAI_API_KEY: undefined }),
+    config({ MODEL: "openai/test-model", OPENAI_API_KEY: undefined }),
   );
   const result = validate("--infrastructure-only");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stderr, /API BLOCKED: CPK_INTELLIGENCE_API_KEY/);
   assert.match(result.stderr, /API BLOCKED: OPENAI_API_KEY/);
   assert.match(result.stdout, /Infrastructure configuration valid/);
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(secret));
@@ -95,15 +93,20 @@ test("names missing credentials and unsafe exposure without echoing other values
   await writeFile(
     envFile,
     config({
-      CPK_INTELLIGENCE_API_KEY: undefined,
       OPENMUSE_ACCESS_KEY: undefined,
       WEB_HOSTS: "0.0.0.0",
     }),
   );
   const result = validate();
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /CPK_INTELLIGENCE_API_KEY/);
   assert.match(result.stderr, /OPENMUSE_ACCESS_KEY/);
   assert.match(result.stderr, /specific Tailnet IPv4/);
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(secret));
+});
+
+test("rejects non-loopback Ollama endpoints even when the rest of the deployment is valid", async () => {
+  await writeFile(envFile, config({ OLLAMA_BASE_URL: "http://100.80.94.16:11434" }));
+  const result = validate();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /OLLAMA_BASE_URL must be a loopback HTTP origin/);
 });

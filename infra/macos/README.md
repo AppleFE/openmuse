@@ -15,6 +15,10 @@ change Tailscale, touch unrelated launchd jobs, or contain credentials.
 | `/Volumes/p41-1tb/openmuse/data/browser-profiles` | Persistent Chromium state and downloads |
 | `/Volumes/p41-1tb/openmuse/caches` | pnpm store and Playwright Chromium |
 | `/Volumes/p41-1tb/openmuse/logs` | launchd stdout/stderr |
+| `/Volumes/p41-1tb/openmuse/runtime/ollama` | Verified Ollama CLI in its app bundle; the desktop app is not launched |
+| `/Volumes/p41-1tb/openmuse/runtime/ollama-download` | Pinned official Ollama archive used to install the local CLI |
+| `/Volumes/p41-1tb/openmuse/data/models/ollama` | Downloaded local inference models |
+| `/Volumes/p41-1tb/openmuse/data/ollama-home` | Ollama server state, separate from the user's home directory |
 
 The API listens only on `127.0.0.1:8787` and starts the task worker in that same process. Do not
 start `start:worker` or set `DATABASE_URL`: a second process cannot open the embedded PGlite store.
@@ -33,20 +37,20 @@ placeholders. `validate-env.mjs` reports names and requirements only; it never p
 
 | Setting | Initial sample/model deployment | Live Gmail/Calendar deployment |
 | --- | --- | --- |
-| `CPK_INTELLIGENCE_API_KEY` | Required; there is no offline bypass | Required |
 | `OPENMUSE_ACCESS_KEY` | Required here because the sample workspace is proxied; 24+ random characters | Required |
 | `MODEL` or `OPENMUSE_MODELS` | Required with at least one enabled model | Required |
-| Matching model credential | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, a supported Google key, or both OpenCodex settings | Same |
+| Local model | `MODEL=ollama/qwen3:4b` with `OLLAMA_BASE_URL=http://127.0.0.1:11434`; no provider key | Optional |
+| Cloud model credential | Only required when a cloud provider model is selected | Same |
 | `WORKER_TOKEN` | Required in API and browser worker; 32+ random characters | Same |
 | `TOKEN_ENCRYPTION_KEY` | Not used | Required; exactly 32 random bytes encoded as base64 |
 | Google OAuth client | Not used; fictional mail/calendar remain available | Required to connect Gmail/Calendar |
 
 For Google, set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, enable Gmail and Calendar APIs, and
 register `${PUBLIC_API_URL}/api/google/callback` exactly. Start with `WORKSPACE_MODE=sample` and
-`AGENT_BACKEND=model` until those live credentials are intentionally supplied.
+`AGENT_BACKEND=model` until live OAuth credentials are intentionally supplied.
 
 `EXPO_PUBLIC_API_URL` is compiled into public JavaScript, so it must contain only the public
-origin—never an owner, provider, CPK, worker, or Google credential. It must equal
+origin—never an owner, provider, worker, or Google credential. It must equal
 `PUBLIC_API_URL`, and that origin must appear exactly in `ALLOWED_ORIGINS`. Changing any of these
 three values requires rebuilding the web export with `deploy.sh`.
 
@@ -54,9 +58,9 @@ The normal sample mode is unauthenticated. This deployment configures `OPENMUSE_
 now opts sample mode into the same owner-key session gate as live mode. The UI first tries the local
 session, then presents its existing key form after the protected server rejects that attempt.
 
-At the time this support was prepared, the target had no CPK or model-provider credential names.
-That blocks only API launch, not credential-free dependency/build/browser/web preparation. The
-validator reports each missing name as `API BLOCKED`; the scripts do not fabricate or bypass it.
+The default model runs locally through Ollama on loopback, with cloud inference and web search
+disabled. The validator accepts this provider without a model API key and rejects a non-loopback
+`OLLAMA_BASE_URL`. If a cloud model is selected instead, its real provider key is still required.
 
 ## Install or update
 
@@ -74,22 +78,38 @@ validator reports each missing name as `API BLOCKED`; the scripts do not fabrica
    ```
 
 4. If the script created `.env`, populate the non-secret layout fields and locally generated owner
-   and worker tokens, then rerun. Dependency installation and builds may proceed while external CPK
-   or model credentials are pending, but the validator labels the API blocked.
+   and worker tokens, then rerun. The default local Ollama model does not require an API key.
 5. Install or refresh only OpenMuse's three LaunchAgents:
 
    ```sh
    ./infra/macos/install-launch-agents.sh
    ```
 
+6. Install the pinned Ollama runtime and its dedicated login LaunchAgent. These commands touch only
+   `com.openmuse.ollama`; they do not replace the web, browser-worker, server, Colima, or other
+   LaunchAgents. The runtime zip is checksum-verified and remains under P41, and this installs the
+   CLI app bundle without opening its desktop app:
+
+   ```sh
+   ./infra/macos/install-ollama-runtime.sh
+   ./infra/macos/install-ollama-launch-agent.sh
+   ./infra/macos/setup-ollama-model.sh
+   ```
+
+   The Ollama service binds only to `127.0.0.1:11434`, stores its model and state under
+   `/Volumes/p41-1tb/openmuse`, and sets `OLLAMA_NO_CLOUD=1`. `qwen3:4b` is a 4B Q4 model listed at
+   approximately 2.5 GB; it supports agent tool use and fits the Mac mini's 16 GB shared memory
+   better than larger models. Keep requests on the server side; do not expose Ollama on Tailnet or
+   directly to browsers.
+
 `deploy.sh` uses the lockfile, the pinned package-manager version in `package.json`, the P41 pnpm
 store, and the configured P41 Playwright cache. It builds the server, compiles the Expo web origin,
 and installs matching Chromium. Package lifecycle/build commands receive only the one public Expo
-origin or Playwright cache variable they need, not owner/provider/CPK credentials.
+origin or Playwright cache variable they need, not owner/provider credentials.
 `install-launch-agents.sh` validates first, replaces only
 `com.openmuse.server`, `com.openmuse.browser-worker`, and `com.openmuse.web`, and leaves all unrelated
-services alone. When genuine CPK/model credentials are incomplete, it installs browser and web but
-explicitly removes/omits the API LaunchAgent. After credentials arrive, rerun both scripts; full
+services alone. When API configuration is invalid, it installs browser and web but explicitly
+removes/omits the API LaunchAgent. After correcting configuration, rerun both scripts; full
 validation then permits API installation. It never kills an arbitrary process merely because it
 holds one of the expected ports. Before replacing a job, the restricted launcher stops only the PID
 it recorded and only after its complete command line and owner match that service; a mismatched

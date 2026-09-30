@@ -9,10 +9,11 @@ pids=/Volumes/p41-1tb/openmuse/data/service-pids
 node=/Volumes/p41-1tb/openmuse/runtime/node-current/bin/node
 
 case "${SSH_ORIGINAL_COMMAND:-}" in
-  server|browser-worker|web) action=start; service=$SSH_ORIGINAL_COMMAND ;;
+  server|browser-worker|web|ollama) action=start; service=$SSH_ORIGINAL_COMMAND ;;
   stop-server) action=stop; service=server ;;
   stop-browser-worker) action=stop; service=browser-worker ;;
   stop-web) action=stop; service=web ;;
+  stop-ollama) action=stop; service=ollama ;;
   *) echo "OpenMuse launch command denied" >&2; exit 64 ;;
 esac
 
@@ -27,6 +28,7 @@ is_owned_process() {
     "server:$node --env-file=$root/repo/.env dist/apps/server/src/index.js") return 0 ;;
     "browser-worker:$node --env-file=$root/repo/.env --experimental-strip-types apps/worker/src/index.ts") return 0 ;;
     "web:$node --env-file=$root/repo/.env infra/macos/serve-web.mjs") return 0 ;;
+    "ollama:$root/runtime/ollama/Ollama.app/Contents/Resources/ollama serve") return 0 ;;
     *) return 1 ;;
   esac
 }

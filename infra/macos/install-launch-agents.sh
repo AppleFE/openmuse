@@ -99,7 +99,7 @@ if [ "$api_ready" -eq 0 ]; then
 else
   stop_loaded_service com.openmuse.server
   /bin/rm -f "$destination/com.openmuse.server.plist"
-  echo "API LaunchAgent was not installed because genuine CPK/model credentials are incomplete." >&2
+  echo "API LaunchAgent was not installed because API configuration is incomplete." >&2
 fi
 
 for label in $labels; do
@@ -112,4 +112,4 @@ for label in $labels; do
   /bin/launchctl bootstrap "$domain" "$target"
 done
 
-echo "Installed and started only the credential-ready com.openmuse.* LaunchAgents."
+echo "Installed and started only the API-ready com.openmuse.* LaunchAgents."

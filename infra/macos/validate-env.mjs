@@ -91,7 +91,6 @@ if (optional("TASK_WORKER_ENABLED") !== "true")
 if (optional("DATABASE_URL"))
   errors.push("DATABASE_URL must be unset for the single-process PGlite deployment");
 
-requiredCredential("CPK_INTELLIGENCE_API_KEY");
 requiredCredential("OPENMUSE_ACCESS_KEY", 24);
 if (mode === "live") {
   const encryptionKey = requiredCredential("TOKEN_ENCRYPTION_KEY");
@@ -169,7 +168,18 @@ else credentialErrors.push("MODEL or OPENMUSE_MODELS must configure at least one
 
 const providers = new Set(models.map((model) => model.split(/[/:]/, 1)[0]?.toLowerCase()));
 for (const provider of providers) {
-  if (provider === "openai") requiredCredential("OPENAI_API_KEY");
+  if (provider === "ollama") {
+    const ollamaUrl = url("OLLAMA_BASE_URL");
+    if (
+      ollamaUrl &&
+      (ollamaUrl.protocol !== "http:" ||
+        !["localhost", "127.0.0.1", "[::1]"].includes(ollamaUrl.hostname) ||
+        !["", "/"].includes(ollamaUrl.pathname) ||
+        ollamaUrl.search ||
+        ollamaUrl.hash)
+    )
+      errors.push("OLLAMA_BASE_URL must be a loopback HTTP origin without a path, query, or fragment");
+  } else if (provider === "openai") requiredCredential("OPENAI_API_KEY");
   else if (provider === "anthropic") requiredCredential("ANTHROPIC_API_KEY");
   else if (provider === "google") {
     if (
@@ -204,7 +214,7 @@ if (mode === "sample" && webHosts.length === 1 && webHosts[0] === "127.0.0.1")
 for (const warning of warnings) console.warn(`WARNING: ${warning}`);
 if (values["infrastructure-only"] && credentialErrors.length) {
   for (const error of credentialErrors) console.warn(`API BLOCKED: ${error}`);
-  console.warn("API launch remains disabled until every credential issue is resolved.");
+  console.warn("API launch remains disabled until every API configuration issue is resolved.");
 } else errors.push(...credentialErrors);
 for (const error of errors) console.error(`ERROR: ${error}`);
 if (errors.length) {
@@ -215,6 +225,6 @@ if (errors.length) {
 }
 console.log(
   credentialErrors.length
-    ? "Infrastructure configuration valid; API credentials remain blocked and no secret values were printed."
-    : "Configuration valid; required credentials are present and no secret values were printed.",
+    ? "Infrastructure configuration valid; API configuration remains blocked and no secret values were printed."
+    : "Configuration valid; no secret values were printed.",
 );
