@@ -184,8 +184,8 @@ function ollamaStream(
           stream: true,
           think: false,
           options: {
-            num_ctx: model.contextWindow,
-            num_predict: options?.maxTokens ?? model.maxTokens,
+            num_ctx: Math.min(model.contextWindow, 8192),
+            num_predict: Math.min(options?.maxTokens ?? model.maxTokens, model.maxTokens, 1024),
           },
           ...(tools.length
             ? {
@@ -230,7 +230,9 @@ function ollamaStream(
           done_reason?: string;
           prompt_eval_count?: number;
           eval_count?: number;
+          error?: string;
         };
+        if (chunk.error) throw new Error(`Ollama stream error: ${chunk.error.slice(0, 1000)}`);
         if (chunk.message?.content) {
           if (!textBlock) {
             textBlock = { type: "text", text: "" };

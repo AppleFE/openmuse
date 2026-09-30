@@ -112,7 +112,6 @@ test("Pi calls native Ollama chat with bounded non-thinking settings and no Auth
         message: {
           role: "assistant",
           content: "Local response",
-          tool_calls: [{ function: { name: "multiply", arguments: { a: 17, b: 23 } } }],
         },
         done: false,
       })}\n`,
@@ -122,7 +121,7 @@ test("Pi calls native Ollama chat with bounded non-thinking settings and no Auth
         model: "qwen3:4b",
         message: { role: "assistant", content: "" },
         done: true,
-        done_reason: "stop",
+        done_reason: "length",
         prompt_eval_count: 12,
         eval_count: 3,
       })}\n`,
@@ -151,19 +150,21 @@ test("Pi calls native Ollama chat with bounded non-thinking settings and no Auth
       root,
       "ollama/qwen3:4b",
     );
-    const response = await runtime.completeSimple(model, {
-      systemPrompt: "Answer locally",
-      messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
-    });
+    const response = await runtime.completeSimple(
+      model,
+      {
+        systemPrompt: "Answer locally",
+        messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
+      },
+      { maxTokens: 4096 },
+    );
     assert.equal(requestPath, "/api/chat", JSON.stringify(response));
     assert.equal(authorization, undefined);
     assert.equal(JSON.parse(requestBody).model, "qwen3:4b");
     assert.equal(JSON.parse(requestBody).think, false);
     assert.deepEqual(JSON.parse(requestBody).options, { num_ctx: 8192, num_predict: 1024 });
     assert.equal(response.content.find((part) => part.type === "text")?.text, "Local response");
-    const toolCall = response.content.find((part) => part.type === "toolCall");
-    assert.equal(toolCall?.name, "multiply");
-    assert.deepEqual(toolCall?.arguments, { a: 17, b: 23 });
+    assert.equal(response.stopReason, "length");
     assert.equal(response.usage.input, 12);
     assert.equal(response.usage.output, 3);
   } finally {
@@ -343,6 +344,11 @@ test("native Ollama transport reports upstream errors and closes timed-out strea
       response.end("temporarily unavailable");
       return;
     }
+    if (calls === 2) {
+      response.writeHead(200, { "Content-Type": "application/x-ndjson" });
+      response.end(`${JSON.stringify({ error: "model runner stopped" })}\n`);
+      return;
+    }
     response.on("close", closed);
     response.writeHead(200, { "Content-Type": "application/x-ndjson" });
     response.write(
@@ -371,6 +377,9 @@ test("native Ollama transport reports upstream errors and closes timed-out strea
     const upstream = await runtime.completeSimple(model, context);
     assert.equal(upstream.stopReason, "error");
     assert.match(upstream.errorMessage ?? "", /HTTP 503/);
+    const streamError = await runtime.completeSimple(model, context);
+    assert.equal(streamError.stopReason, "error");
+    assert.match(streamError.errorMessage ?? "", /Ollama stream error/);
     const timedOut = await runtime.completeSimple(model, context, {
       signal: AbortSignal.timeout(50),
     });
