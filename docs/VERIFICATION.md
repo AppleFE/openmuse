@@ -30,7 +30,21 @@ The P41 application runtime was built and activated from independently reviewed 
 - **Build, activation, and services**: the server build passed on P41 after bundle fast-forward to the candidate. Two serialized `infra/macos/install-launch-agents.sh` cycles had already verified the valid owner configuration; after candidate deployment, only `com.openmuse.server` was stopped and reloaded through the existing restricted localhost SSH command. API `8787`, same-origin web proxy `/api/health` on `8081`, web `/healthz` on `8081`, browser worker `/health` on `8790`, and Ollama `/api/tags` on `11434` returned HTTP 200. The first candidate API listener was PID 74829; after the authorized persistence-check restart it was PID 76048, the sole loopback API listener. `server.err.log` remained empty. Invalid owner key returned 401, owner sign-in returned 200, both Ollama profiles reported available, `local-coder-8b` remained selected, and the computer service reported `running` with network `disabled`.
 - **Login boundary**: the per-user LaunchAgents start after `aeonge` logs in. A full host-reboot test was not authorized or performed. The deployment uses sample workspace data because no live Google credentials were supplied. The separate P41 operator guide records owner login and service checks without storing or printing secrets.
 
-## Automated checks
+## OpenCodex 모델 전환 — 2026년 9월 30일
+
+- 사용자 요청으로 P41에 설치했던 `qwen3:4b`, `qwen3:8b`를 Ollama 삭제 API로 제거했습니다.
+  설치 모델 목록이 비었고 모델 저장 디렉터리의 파일 크기 합계가 0바이트임을 확인했습니다.
+  전용 `com.openmuse.ollama` 프로세스를 중지하고 자동 시작을 해제했습니다.
+- 제공된 LAN·Tailscale OpenCodex `/v1/models` 주소가 모두 인증 후 HTTP 200을 반환했습니다.
+  사용 가능한 모델 ID 80개를 서버 카탈로그에 등록하고 기본 모델을 `gpt-6-sol`로 선택했습니다.
+  기존 팀 4개의 로컬 모델 연결도 OpenCodex 모델로 전환했습니다. 이 확인은 모델 목록·설정
+  검증이며 모든 모델 80개의 실제 추론을 실행했다는 의미는 아닙니다.
+- 인증 키는 맥미니의 기존 `service-api-token`에서 서버 `.env`로만 복사했습니다. `.env`는
+  mode 600으로 유지하며 변경 전 설정은 P41의 `private-backups/pre-opencodex-*`에 보관합니다.
+  서버 설정 검증과 재시작 후 `/api/health`가 정상 응답했고, 소유자 API에서 등록된 모델 80개가
+  모두 OpenCodex이며 기본 선택이 `oc-gpt-6-sol`임을 확인했습니다. 과거 대화·작업은 유지합니다.
+
+## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
 - Biome formatting/lint, server/mobile/browser-worker TypeScript checks, and the server build pass.

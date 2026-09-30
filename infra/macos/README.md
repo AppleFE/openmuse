@@ -43,7 +43,7 @@ placeholders. `validate-env.mjs` reports names and requirements only; it never p
 | --- | --- | --- |
 | `OPENMUSE_ACCESS_KEY` | Required here because the sample workspace is proxied; 24+ random characters | Required |
 | `MODEL` or `OPENMUSE_MODELS` | Required with at least one enabled model | Required |
-| Local model | `MODEL=ollama/qwen3:4b` with `OLLAMA_BASE_URL=http://127.0.0.1:11434`; no provider key | Optional |
+| OpenCodex gateway | `MODEL=opencodex/gpt-6-sol`, `OPENCODEX_BASE_URL` and server-only `OPENCODEX_API_KEY` | Same |
 | Cloud model credential | Only required when a cloud provider model is selected | Same |
 | `WORKER_TOKEN` | Required in API and browser worker; 32+ random characters | Same |
 | `TOKEN_ENCRYPTION_KEY` | Not used | Required; exactly 32 random bytes encoded as base64 |
@@ -62,37 +62,29 @@ The normal sample mode is unauthenticated. This deployment configures `OPENMUSE_
 now opts sample mode into the same owner-key session gate as live mode. The UI first tries the local
 session, then presents its existing key form after the protected server rejects that attempt.
 
-The default model runs locally through Ollama on loopback, with cloud inference and web search
-disabled. The validator accepts this provider without a model API key and rejects a non-loopback
-`OLLAMA_BASE_URL`. If a cloud model is selected instead, its real provider key is still required.
-
-The verified P41 Mac mini catalog keeps Qwen3 4B as the fallback and provides Qwen3 8B as the
-selected local profile. The non-secret portion of its canonical `.env` is:
+현재 P41 설치는 맥미니의 OpenCodex 게이트웨이를 사용합니다. 로컬 Qwen3 4B·8B 모델은
+사용자 요청으로 삭제했으며 Ollama 실행과 자동 시작도 중지했습니다. 모델 파일은 남아 있지
+않습니다. Ollama 설치 도구는 선택 기능으로만 유지되며 일반 배포가 모델을 다시 설치하지 않습니다.
+인증 정보를 제외한 현재 설정은 다음과 같습니다.
 
 ```dotenv
 AGENT_BACKEND=model
-MODEL=ollama/qwen3:4b
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OPENMUSE_MODELS=[{"id":"local-coder","label":"Local Qwen3 4B","model":"ollama/qwen3:4b","capabilities":["chat","tools","coding"],"enabled":true},{"id":"local-coder-8b","label":"Local Qwen3 8B","model":"ollama/qwen3:8b","capabilities":["chat","tools","coding"],"enabled":true}]
+MODEL=opencodex/gpt-6-sol
+OPENCODEX_BASE_URL=http://100.80.94.16:20100/v1
 ```
 
-The owner model-settings selection is `local-coder-8b`; `MODEL` and the `local-coder` catalog
-entry preserve the 4B fallback. Select models through the authenticated `/api/agent/model-settings`
-endpoint; team roles can use the same catalog IDs. Keep the access key, worker token, encryption key,
-and any optional Google credentials in the mode-600 private `.env`, never in this file or the web
-bundle. This local model setup does not need a CopilotKit project key or cloud-model key.
+`OPENCODEX_API_KEY`는 Mac의 `/Volumes/p41-1tb/opencodex-p41/state/service-api-token`에서
+읽어 서버의 mode-600 `.env`에만 설정합니다. 웹 번들·저장소·로그에 키를 넣지 않습니다.
+LAN에서 게이트웨이를 이용할 때는 `http://192.168.0.206:20100/v1`도 사용할 수 있습니다.
 
-On the deployed candidate, QA verified that the model received the sequential and parallel team
-role dependencies through persisted shared context and native Pi session inputs. The model still
-missed exact marker/citation output instructions in the acceptance task, so correct role routing
-does not guarantee exact text compliance; see [release verification](../../docs/VERIFICATION.md).
+인증된 `/v1/models`가 제공한 모델 80개를 `OPENMUSE_MODELS`에 등록했습니다. 웹에서 새 대화의
+기본 모델과 팀 역할별 모델을 선택할 수 있습니다. 기본 선택은 `oc-gpt-6-sol`이며 실제 요청에는
+`gpt-6-sol`을 전송합니다. 공급자별 접두사가 있는 모델 ID도 그대로 전송합니다. 기존 팀의 로컬
+모델 연결은 OpenCodex 모델로 전환했으며 과거 작업·대화 기록은 보존했습니다.
 
-Qwen3 8B is a 5.2 GB Q4_K_M artifact with native tool capability. On the 16 GiB P41 Mac mini,
-one 8K-context request used 6.2 GB in `ollama ps` and the runner reached about 5.8 GiB RSS;
-system-wide available memory fell to 19–21%. Keep inference serialized and monitor memory if other
-workloads run at the same time. See the [Ollama Qwen3 model page](https://ollama.com/library/qwen3),
-[Ollama tool-calling note](https://ollama.com/blog/streaming-tool), and the [official Qwen3-8B
-model card](https://huggingface.co/Qwen/Qwen3-8B) for the primary model references.
+OpenMuse의 앱·DB·Pi 도구는 맥미니에서 실행됩니다. 모델 추론은 OpenCodex가 연결한 모델
+공급자가 처리합니다. CopilotKit 프로젝트 키는 필요하지 않으며 `OPENMUSE_ACCESS_KEY`는
+워크스페이스 로그인용으로 별도 유지합니다.
 
 ## Install or update
 
