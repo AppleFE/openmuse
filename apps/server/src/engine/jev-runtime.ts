@@ -90,7 +90,7 @@ export class JevRuntime {
 
   async contextProfile(request: RoleRuntimeRequest): Promise<JevDecision<JevContextProfile>> {
     const settings = await this.settings.resolve(request.owner);
-    if (!settings.jev.enabled) return { value: "minimal", fallback: false, confidence: 1 };
+    if (!settings.jev.enabled) return { value: "dependencies", fallback: false, confidence: 1 };
     return this.decide(settings, "minimal", request.signal, (client) =>
       client.selectContext(
         {

@@ -289,6 +289,17 @@ export async function executeModelTask(
       "Finish only when the requested outcome is actually achieved",
       z.object({ summary: z.string().min(1).max(8000) }),
       async ({ summary }) => {
+        const computerEvidence = await service.computer.completionEvidence(
+          owner,
+          `task:${task.id}`,
+        );
+        if (computerEvidence.unresolvedFailure)
+          return {
+            complete: false,
+            error:
+              "A task-scoped computer command is still failed or interrupted. Recover with a later successful command and verify its result before finishing.",
+            commandStatus: computerEvidence.unresolvedFailure.status,
+          };
         const artifact = await service.artifact(
           owner,
           task,

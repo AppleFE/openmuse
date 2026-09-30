@@ -499,8 +499,8 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     const settings = await this.jev.settings.resolve(request.owner);
     return (
       settings.pi.enabled &&
-      request.role.kind === "coder" &&
-      request.capabilities.includes("coding")
+      (/^ollama[/:]/i.test(request.model) ||
+        (request.role.kind === "coder" && request.capabilities.includes("coding")))
     );
   }
 

@@ -192,6 +192,22 @@ type Lease = {
   executorDone: boolean;
   operation: "command" | "operation";
 };
+type ComputerCommandScope = {
+  id: string;
+  scope: string;
+  commandId: string;
+  linkedAt: string;
+};
+export interface ComputerCompletionEvidence {
+  commandCount: number;
+  successfulCount: number;
+  unresolvedFailure?: {
+    id: string;
+    status: ComputerCommand["status"];
+    startedAt: string;
+    completedAt?: string;
+  };
+}
 export class ComputerService {
   constructor(
     readonly db: Store,
@@ -438,6 +454,42 @@ export class ComputerService {
       };
     }
   }
+  async completionEvidence(owner: string, scope: string): Promise<ComputerCompletionEvidence> {
+    const validatedScope = z.string().min(1).max(512).parse(scope);
+    const links = (await this.db.list<ComputerCommandScope>(owner, "computer-command-scopes"))
+      .filter((link) => link.scope === validatedScope)
+      .sort((a, b) => a.linkedAt.localeCompare(b.linkedAt));
+    const commands = (
+      await Promise.all(
+        links.map((link) =>
+          this.db.get<ComputerCommand>(owner, "computer-commands", link.commandId),
+        ),
+      )
+    ).filter((command): command is ComputerCommand => command !== null);
+    const successful = commands.filter((command) => command.status === "succeeded");
+    const unresolved = commands
+      .filter((command) => command.status !== "succeeded")
+      .filter((failed) => {
+        const failureTime = Date.parse(failed.completedAt ?? failed.startedAt);
+        return !successful.some((recovery) => Date.parse(recovery.startedAt) >= failureTime);
+      })
+      .sort((a, b) => (a.completedAt ?? a.startedAt).localeCompare(b.completedAt ?? b.startedAt))
+      .at(-1);
+    return {
+      commandCount: commands.length,
+      successfulCount: successful.length,
+      ...(unresolved
+        ? {
+            unresolvedFailure: {
+              id: unresolved.id,
+              status: unresolved.status,
+              startedAt: unresolved.startedAt,
+              ...(unresolved.completedAt ? { completedAt: unresolved.completedAt } : {}),
+            },
+          }
+        : {}),
+    };
+  }
   async start(owner: string) {
     await this.exclusive(owner, async () => {
       const identity = computerIdentity(this.config, owner);
@@ -591,7 +643,7 @@ export class ComputerService {
   async execute(
     owner: string,
     raw: unknown,
-    options: { idempotencyKey?: string; signal?: AbortSignal } = {},
+    options: { idempotencyKey?: string; scope?: string; signal?: AbortSignal } = {},
   ): Promise<ComputerCommand> {
     this.enabled();
     const args = computerCommandSchema.parse(raw),
@@ -599,6 +651,23 @@ export class ComputerService {
     const id = options.idempotencyKey
       ? hash(`computer-command:${options.idempotencyKey}`)
       : randomUUID();
+    if (options.scope) {
+      const scope = z.string().min(1).max(512).parse(options.scope);
+      const link: ComputerCommandScope = {
+        id,
+        scope,
+        commandId: id,
+        linkedAt: new Date().toISOString(),
+      };
+      const existingLink = await this.db.get<ComputerCommandScope>(
+        owner,
+        "computer-command-scopes",
+        id,
+      );
+      if (existingLink && existingLink.scope !== scope)
+        throw new AppError("This operation ID already belongs to a different task", 409);
+      if (!existingLink) await this.db.insertIfAbsent(owner, "computer-command-scopes", link);
+    }
     const previous = await this.db.get<ComputerCommand>(owner, "computer-commands", id);
     if (previous) {
       if (previous.command !== args.command || previous.cwd !== cwd)

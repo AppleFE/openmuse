@@ -42,6 +42,41 @@ test("commands execute solely as Docker argv and persist failed exit/output rece
   assert.equal((await service.snapshot("other-owner")).commands.length, 0);
 });
 
+test("task completion evidence is owner-scoped and requires later successful recovery", async () => {
+  const owner = "completion-evidence-owner";
+  let exitCode = 9;
+  const f = fixture({
+    owner,
+    command: async () => ({ ...ok(), exitCode }),
+  });
+  const service = new ComputerService(db, config, f.runner);
+  const scope = "task:completion-evidence-task";
+  const failed = await service.execute(
+    owner,
+    { command: "false" },
+    { idempotencyKey: `${scope}:first`, scope },
+  );
+  assert.equal(failed.status, "failed");
+  const blocked = await service.completionEvidence(owner, scope);
+  assert.equal(blocked.commandCount, 1);
+  assert.equal(blocked.successfulCount, 0);
+  assert.equal(blocked.unresolvedFailure?.id, failed.id);
+  assert.equal((await service.completionEvidence("other-owner", scope)).commandCount, 0);
+
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  exitCode = 0;
+  const recovered = await service.execute(
+    owner,
+    { command: "printf recovered" },
+    { idempotencyKey: `${scope}:recovery`, scope },
+  );
+  assert.equal(recovered.status, "succeeded");
+  assert.deepEqual(await service.completionEvidence(owner, scope), {
+    commandCount: 2,
+    successfulCount: 1,
+  });
+});
+
 test("a running command holds an atomic lease across service instances", async () => {
   let finish: ((result: DockerResult) => void) | undefined;
   let signalStarted: (() => void) | undefined;

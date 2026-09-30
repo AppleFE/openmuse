@@ -33,7 +33,12 @@ import { RuntimeHookPipeline } from "../apps/server/src/engine/runtime-hooks.ts"
 import { TeamModelExecutor } from "../apps/server/src/engine/team-model.ts";
 import { createTeamTaskContext, TeamEngine } from "../apps/server/src/engine/teams.ts";
 import { TaskWorker } from "../apps/server/src/engine/worker.ts";
-import type { AgentTask, AgentTeam, ModelProfile } from "../packages/domain/src/agent.ts";
+import type {
+  AgentTask,
+  AgentTeam,
+  ModelProfile,
+  TaskThreadMessage,
+} from "../packages/domain/src/agent.ts";
 import { JevClient } from "../packages/integrations/src/jev.ts";
 
 process.env.OPENAI_API_KEY ??= "test-openai-server-key";
@@ -303,6 +308,128 @@ test("team coder path invokes Jev guard/context/termination and applies continue
       output: "implemented and verified",
       updatedAt: checkpoint?.updatedAt,
     });
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("all Ollama team roles use pi and persist dependency-aware speaker metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-ollama-team-roles-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const ollama: ModelProfile = {
+      id: "local-team",
+      label: "Local team",
+      provider: "ollama",
+      model: "ollama/qwen3:8b",
+      capabilities: ["chat", "tools"],
+      enabled: true,
+      available: true,
+    };
+    const config = {
+      ...configFor(directory),
+      models: [ollama],
+      ollamaBaseUrl: "http://127.0.0.1:11434",
+    };
+    const settings = new RuntimeSettingsService(db, config);
+    const jev = new JevRuntime(settings);
+    const prompts = new Map<string, string>();
+    const hook = new PiRuntimeHook(
+      db,
+      config,
+      {} as ComputerService,
+      undefined,
+      jev,
+      async (input) => ({
+        prompt: async (prompt) => {
+          prompts.set(input.request.role.id, prompt);
+        },
+        abort: async () => {},
+        dispose: () => {},
+        getLastAssistantText: () => `${input.request.role.id}-output`,
+      }),
+    );
+    const selected: AgentTeam = {
+      id: "ollama-role-team",
+      name: "Ollama role team",
+      execution: "sequential",
+      roles: [
+        {
+          id: "planner",
+          label: "Planner",
+          kind: "planner",
+          modelId: ollama.id,
+          systemPrompt: "Plan the work",
+          dependsOn: [],
+        },
+        {
+          id: "coder",
+          label: "Coder",
+          kind: "coder",
+          modelId: ollama.id,
+          systemPrompt: "Implement the plan",
+          dependsOn: ["planner"],
+        },
+        {
+          id: "reviewer",
+          label: "Reviewer",
+          kind: "reviewer",
+          modelId: ollama.id,
+          systemPrompt: "Review the result",
+          dependsOn: ["planner", "coder"],
+        },
+      ],
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      revision: 1,
+    };
+    const value: AgentTask = {
+      ...task(),
+      id: "ollama-role-task",
+      teamId: selected.id,
+      teamContext: createTeamTaskContext(selected),
+    };
+    const planner = selected.roles[0];
+    if (!planner) throw new Error("missing planner role");
+    const executor = new TeamModelExecutor(
+      new ModelRegistry(db, config),
+      new RuntimeHookPipeline([hook]),
+    );
+    await db.put("owner", "tasks", value);
+    await new TaskWorker(db, (owner, next, ctx) =>
+      new TeamEngine(db, (input) => executor.execute(input)).execute(owner, next, ctx),
+    ).tick();
+
+    const saved = await db.get<AgentTask>("owner", "tasks", value.id);
+    assert.equal(saved?.status, "succeeded");
+    assert.match(prompts.get("coder") ?? "", /planner-output/);
+    assert.match(prompts.get("reviewer") ?? "", /planner-output/);
+    assert.match(prompts.get("reviewer") ?? "", /coder-output/);
+    const messages = await db.list<TaskThreadMessage>("owner", "task-thread-messages");
+    assert.deepEqual(
+      messages
+        .map(({ role, roleId, roleLabel, modelId }) => ({ role, roleId, roleLabel, modelId }))
+        .sort((a, b) => String(a.roleId).localeCompare(String(b.roleId))),
+      [
+        { role: "assistant", roleId: "coder", roleLabel: "Coder", modelId: ollama.id },
+        { role: "assistant", roleId: "planner", roleLabel: "Planner", modelId: ollama.id },
+        { role: "assistant", roleId: "reviewer", roleLabel: "Reviewer", modelId: ollama.id },
+      ],
+    );
+    assert.equal(
+      await hook.supports({
+        owner: "owner",
+        task: value,
+        role: { ...planner, modelId: model.id },
+        model: model.model,
+        capabilities: model.capabilities,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      }),
+      false,
+      "non-Ollama planner roles must retain their existing conversation path",
+    );
   } finally {
     await db.close();
     await rm(directory, { recursive: true, force: true });
@@ -1176,6 +1303,118 @@ test("coding-capable standalone task and conversation paths select the shared pi
     assert.ok(events.some((event) => event.type === "TEXT_MESSAGE_CONTENT"));
     assert.ok(events.some((event) => event.type === "TOOL_CALL_START"));
     assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("formal finish rejects durable failed computer evidence until a later recovery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-completion-evidence-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  try {
+    let unresolved = true;
+    Object.defineProperty(server.agent, "computer", {
+      value: {
+        completionEvidence: async () =>
+          unresolved
+            ? {
+                commandCount: 1,
+                successfulCount: 0,
+                unresolvedFailure: {
+                  id: "failed-command",
+                  status: "failed",
+                  startedAt: new Date().toISOString(),
+                },
+              }
+            : { commandCount: 2, successfulCount: 1 },
+      } as unknown as ComputerService,
+    });
+    const finishResults: unknown[] = [];
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const finish = input.tools.find((tool) => tool.name === "finish_task");
+          assert.ok(finish?.execute);
+          finishResults.push(await finish.execute({ summary: "Recovered computer work." }));
+          return "Attempted formal completion.";
+        },
+      },
+    });
+    let current: AgentTask = {
+      ...standaloneTask(),
+      id: "failed-resume-completion-task",
+      attempts: 2,
+      state: { answer: "Retry the failed operation." },
+    };
+    const context = {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch: Partial<AgentTask>) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    };
+    const blocked = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(blocked.status, "waiting_input");
+    assert.deepEqual(finishResults[0], {
+      complete: false,
+      error:
+        "A task-scoped computer command is still failed or interrupted. Recover with a later successful command and verify its result before finishing.",
+      commandStatus: "failed",
+    });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
+
+    unresolved = false;
+    const recovered = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(recovered.status, "succeeded");
+    assert.deepEqual(finishResults[1], { complete: true });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 1);
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("formal finish remains valid for text-only tasks without computer receipts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-text-completion-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  try {
+    Object.defineProperty(server.agent, "computer", {
+      value: {
+        completionEvidence: async () => ({ commandCount: 0, successfulCount: 0 }),
+      } as unknown as ComputerService,
+    });
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const finish = input.tools.find((tool) => tool.name === "finish_task");
+          assert.ok(finish?.execute);
+          assert.deepEqual(await finish.execute({ summary: "Text-only work completed." }), {
+            complete: true,
+          });
+          return "Text-only work completed.";
+        },
+      },
+    });
+    let current = { ...standaloneTask(), id: "text-only-completion-task" };
+    const result = await executeModelTask(server.agent, "owner", current, {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    });
+    assert.equal(result.status, "succeeded");
   } finally {
     await server.agent.stop();
     await db.close();
