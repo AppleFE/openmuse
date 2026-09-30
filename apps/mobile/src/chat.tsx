@@ -680,7 +680,9 @@ export function ChatScreen({
               onBlur={() => setFocused(false)}
               style={{
                 flex: 1,
-                ...(Platform.OS === "web" ? { outlineWidth: 0 } : {}),
+                ...(Platform.OS === "web"
+                  ? { outlineWidth: 0, outlineStyle: "solid" as const }
+                  : {}),
                 borderWidth: 0,
                 color: colors.text,
                 height: inputHeight,
