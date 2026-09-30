@@ -100,11 +100,13 @@ test("the model catalog exposes configured Ollama without requiring credentials"
 test("Pi calls native Ollama chat with bounded non-thinking settings and no Authorization header", async () => {
   let requestPath = "";
   let authorization: string | undefined;
-  let requestBody = "";
+  const requestBodies: string[] = [];
   const server = createServer(async (request, response) => {
     requestPath = request.url ?? "";
     authorization = request.headers.authorization;
+    let requestBody = "";
     for await (const chunk of request) requestBody += chunk;
+    requestBodies.push(requestBody);
     response.writeHead(200, { "Content-Type": "application/x-ndjson" });
     response.write(
       `${JSON.stringify({
@@ -158,13 +160,29 @@ test("Pi calls native Ollama chat with bounded non-thinking settings and no Auth
       },
       { maxTokens: 4096 },
     );
+    const negativeBound = await runtime.completeSimple(
+      model,
+      {
+        systemPrompt: "Answer locally",
+        messages: [{ role: "user", content: "Hello", timestamp: Date.now() }],
+      },
+      { maxTokens: -1 },
+    );
     assert.equal(requestPath, "/api/chat", JSON.stringify(response));
     assert.equal(authorization, undefined);
-    assert.equal(JSON.parse(requestBody).model, "qwen3:4b");
-    assert.equal(JSON.parse(requestBody).think, false);
-    assert.deepEqual(JSON.parse(requestBody).options, { num_ctx: 8192, num_predict: 1024 });
+    assert.equal(JSON.parse(requestBodies[0] ?? "{}").model, "qwen3:4b");
+    assert.equal(JSON.parse(requestBodies[0] ?? "{}").think, false);
+    assert.deepEqual(JSON.parse(requestBodies[0] ?? "{}").options, {
+      num_ctx: 8192,
+      num_predict: 1024,
+    });
+    assert.deepEqual(JSON.parse(requestBodies[1] ?? "{}").options, {
+      num_ctx: 8192,
+      num_predict: 1,
+    });
     assert.equal(response.content.find((part) => part.type === "text")?.text, "Local response");
     assert.equal(response.stopReason, "length");
+    assert.equal(negativeBound.stopReason, "length");
     assert.equal(response.usage.input, 12);
     assert.equal(response.usage.output, 3);
   } finally {

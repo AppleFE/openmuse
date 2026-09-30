@@ -185,7 +185,10 @@ function ollamaStream(
           think: false,
           options: {
             num_ctx: Math.min(model.contextWindow, 8192),
-            num_predict: Math.min(options?.maxTokens ?? model.maxTokens, model.maxTokens, 1024),
+            num_predict: Math.max(
+              1,
+              Math.min(options?.maxTokens ?? model.maxTokens, model.maxTokens, 1024),
+            ),
           },
           ...(tools.length
             ? {
