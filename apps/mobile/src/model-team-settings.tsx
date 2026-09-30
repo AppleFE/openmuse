@@ -1,4 +1,4 @@
-import { Bot, Plus, Trash2, Users } from "lucide-react-native";
+import { Bot, Check, ChevronDown, Plus, Trash2, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type {
@@ -29,18 +29,15 @@ export function ModelChoices({
   value,
   onChange,
   disabled,
-  compact,
 }: {
   models: ModelProfile[];
   value?: string | null;
   onChange: (modelId: string) => void;
   disabled?: boolean;
-  compact?: boolean;
 }) {
   return (
     <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
+      style={{ maxHeight: 420 }}
       contentContainerStyle={{ gap: 8, paddingVertical: 2 }}
       keyboardShouldPersistTaps="handled"
     >
@@ -52,14 +49,16 @@ export function ModelChoices({
             key={model.id}
             accessibilityRole="radio"
             accessibilityLabel={`${model.label}, ${availability.toLowerCase()}`}
+            aria-checked={selected}
             accessibilityState={{ checked: selected, disabled: disabled || !model.available }}
             disabled={disabled || !model.available}
             onPress={() => onChange(model.id)}
             style={({ pressed }) => ({
-              minWidth: compact ? undefined : 170,
-              maxWidth: compact ? 190 : 260,
-              paddingHorizontal: compact ? 12 : 14,
-              paddingVertical: compact ? 8 : 11,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingHorizontal: 14,
+              paddingVertical: 11,
               borderRadius: 18,
               borderWidth: 1,
               borderColor: selected ? colors.blueDark : colors.line,
@@ -67,20 +66,97 @@ export function ModelChoices({
               opacity: model.available ? (pressed ? 0.72 : 1) : 0.48,
             })}
           >
-            <Text
-              numberOfLines={1}
-              style={[s.text, { fontSize: compact ? 12 : 14, fontWeight: "600" }]}
-            >
-              {model.label}
-            </Text>
-            {!compact && <Text style={s.small}>{modelDetail(model)}</Text>}
-            <Text style={[s.small, { color: model.available ? colors.success : colors.danger }]}>
-              {availability}
-            </Text>
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text style={[s.text, { fontWeight: "600" }]}>{model.label}</Text>
+              <Text style={s.small}>{modelDetail(model)}</Text>
+              <Text style={[s.small, { color: model.available ? colors.success : colors.danger }]}>
+                {availability}
+              </Text>
+            </View>
+            {selected && <Check size={18} color={colors.blueDark} />}
           </Pressable>
         );
       })}
     </ScrollView>
+  );
+}
+
+function ModelPicker({
+  models,
+  value,
+  onChange,
+  disabled,
+  label,
+  title,
+  subtitle,
+}: {
+  models: ModelProfile[];
+  value?: string | null;
+  onChange: (modelId: string) => void;
+  disabled?: boolean;
+  label: string;
+  title: string;
+  subtitle?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = models.find((model) => model.id === value);
+  const search = query.trim().toLowerCase();
+  const filtered = models.filter((model) =>
+    `${model.label} ${model.model} ${model.provider}`.toLowerCase().includes(search),
+  );
+  return (
+    <View style={{ alignSelf: "flex-start", maxWidth: "100%" }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled, expanded: open }}
+        disabled={disabled || !models.length}
+        onPress={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+        style={({ pressed }) => [
+          s.row,
+          {
+            gap: 8,
+            paddingVertical: 9,
+            paddingHorizontal: 13,
+            borderRadius: 18,
+            backgroundColor: colors.surfaceMuted,
+            opacity: disabled ? 0.5 : pressed ? 0.72 : 1,
+          },
+        ]}
+      >
+        <Bot size={15} color={colors.muted} />
+        <Text numberOfLines={1} style={[s.small, { flexShrink: 1, color: colors.text }]}>
+          {selected?.label ?? "서버 기본값"}
+        </Text>
+        <ChevronDown size={14} color={colors.muted} />
+      </Pressable>
+      {open && (
+        <Sheet title={title} subtitle={subtitle} onClose={() => setOpen(false)}>
+          <Field
+            label="모델 검색"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="모델 이름 또는 제공자로 검색"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <ModelChoices
+            models={filtered}
+            value={value}
+            disabled={disabled}
+            onChange={(modelId) => {
+              onChange(modelId);
+              setOpen(false);
+            }}
+          />
+          {!filtered.length && <Text style={s.muted}>일치하는 모델이 없습니다.</Text>}
+        </Sheet>
+      )}
+    </View>
   );
 }
 
@@ -229,10 +305,12 @@ function TeamEditor({
               onChangeText={(label) => updateRole(role.id, { label })}
             />
             <Text style={[s.small, { fontWeight: "600", color: colors.text }]}>모델</Text>
-            <ModelChoices
+            <ModelPicker
               models={models}
               value={role.modelId}
               onChange={(modelId) => updateRole(role.id, { modelId })}
+              label={`${uiLabel(role.kind)} 모델 선택`}
+              title={`${uiLabel(role.kind)} 모델 선택`}
             />
             <Field
               label="시스템 프롬프트"
@@ -322,17 +400,20 @@ export function ModelTeamSettings() {
   return (
     <View style={{ gap: 18 }}>
       <Card style={{ gap: 12 }}>
-        <SectionHeading title="모델" />
+        <SectionHeading title="기본 모델" />
         <Text style={s.muted}>
           서버에 설정된 모델 목록입니다. 비활성화됐거나 서버 인증 정보가 없는 모델은 선택할 수
           없습니다.
         </Text>
         {models.length ? (
-          <ModelChoices
+          <ModelPicker
             models={models}
             value={data?.modelSelection?.modelId}
             disabled={busy}
             onChange={(modelId) => void selectDefault(modelId)}
+            label="기본 모델 선택"
+            title="기본 모델 선택"
+            subtitle="선택한 모델을 새 대화와 작업의 기본 모델로 사용합니다."
           />
         ) : (
           <Text style={s.muted}>서버에 설정된 모델이 없습니다.</Text>
@@ -448,12 +529,16 @@ export function ConversationModelPicker({
 }) {
   if (!models.length) return null;
   return (
-    <View style={{ gap: 5, paddingHorizontal: 5, paddingBottom: 8 }}>
-      <View style={[s.row, { gap: 6 }]}>
-        <Bot size={13} color={colors.muted} />
-        <Text style={s.small}>이 대화에 사용할 모델</Text>
-      </View>
-      <ModelChoices models={models} value={value} onChange={onChange} disabled={disabled} compact />
+    <View style={{ paddingHorizontal: 5, paddingBottom: 8 }}>
+      <ModelPicker
+        models={models}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        label="대화 모델 선택"
+        title="대화 모델 선택"
+        subtitle="이 대화에만 적용됩니다. 새 대화의 기본 모델은 앱 설정에서 변경하세요."
+      />
     </View>
   );
 }
