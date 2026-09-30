@@ -32,7 +32,13 @@ import {
   IdeasScreen,
 } from "./src/agent-ui";
 import { AgentWorkspaceProvider, useAgentWorkspace } from "./src/agent-workspace";
-import { API_URL, createSession, MuseApi } from "./src/api";
+import {
+  API_URL,
+  createSession,
+  MuseApi,
+  readStoredSessionToken,
+  storeSessionToken,
+} from "./src/api";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
@@ -85,6 +91,8 @@ function MuseApp() {
     setError("");
     try {
       const session = await createSession(key);
+      storeSessionToken(session.token);
+      setAccessKey("");
       setToken(session.token);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -93,8 +101,19 @@ function MuseApp() {
     }
   }, []);
   useEffect(() => {
+    const storedToken = readStoredSessionToken();
+    if (storedToken) {
+      setToken(storedToken);
+      setBusy(false);
+      return;
+    }
     void connect();
   }, [connect]);
+  const logout = useCallback(() => {
+    storeSessionToken();
+    setAccessKey("");
+    setToken("");
+  }, []);
   return (
     <SafeAreaProvider>
       <StatusBar style={resolved === "dark" ? "light" : "dark"} />
@@ -103,7 +122,7 @@ function MuseApp() {
           runtimeUrl={`${API_URL}/api/copilotkit`}
           headers={{ Authorization: `Bearer ${token}` }}
         >
-          <WorkspaceApp token={token} />
+          <WorkspaceApp token={token} onUnauthorized={logout} />
         </CopilotKitProvider>
       ) : (
         <SafeAreaView
@@ -150,8 +169,8 @@ function MuseApp() {
     </SafeAreaProvider>
   );
 }
-function WorkspaceApp({ token }: { token: string }) {
-  const api = useMemo(() => new MuseApi(token), [token]);
+function WorkspaceApp({ token, onUnauthorized }: { token: string; onUnauthorized: () => void }) {
+  const api = useMemo(() => new MuseApi(token, onUnauthorized), [token, onUnauthorized]);
   const [workspace, setWorkspace] = useState<Workspace>();
   const [section, setSection] = useState<Section>("chat");
   const [detail, setDetail] = useState<Detail>();
