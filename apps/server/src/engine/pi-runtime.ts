@@ -32,6 +32,7 @@ import type {
   RoleRuntimePreparation,
   RoleRuntimeRequest,
 } from "./runtime-hooks.ts";
+import { runtimeInstructions } from "./runtime-instructions.ts";
 
 interface PiCheckpoint {
   id: string;
@@ -513,7 +514,8 @@ export class PiRuntimeHook implements CodingRuntimeHook {
   async prepare(_request: RoleRuntimeRequest): Promise<RoleRuntimePreparation> {
     return {
       systemPrompt:
-        "You are running through embedded pi. Use only the registered OpenMuse tools. Never claim host access, network access, or an external write that the tools did not perform.",
+        "You are running through embedded pi. Use only the registered OpenMuse tools. Never claim host access, network access, or an external write that the tools did not perform." +
+        runtimeInstructions(true),
     };
   }
 

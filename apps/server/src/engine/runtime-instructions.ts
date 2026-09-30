@@ -1,0 +1,14 @@
+/** Server facts, separate from the isolated computer's reported operating system. */
+export function runtimeInstructions(embeddedPiActive: boolean, platform = process.platform) {
+  const host = platform === "darwin" ? "macOS" : platform === "win32" ? "Windows" : platform;
+  return (
+    `\nOpenMuse runtime facts: the application server runs on ${host} (${platform}) in Node.js. ` +
+    "Pi in this project means the embedded @earendil-works/pi-coding-agent SDK, not Pi AI or a Raspberry Pi. " +
+    (embeddedPiActive
+      ? "This run is already executing through embedded Pi on the application server. The user does not need a special activation phrase. Use the registered OpenMuse tools to carry out a concrete coding request. "
+      : "Embedded Pi is part of the application, but it is not active for this run. A coding-capable configured model and the owner's enabled Pi setting are required; do not claim otherwise. ") +
+    "Shell commands and file operations run in a separate isolated Docker Linux computer, which can report Debian even when the application host is macOS. " +
+    "A missing pi executable inside that container does not mean the server's embedded Pi SDK is absent. Do not check which pi, pi-ai, /opt/pi or /home/pi to determine whether embedded Pi is available. " +
+    "The container's disabled network and filesystem isolation describe the computer tools, not the application server or model gateway. Explain this distinction when asked about your environment, and never claim direct access to host files. Reply in the user's language."
+  );
+}

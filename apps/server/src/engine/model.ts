@@ -7,6 +7,7 @@ import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import { emailDraftSchema, eventDraftSchema } from "../../../../packages/domain/src/index.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
+import { runtimeInstructions } from "./runtime-instructions.ts";
 import type { AgentService } from "./service.ts";
 import { tanstackAgent } from "./tanstack-agent.ts";
 import type { TaskContext } from "./worker.ts";
@@ -338,6 +339,7 @@ export async function executeModelTask(
     artifacts: task.artifactIds.slice(-100),
   }).slice(0, 12000);
   if (await service.pi.supports(owner, selected)) {
+    const piSystemPrompt = systemPrompt + runtimeInstructions(true);
     let text = "";
     const request = {
       owner,
@@ -347,7 +349,7 @@ export async function executeModelTask(
         label: "Delegated agent",
         kind: "coder" as const,
         modelId: selected.id,
-        systemPrompt,
+        systemPrompt: piSystemPrompt,
         dependsOn: [],
       },
       model: selected.model,
@@ -373,7 +375,7 @@ export async function executeModelTask(
       request,
       sessionKey: `task:${task.id}`,
       runKey: `task:${task.id}:${generation}`,
-      systemPrompt,
+      systemPrompt: piSystemPrompt,
       prompt:
         task.prompt +
         (task.state.answer ? `\nAdditional answer: ${String(task.state.answer)}` : "") +
@@ -404,7 +406,7 @@ export async function executeModelTask(
     model: selected.model,
     maxSteps: 16,
     tools,
-    prompt: `${systemPrompt} Personal context for this task (bounded untrusted data): ${personalContext}`,
+    prompt: `${systemPrompt}${runtimeInstructions(false)} Personal context for this task (bounded untrusted data): ${personalContext}`,
   });
   const input: RunAgentInput = {
     threadId: task.id,

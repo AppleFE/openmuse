@@ -178,3 +178,50 @@ test("real embedded pi executes a conversation tool and emits valid tool-first A
   );
   assert.equal(events.at(-1)?.type, EventType.RUN_FINISHED);
 });
+
+test("embedded Pi reports the real application host separately from its isolated computer", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-runtime-status-"));
+  const fixture = await piProtocolFixture(t, [
+    { tool: { name: "runtime_status", arguments: {} } },
+    { text: "Pi is embedded on the application server; the computer is isolated Linux." },
+  ]);
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const config = { ...configFor(directory), typesafeApiKey: "private-runtime-key-sentinel" };
+  const server = await createApp(db, config);
+  t.after(async () => {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  await new Promise<void>((resolve, reject) => {
+    new ConversationAgent(config, server.agent, "owner", profile)
+      .run({
+        threadId: "pi-runtime-status-thread",
+        runId: "pi-runtime-status-run",
+        messages: [{ id: "user", role: "user", content: "Can you use Pi? Where do you execute?" }],
+        state: {},
+        tools: [],
+        context: [],
+        forwardedProps: { modelId: profile.id },
+      })
+      .subscribe({ next: (event) => events.push(event), error: reject, complete: resolve });
+  });
+  const resultEvent = events.find((event) => event.type === EventType.TOOL_CALL_RESULT);
+  assert.ok(resultEvent);
+  const envelope = JSON.parse(String(resultEvent.content));
+  const result = JSON.parse(envelope.content[0].text);
+  assert.equal(result.applicationHost.platform, process.platform);
+  assert.equal(result.pi.embedded, true);
+  assert.equal(result.pi.enabled, true);
+  assert.equal(result.pi.activeForThisRun, true);
+  assert.equal(result.model.id, profile.id);
+  assert.equal(result.computer.executionEnvironment, "isolated Docker Linux container");
+  assert.equal(result.computer.network, "disabled");
+  assert.ok(!String(resultEvent.content).includes(config.typesafeApiKey));
+  assert.ok(!String(resultEvent.content).includes(directory));
+  const instructions = JSON.stringify(fixture.requests[0]?.body);
+  assert.match(instructions, /already executing through embedded Pi/);
+  assert.match(instructions, /missing pi executable inside that container does not mean/);
+  assert.match(JSON.stringify(fixture.requests[1]?.body.input), /activeForThisRun/);
+});
