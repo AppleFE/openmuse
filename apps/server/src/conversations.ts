@@ -198,8 +198,14 @@ function boundedThreadEvents(
   return dropped ? compactEvents([...compacted, ...snapshots()]) : compacted;
 }
 
-function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
+function materializeMessages(
+  input: Message[],
+  events: BaseEvent[],
+  retainOnlyInput = false,
+): Message[] {
   const messages = new Map(input.map((message) => [message.id, structuredClone(message)]));
+  const textStarted = new Set<string>();
+  const toolsStarted = new Set<string>();
   for (const baseEvent of events) {
     const event = baseEvent as BaseEvent & {
       messages?: Message[];
@@ -219,12 +225,18 @@ function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
     }
     if (event.type === EventType.TEXT_MESSAGE_START) {
       if (!event.messageId || !event.role) continue;
-      messages.set(event.messageId, {
-        id: event.messageId,
-        role: event.role,
-        content: "",
-        ...(event.name ? { name: event.name } : {}),
-      } as Message);
+      if (!textStarted.has(event.messageId)) {
+        // Compaction can place a completed tool call before its parent's text
+        // start. Keep that call while rebuilding text from the server events.
+        messages.set(event.messageId, {
+          ...messages.get(event.messageId),
+          id: event.messageId,
+          role: event.role,
+          content: "",
+          ...(event.name ? { name: event.name } : {}),
+        } as Message);
+        textStarted.add(event.messageId);
+      }
       continue;
     }
     if (event.type === EventType.TEXT_MESSAGE_CONTENT) {
@@ -235,8 +247,14 @@ function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
       continue;
     }
     if (event.type === EventType.TOOL_CALL_START) {
-      const parent = messages.get(event.parentMessageId ?? "");
-      if (parent?.role !== "assistant" || !event.toolCallId || !event.toolCallName) continue;
+      if (!event.toolCallId || !event.toolCallName) continue;
+      let parentId = event.parentMessageId ?? event.toolCallId;
+      if (messages.has(parentId) && messages.get(parentId)?.role !== "assistant")
+        parentId = event.toolCallId;
+      if (!messages.has(parentId))
+        messages.set(parentId, { id: parentId, role: "assistant", toolCalls: [] });
+      const parent = messages.get(parentId);
+      if (parent?.role !== "assistant") continue;
       const assistant = parent as Message & {
         toolCalls?: {
           id: string;
@@ -245,12 +263,19 @@ function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
         }[];
       };
       assistant.toolCalls ??= [];
-      if (!assistant.toolCalls.some((call) => call.id === event.toolCallId))
+      const call = assistant.toolCalls.find((candidate) => candidate.id === event.toolCallId);
+      if (!call)
         assistant.toolCalls.push({
           id: event.toolCallId,
           type: "function",
           function: { name: event.toolCallName, arguments: "" },
         });
+      else if (!toolsStarted.has(event.toolCallId)) {
+        // The agent's SDK messages already contain the final arguments. Replay
+        // each call's deltas once, rather than appending to that finished value.
+        call.function = { ...call.function, name: event.toolCallName, arguments: "" };
+      }
+      toolsStarted.add(event.toolCallId);
       continue;
     }
     if (event.type === EventType.TOOL_CALL_ARGS) {
@@ -276,7 +301,12 @@ function materializeMessages(input: Message[], events: BaseEvent[]): Message[] {
         ...(event.role ? { speakerRole: event.role } : {}),
       } as Message);
   }
-  return [...messages.values()].slice(-MAX_MESSAGES);
+  // Legacy repair must preserve the retained IDs and order: older bounded
+  // events can still refer to messages already evicted from the history.
+  const result = retainOnlyInput
+    ? input.map((message) => messages.get(message.id) ?? message)
+    : [...messages.values()];
+  return result.slice(-MAX_MESSAGES);
 }
 
 function cursorFor(thread: ConversationThread) {
@@ -354,14 +384,33 @@ export class ConversationStoreRunner extends AgentRunner {
       );
       const combined = [...(value.events ?? []), ...(run?.events ?? [])];
       const state = eventState(combined) ?? value.state;
-      const events = boundedThreadEvents(combined, value.messages, state);
+      const messages = materializeMessages(
+        mergeMessages(value.messages, run?.messages ?? []),
+        combined,
+      );
+      const events = boundedThreadEvents(combined, messages, state);
       await this.db.put(owner, "conversation-threads", {
         ...value,
         activeRunId: null,
+        messages,
         events,
         state,
         updatedAt: now,
       });
+    }
+    // Repair the old projection using only durable server events. Client input
+    // never participates, and history mutation checks remain strict.
+    for (const { owner, value } of await this.db.scan<ConversationThread>("conversation-threads")) {
+      if (value.activeRunId || !value.events?.length) continue;
+      const messages = materializeMessages(value.messages, value.events, true);
+      if (!isDeepStrictEqual(messages, value.messages))
+        await this.db.compareAndSwap<ConversationThread>(
+          owner,
+          "conversation-threads",
+          value.id,
+          { activeRunId: null, updatedAt: value.updatedAt },
+          { messages },
+        );
     }
   }
 

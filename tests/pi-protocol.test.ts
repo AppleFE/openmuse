@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { HttpAgent } from "@ag-ui/client";
 import { EventType, type RunAgentInput } from "@ag-ui/core";
+import { CopilotKitCore } from "@copilotkit/core";
+import { serve } from "@hono/node-server";
+import { runConversationTurn } from "../apps/mobile/src/conversation-run.ts";
 import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
@@ -224,4 +228,62 @@ test("embedded Pi reports the real application host separately from its isolated
   assert.match(instructions, /already executing through embedded Pi/);
   assert.match(instructions, /missing pi executable inside that container does not mean/);
   assert.match(JSON.stringify(fixture.requests[1]?.body.input), /activeForThisRun/);
+});
+
+test("real CopilotKit can continue a Pi conversation after tool results without rewriting history", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-follow-up-"));
+  const fixture = await piProtocolFixture(t, [
+    { tool: { name: "runtime_status", arguments: {} } },
+    { text: "Embedded Pi is active." },
+    { tool: { name: "search_mail", arguments: { query: "follow-up verification" } } },
+    { text: "The follow-up tool run completed." },
+    { text: "The third message also completed." },
+  ]);
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  const http = serve({ fetch: server.app.fetch, hostname: "127.0.0.1", port: 0 });
+  await new Promise<void>((resolve) => http.on("listening", resolve));
+  const address = http.address();
+  assert.ok(address && typeof address === "object");
+  const { token } = await server.auth.session();
+  const url = `http://127.0.0.1:${address.port}`;
+  const agent = new HttpAgent({
+    agentId: "default",
+    threadId: "pi-sdk-follow-up",
+    url: `${url}/api/copilotkit/agent/default/run`,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const core = new CopilotKitCore({ agents__unsafe_dev_only: { default: agent } });
+  t.after(async () => {
+    if ("closeAllConnections" in http) http.closeAllConnections();
+    await new Promise<void>((resolve, reject) => http.close((e) => (e ? reject(e) : resolve())));
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  for (const [index, content] of ["Check Pi", "Can you still use Pi?", "Continue"].entries()) {
+    agent.addMessage({ id: `follow-up-user-${index}`, role: "user", content });
+    await runConversationTurn(
+      "default",
+      () => core.runAgent({ agent, forwardedProps: { modelId: profile.id } }),
+      (onError) => core.subscribe({ onError }),
+    );
+    const response = await fetch(`${url}/api/copilotkit/threads/${agent.threadId}/messages`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 200);
+    const { messages } = (await response.json()) as { messages: typeof agent.messages };
+    for (const message of agent.messages) {
+      const stored = messages.find((candidate) => candidate.id === message.id);
+      assert.ok(stored, "every client message must be persisted");
+      for (const field of ["role", "content", "toolCalls", "toolCallId"] as const) {
+        if (field in message)
+          assert.deepEqual(
+            stored[field as keyof typeof stored],
+            message[field as keyof typeof message],
+          );
+      }
+    }
+  }
+  assert.equal(fixture.requests.length, 5);
 });

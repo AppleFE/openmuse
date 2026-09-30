@@ -190,6 +190,8 @@ export function uiLabel(value: string) {
 }
 
 const errors: Record<string, string> = {
+  "Stored conversation history cannot be modified by the client":
+    "앱과 서버의 대화 기록이 다릅니다. 페이지를 새로고침한 뒤 답변을 다시 시도하세요. 저장된 대화는 유지됩니다.",
   "Access key is incorrect": "접속 키가 올바르지 않습니다.",
   "Sign in to OpenMuse": "OpenMuse에 로그인하세요.",
   "Session expired. Sign in again.": "세션이 만료됐습니다. 다시 로그인하세요.",

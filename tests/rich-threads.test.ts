@@ -4,7 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { AbstractAgent, type BaseEvent, EventType, type RunAgentInput } from "@ag-ui/client";
+import {
+  AbstractAgent,
+  type BaseEvent,
+  compactEvents,
+  EventType,
+  type Message,
+  type RunAgentInput,
+} from "@ag-ui/client";
 import { Observable } from "rxjs";
 import { createApp } from "../apps/server/src/app.ts";
 import { createAuth } from "../apps/server/src/auth.ts";
@@ -530,4 +537,145 @@ test("workspace advertises local rich threads without exposing a cloud key", asy
     mutations: false,
     realtimeMetadata: false,
   });
+});
+
+test("startup repairs legacy tool projections from server events without changing retained history", async () => {
+  const auth = await createAuth(db, config(directory));
+  const runner = new ConversationStoreRunner(db, auth, config(directory));
+  const thread = await runner.ensure("legacy-owner", "legacy-tool-thread");
+  const events = compactEvents([
+    { type: EventType.TEXT_MESSAGE_START, messageId: "evicted-reply", role: "assistant" },
+    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "evicted-reply", delta: "Old reply" },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "evicted-reply" },
+    { type: EventType.TEXT_MESSAGE_START, messageId: "legacy-reply", role: "assistant" },
+    {
+      type: EventType.TOOL_CALL_START,
+      toolCallId: "legacy-call",
+      toolCallName: "runtime_status",
+      parentMessageId: "legacy-reply",
+    },
+    { type: EventType.TOOL_CALL_ARGS, toolCallId: "legacy-call", delta: "{" },
+    { type: EventType.TOOL_CALL_ARGS, toolCallId: "legacy-call", delta: "}" },
+    { type: EventType.TOOL_CALL_END, toolCallId: "legacy-call" },
+    {
+      type: EventType.TOOL_CALL_RESULT,
+      toolCallId: "legacy-call",
+      messageId: "legacy-result",
+      role: "tool",
+      content: '{"embedded":true}',
+    },
+    { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "legacy-reply", delta: "Pi is active." },
+    { type: EventType.TEXT_MESSAGE_END, messageId: "legacy-reply" },
+    {
+      type: EventType.TOOL_CALL_START,
+      toolCallId: "duplicate-call",
+      toolCallName: "search_mail",
+      parentMessageId: "duplicate-reply",
+    },
+    { type: EventType.TOOL_CALL_ARGS, toolCallId: "duplicate-call", delta: '{"query":"test"}' },
+    { type: EventType.TOOL_CALL_END, toolCallId: "duplicate-call" },
+  ] as BaseEvent[]);
+  const messages: Message[] = [
+    { id: "legacy-user", role: "user", content: "Original user text" },
+    { id: "legacy-reply", role: "assistant", content: "Pi is active." },
+    {
+      id: "legacy-result",
+      role: "tool",
+      toolCallId: "legacy-call",
+      content: '{"embedded":true}',
+      speakerRole: "tool",
+    } as Message,
+    {
+      id: "duplicate-reply",
+      role: "assistant",
+      toolCalls: [
+        {
+          id: "duplicate-call",
+          type: "function",
+          function: { name: "search_mail", arguments: '{"query":"test"}{"query":"test"}' },
+        },
+      ],
+    },
+    { id: "retained-user", role: "user", content: "Keep this message too" },
+  ];
+  await db.put("legacy-owner", "conversation-threads", {
+    ...thread,
+    archived: true,
+    messages,
+    events,
+  });
+  const foreign = await runner.ensure("foreign-owner", thread.id);
+  await db.put("foreign-owner", "conversation-threads", {
+    ...foreign,
+    messages: [{ id: "private-user", role: "user", content: "Foreign owner's text" }],
+  });
+  await runner.recoverInterrupted();
+  const repaired = await runner.get("legacy-owner", thread.id);
+  assert.deepEqual(
+    repaired.messages.map((m) => m.id),
+    messages.map((m) => m.id),
+  );
+  assert.equal(repaired.updatedAt, thread.updatedAt);
+  assert.equal(repaired.archived, true);
+  assert.deepEqual(repaired.events, events, "repair must not rewrite source events");
+  const assistant = repaired.messages.find((m) => m.id === "legacy-reply");
+  assert.ok(assistant?.role === "assistant");
+  assert.equal(assistant.content, "Pi is active.");
+  assert.deepEqual(assistant.toolCalls, [
+    {
+      id: "legacy-call",
+      type: "function",
+      function: { name: "runtime_status", arguments: "{}" },
+    },
+  ]);
+  const duplicate = repaired.messages.find((m) => m.id === "duplicate-reply");
+  assert.ok(duplicate?.role === "assistant");
+  assert.equal(duplicate.toolCalls?.[0]?.function.arguments, '{"query":"test"}');
+  assert.deepEqual(repaired.messages[0], messages[0]);
+  assert.deepEqual(repaired.messages.at(-1), messages.at(-1));
+  assert.equal(
+    (await runner.get("foreign-owner", thread.id)).messages[0]?.content,
+    "Foreign owner's text",
+  );
+  await runner.recoverInterrupted();
+  assert.deepEqual(await runner.get("legacy-owner", thread.id), repaired, "repair is idempotent");
+});
+
+test("interrupted recovery materializes the checkpoint's user, partial text and tool arguments", async () => {
+  const auth = await createAuth(db, config(directory));
+  const runner = new ConversationStoreRunner(db, auth, config(directory));
+  const thread = await runner.ensure("interrupted-owner", "interrupted-tool-thread");
+  const messages: Message[] = [{ id: "interrupted-user", role: "user", content: "Check Pi" }];
+  await db.put("interrupted-owner", "conversation-threads", { ...thread, activeRunId: "partial" });
+  await db.put("interrupted-owner", "conversation-runs", {
+    id: `${thread.id}:partial`,
+    threadId: thread.id,
+    runId: "partial",
+    agentId: "default",
+    status: "running",
+    messages,
+    events: [
+      { type: EventType.RUN_STARTED, threadId: thread.id, runId: "partial" },
+      { type: EventType.TEXT_MESSAGE_START, messageId: "partial-reply", role: "assistant" },
+      {
+        type: EventType.TOOL_CALL_START,
+        toolCallId: "partial-call",
+        toolCallName: "runtime_status",
+        parentMessageId: "partial-reply",
+      },
+      { type: EventType.TOOL_CALL_ARGS, toolCallId: "partial-call", delta: "{}" },
+      { type: EventType.TEXT_MESSAGE_CONTENT, messageId: "partial-reply", delta: "Checking Pi" },
+    ],
+    state: null,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+  });
+  await runner.recoverInterrupted();
+  const recovered = await runner.get("interrupted-owner", thread.id);
+  assert.equal(recovered.activeRunId, null);
+  assert.deepEqual(recovered.messages[0], messages[0]);
+  const assistant = recovered.messages.find((m) => m.id === "partial-reply");
+  assert.ok(assistant?.role === "assistant");
+  assert.equal(assistant.content, "Checking Pi");
+  assert.equal(assistant.toolCalls?.[0]?.function.arguments, "{}");
 });
