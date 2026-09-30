@@ -258,7 +258,6 @@ function WorkspaceShell({
     loading: threadsLoading,
     error: threadsError,
     retry: retryThreads,
-    enabled: richThreads,
   } = useMuseThread();
   const [threadsOpen, setThreadsOpen] = useState(false);
   const { width } = useWindowDimensions();
@@ -400,35 +399,27 @@ function WorkspaceShell({
               }}
             >
               <AgentStatus />
-              {richThreads ? (
-                <>
-                  <ErrorNotice error={threadsError} />
-                  {threadsError ? (
-                    <Button onPress={retryThreads}>Retry main chat</Button>
-                  ) : threadsLoading ? (
-                    <ActivityIndicator color={colors.blueDark} />
-                  ) : null}
-                  {!threadsLoading && selection.id !== mainId && (
-                    <Text style={[s.small, { textAlign: "center", marginBottom: 8 }]}>
-                      Side chat
-                    </Text>
-                  )}
-                  {visited.map((thread) => (
-                    <View
-                      key={thread.id}
-                      style={{ display: selection.id === thread.id ? "flex" : "none", flex: 1 }}
-                    >
-                      <ChatScreen
-                        thread={thread}
-                        active={section === "chat" && selection.id === thread.id}
-                        prompt={selection.id === thread.id ? prompt : undefined}
-                      />
-                    </View>
-                  ))}
-                </>
-              ) : (
-                <ChatScreen prompt={prompt} active={section === "chat"} />
+              <ErrorNotice error={threadsError} />
+              {threadsError ? (
+                <Button onPress={retryThreads}>Retry main chat</Button>
+              ) : threadsLoading ? (
+                <ActivityIndicator color={colors.blueDark} />
+              ) : null}
+              {!threadsLoading && selection.id !== mainId && (
+                <Text style={[s.small, { textAlign: "center", marginBottom: 8 }]}>Side chat</Text>
               )}
+              {visited.map((thread) => (
+                <View
+                  key={thread.id}
+                  style={{ display: selection.id === thread.id ? "flex" : "none", flex: 1 }}
+                >
+                  <ChatScreen
+                    thread={thread}
+                    active={section === "chat" && selection.id === thread.id}
+                    prompt={selection.id === thread.id ? prompt : undefined}
+                  />
+                </View>
+              ))}
             </View>
           </View>
           <View

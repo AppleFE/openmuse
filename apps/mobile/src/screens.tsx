@@ -1357,7 +1357,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
               />
               <SettingsLine
                 label="Rich Threads"
-                value={w.runtime.richThreads ? "CopilotKit Intelligence" : "Not connected"}
+                value={w.runtime.richThreads ? "Stored by OpenMuse" : "Unavailable"}
               />
               <Button
                 small
