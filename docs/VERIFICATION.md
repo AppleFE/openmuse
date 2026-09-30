@@ -105,6 +105,35 @@ The P41 application runtime was built and activated from independently reviewed 
   활성화 문구가 필요 없음을 설명했습니다. 브라우저 페이지 오류와 외부 브라우저 요청은 없었습니다.
   JSON 증빙과 스크린샷은 P41의 `verification/followup-20260930`에 보관합니다.
 
+## Pi 후속 대화 기록 오류 복구 — 2026년 9월 30일
+
+- 실제 P41 브라우저에서 `runtime_status`를 사용한 첫 답변 뒤 후속 질문을 보내면
+  `Stored conversation history cannot be modified by the client`가 발생함을 재현했습니다.
+  서버의 이벤트 압축은 완료된 도구 호출을 부모 텍스트 시작보다 앞에 배치할 수 있는데,
+  메시지 저장 처리가 그 텍스트 시작에서 도구 호출 정보를 지우고 있었습니다.
+  서버가 저장한 답변의 `toolCalls`가 없어 실제 CopilotKit 클라이언트의 기록과 달랐습니다.
+- 텍스트를 재구성할 때 기존 도구 호출을 보존하고, 완료된 SDK 메시지의 인수에 이벤트 인수를
+  중복해서 덧붙이지 않도록 수정했습니다. 도구만 먼저 발언하는 경우에도 부모 메시지를
+  생성합니다. 서버 시작 시 원본 이벤트로 기존 저장 기록을 복구하며, 보관된 대화의 ID·순서와
+  메타데이터를 유지합니다. 중단된 실행도 체크포인트의 사용자 메시지·부분 답변·도구 호출을
+  복구합니다. 클라이언트의 기록 변조 차단은 유지하며 해당 오류의 UI 표시는 한국어입니다.
+- 실제 Pi SDK와 CopilotKit Core/HttpAgent를 함께 사용하는 세 번의 연속 대화 회귀 테스트는
+  수정 전 실패하고 수정 후 통과했습니다. 기존 기록·중단 복구, 원본 이벤트 보존, 반복 복구의
+  동일 결과, 다른 소유자 격리와 위조 차단을 포함한 관련 테스트 28/28이 통과했습니다.
+  타입 검사, 변경 파일 Biome 검사, 서버 빌드가 통과했습니다.
+- 애플리케이션 소스 `6886c9c521c2d42f699c6f4a60861206541f4a53`를 P41에서 서버·웹 빌드 후
+  활성 작업·대화가 없는 상태에서 API만 재시작했습니다. 대화 28개/메시지 60개를 먼저
+  `private-backups/history-repair-20260930T145014549Z/threads.json`에 권한 600으로 백업했습니다.
+  재시작 뒤 대화 5개에서 누락된 도구 호출 6건을 복구했고, 전체 메시지의 ID·순서·본문과
+  원본 이벤트가 변경되지 않았음을 인증된 API로 비교했습니다. 기본 모델은 그대로 유지했습니다.
+- 오류를 재현했던 기존 대화 `28dab016-171b-408a-97a9-722b79b5e03f`를 실제 화면에서 다시 열어
+  OpenCodex `oc-gpt-6-luna`로 도구 사용 후 연속 질문과 새로고침 후 질문이 성공함을 확인했습니다.
+  브라우저에서 일시적 연결 오류를 한 번만 주입한 뒤 **답변 다시 시도**도 성공했으며,
+  동일 사용자 메시지가 정확히 한 번 저장됐습니다. 기존 메시지는 그대로 유지됐고 Pi는
+  macOS 서버에서 활성 상태였습니다. 대화 기록 불일치·페이지 오류·외부 브라우저 요청은 0건,
+  API·웹·브라우저 상태 확인 네 가지는 HTTP 200입니다. 증빙은
+  `verification/history-20260930`에 보관합니다. 이후 문서만 변경하며 앱 재시작은 하지 않습니다.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
