@@ -4,6 +4,10 @@ This directory supports a single-owner OpenMuse installation on Apple silicon wi
 runtime, data, caches, browser profiles, and logs on `/Volumes/p41-1tb`. It does not install Node,
 change Tailscale, touch unrelated launchd jobs, or contain credentials.
 
+For the active P41 installation, owner sign-in and the verified model/service state are recorded
+in the private host file `/Volumes/p41-1tb/openmuse/README-DEPLOY.md`. It contains no secret values;
+use the private `.env` only on the Mac when an owner key is needed.
+
 ## Runtime layout
 
 | Path | Purpose |
@@ -61,6 +65,34 @@ session, then presents its existing key form after the protected server rejects 
 The default model runs locally through Ollama on loopback, with cloud inference and web search
 disabled. The validator accepts this provider without a model API key and rejects a non-loopback
 `OLLAMA_BASE_URL`. If a cloud model is selected instead, its real provider key is still required.
+
+The verified P41 Mac mini catalog keeps Qwen3 4B as the fallback and provides Qwen3 8B as the
+selected local profile. The non-secret portion of its canonical `.env` is:
+
+```dotenv
+AGENT_BACKEND=model
+MODEL=ollama/qwen3:4b
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OPENMUSE_MODELS=[{"id":"local-coder","label":"Local Qwen3 4B","model":"ollama/qwen3:4b","capabilities":["chat","tools","coding"],"enabled":true},{"id":"local-coder-8b","label":"Local Qwen3 8B","model":"ollama/qwen3:8b","capabilities":["chat","tools","coding"],"enabled":true}]
+```
+
+The owner model-settings selection is `local-coder-8b`; `MODEL` and the `local-coder` catalog
+entry preserve the 4B fallback. Select models through the authenticated `/api/agent/model-settings`
+endpoint; team roles can use the same catalog IDs. Keep the access key, worker token, encryption key,
+and any optional Google credentials in the mode-600 private `.env`, never in this file or the web
+bundle. This local model setup does not need a CopilotKit project key or cloud-model key.
+
+On the deployed candidate, QA verified that the model received the sequential and parallel team
+role dependencies through persisted shared context and native Pi session inputs. The model still
+missed exact marker/citation output instructions in the acceptance task, so correct role routing
+does not guarantee exact text compliance; see [release verification](../../docs/VERIFICATION.md).
+
+Qwen3 8B is a 5.2 GB Q4_K_M artifact with native tool capability. On the 16 GiB P41 Mac mini,
+one 8K-context request used 6.2 GB in `ollama ps` and the runner reached about 5.8 GiB RSS;
+system-wide available memory fell to 19–21%. Keep inference serialized and monitor memory if other
+workloads run at the same time. See the [Ollama Qwen3 model page](https://ollama.com/library/qwen3),
+[Ollama tool-calling note](https://ollama.com/blog/streaming-tool), and the [official Qwen3-8B
+model card](https://huggingface.co/Qwen/Qwen3-8B) for the primary model references.
 
 ## Install or update
 
