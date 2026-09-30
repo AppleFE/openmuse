@@ -75,6 +75,20 @@ test("task completion evidence is owner-scoped and requires later successful rec
     commandCount: 2,
     successfulCount: 1,
   });
+
+  const pendingScope = "task:pending-completion-evidence";
+  await db.put(owner, "computer-command-scopes", {
+    id: "pending-command",
+    scope: pendingScope,
+    commandId: "pending-command",
+    linkedAt: new Date().toISOString(),
+  });
+  const pending = await service.completionEvidence(owner, pendingScope);
+  assert.equal(pending.commandCount, 1);
+  assert.equal(pending.successfulCount, 0);
+  assert.equal(pending.unresolvedFailure?.id, "pending-command");
+  assert.equal(pending.unresolvedFailure?.status, "pending");
+  assert.ok(pending.unresolvedFailure?.startedAt);
 });
 
 test("a running command holds an atomic lease across service instances", async () => {

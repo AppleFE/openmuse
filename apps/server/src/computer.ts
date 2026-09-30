@@ -203,7 +203,7 @@ export interface ComputerCompletionEvidence {
   successfulCount: number;
   unresolvedFailure?: {
     id: string;
-    status: ComputerCommand["status"];
+    status: ComputerCommand["status"] | "pending";
     startedAt: string;
     completedAt?: string;
   };
@@ -459,32 +459,40 @@ export class ComputerService {
     const links = (await this.db.list<ComputerCommandScope>(owner, "computer-command-scopes"))
       .filter((link) => link.scope === validatedScope)
       .sort((a, b) => a.linkedAt.localeCompare(b.linkedAt));
-    const commands = (
-      await Promise.all(
-        links.map((link) =>
-          this.db.get<ComputerCommand>(owner, "computer-commands", link.commandId),
-        ),
-      )
-    ).filter((command): command is ComputerCommand => command !== null);
+    const evidence = await Promise.all(
+      links.map(async (link) => ({
+        link,
+        command: await this.db.get<ComputerCommand>(owner, "computer-commands", link.commandId),
+      })),
+    );
+    const commands = evidence
+      .map((item) => item.command)
+      .filter((command): command is ComputerCommand => command !== null);
     const successful = commands.filter((command) => command.status === "succeeded");
-    const unresolved = commands
-      .filter((command) => command.status !== "succeeded")
-      .filter((failed) => {
-        const failureTime = Date.parse(failed.completedAt ?? failed.startedAt);
+    const unresolved = evidence
+      .filter(({ command }) => command?.status !== "succeeded")
+      .filter(({ link, command }) => {
+        const failureTime = Date.parse(command?.completedAt ?? command?.startedAt ?? link.linkedAt);
         return !successful.some((recovery) => Date.parse(recovery.startedAt) >= failureTime);
       })
-      .sort((a, b) => (a.completedAt ?? a.startedAt).localeCompare(b.completedAt ?? b.startedAt))
+      .sort((a, b) =>
+        (a.command?.completedAt ?? a.command?.startedAt ?? a.link.linkedAt).localeCompare(
+          b.command?.completedAt ?? b.command?.startedAt ?? b.link.linkedAt,
+        ),
+      )
       .at(-1);
     return {
-      commandCount: commands.length,
+      commandCount: links.length,
       successfulCount: successful.length,
       ...(unresolved
         ? {
             unresolvedFailure: {
-              id: unresolved.id,
-              status: unresolved.status,
-              startedAt: unresolved.startedAt,
-              ...(unresolved.completedAt ? { completedAt: unresolved.completedAt } : {}),
+              id: unresolved.link.commandId,
+              status: unresolved.command?.status ?? "pending",
+              startedAt: unresolved.command?.startedAt ?? unresolved.link.linkedAt,
+              ...(unresolved.command?.completedAt
+                ? { completedAt: unresolved.command.completedAt }
+                : {}),
             },
           }
         : {}),

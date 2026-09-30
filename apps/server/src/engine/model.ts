@@ -297,7 +297,7 @@ export async function executeModelTask(
           return {
             complete: false,
             error:
-              "A task-scoped computer command is still failed or interrupted. Recover with a later successful command and verify its result before finishing.",
+              "A task-scoped computer command is not durably successful. Wait for it or recover with a later successful command, then verify the result before finishing.",
             commandStatus: computerEvidence.unresolvedFailure.status,
           };
         const artifact = await service.artifact(

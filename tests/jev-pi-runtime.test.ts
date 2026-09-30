@@ -40,6 +40,7 @@ import type {
   TaskThreadMessage,
 } from "../packages/domain/src/agent.ts";
 import { JevClient } from "../packages/integrations/src/jev.ts";
+import { fixture as computerFixture, ok } from "./helpers/computer.ts";
 
 process.env.OPENAI_API_KEY ??= "test-openai-server-key";
 
@@ -1364,7 +1365,7 @@ test("formal finish rejects durable failed computer evidence until a later recov
     assert.deepEqual(finishResults[0], {
       complete: false,
       error:
-        "A task-scoped computer command is still failed or interrupted. Recover with a later successful command and verify its result before finishing.",
+        "A task-scoped computer command is not durably successful. Wait for it or recover with a later successful command, then verify the result before finishing.",
       commandStatus: "failed",
     });
     assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
@@ -1375,6 +1376,84 @@ test("formal finish rejects durable failed computer evidence until a later recov
     assert.deepEqual(finishResults[1], { complete: true });
     assert.equal((await db.list("owner", "agent-artifacts")).length, 1);
   } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("formal finish blocks an in-flight scoped command and permits its durable success", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-inflight-completion-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  let releaseCommand: (() => void) | undefined;
+  let commandStarted: (() => void) | undefined;
+  const started = new Promise<void>((resolve) => {
+    commandStarted = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    releaseCommand = resolve;
+  });
+  const computer = computerFixture({
+    command: async () => {
+      commandStarted?.();
+      await released;
+      return ok("recovered");
+    },
+  });
+  const server = await createApp(
+    db,
+    { ...configFor(directory), computerEnabled: true },
+    { docker: computer.runner },
+  );
+  try {
+    const taskId = "inflight-completion-task";
+    const scope = `task:${taskId}`;
+    const runningCommand = server.agent.computer.execute(
+      "owner",
+      { command: "printf recovered" },
+      { idempotencyKey: `${scope}:overlap`, scope },
+    );
+    await started;
+    const finishResults: unknown[] = [];
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const finish = input.tools.find((tool) => tool.name === "finish_task");
+          assert.ok(finish?.execute);
+          finishResults.push(await finish.execute({ summary: "Recovered computer work." }));
+          return "Attempted formal completion.";
+        },
+      },
+    });
+    let current: AgentTask = { ...standaloneTask(), id: taskId };
+    const context = {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch: Partial<AgentTask>) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    };
+    const blocked = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(blocked.status, "waiting_input");
+    assert.deepEqual(finishResults[0], {
+      complete: false,
+      error:
+        "A task-scoped computer command is not durably successful. Wait for it or recover with a later successful command, then verify the result before finishing.",
+      commandStatus: "running",
+    });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 0);
+
+    releaseCommand?.();
+    assert.equal((await runningCommand).status, "succeeded");
+    const recovered = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(recovered.status, "succeeded");
+    assert.deepEqual(finishResults[1], { complete: true });
+    assert.equal((await db.list("owner", "agent-artifacts")).length, 1);
+  } finally {
+    releaseCommand?.();
     await server.agent.stop();
     await db.close();
     await rm(directory, { recursive: true, force: true });
