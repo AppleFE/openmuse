@@ -91,8 +91,11 @@ origin or Playwright cache variable they need, not owner/provider/CPK credential
 services alone. When genuine CPK/model credentials are incomplete, it installs browser and web but
 explicitly removes/omits the API LaunchAgent. After credentials arrive, rerun both scripts; full
 validation then permits API installation. It never kills an arbitrary process merely because it
-holds one of the expected ports. A separately managed `com.openmuse.colima` job remains ops-owned;
-this installer neither replaces nor restarts it.
+holds one of the expected ports. Before replacing a job, the restricted launcher stops only the PID
+it recorded and only after its complete command line matches that service; a missing or mismatched
+ownership record fails closed. This prevents an SSH-backed Node child from surviving a LaunchAgent
+restart and blocking the replacement listener. A separately managed `com.openmuse.colima` job
+remains ops-owned; this installer neither replaces nor restarts it.
 
 On this host, macOS privacy controls deny ordinary background launchd children access to the
 removable P41 volume even though an interactive login can read it. The installer therefore creates

@@ -59,18 +59,33 @@ public_key=$(/bin/cat "$key.pub")
 /bin/chmod 600 "$authorized_temp"
 /bin/mv -f "$authorized_temp" "$authorized_keys"
 
+restricted_ssh() {
+  command=$1
+  /usr/bin/ssh -T \
+    -o BatchMode=yes \
+    -o IdentitiesOnly=yes \
+    -o ClearAllForwardings=yes \
+    -o HostKeyAlgorithms=ssh-ed25519 \
+    -o StrictHostKeyChecking=yes \
+    -o ConnectTimeout=10 \
+    -o ConnectionAttempts=1 \
+    -o UserKnownHostsFile="$known_hosts" \
+    -i "$key" \
+    aeonge@127.0.0.1 "$command"
+}
+
+stop_loaded_service() {
+  label=$1
+  service=${label#com.openmuse.}
+  /bin/launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+  if ! restricted_ssh "stop-$service"; then
+    echo "Refusing to replace $label because its tracked process did not stop cleanly" >&2
+    exit 75
+  fi
+}
+
 set +e
-/usr/bin/ssh -T \
-  -o BatchMode=yes \
-  -o IdentitiesOnly=yes \
-  -o ClearAllForwardings=yes \
-  -o HostKeyAlgorithms=ssh-ed25519 \
-  -o StrictHostKeyChecking=yes \
-  -o ConnectTimeout=10 \
-  -o ConnectionAttempts=1 \
-  -o UserKnownHostsFile="$known_hosts" \
-  -i "$key" \
-  aeonge@127.0.0.1 invalid-command >/dev/null 2>&1
+restricted_ssh invalid-command >/dev/null 2>&1
 restriction_status=$?
 set -e
 if [ "$restriction_status" -ne 64 ]; then
@@ -82,7 +97,7 @@ labels="com.openmuse.browser-worker com.openmuse.web"
 if [ "$api_ready" -eq 0 ]; then
   labels="com.openmuse.server $labels"
 else
-  /bin/launchctl bootout "$domain/com.openmuse.server" >/dev/null 2>&1 || true
+  stop_loaded_service com.openmuse.server
   /bin/rm -f "$destination/com.openmuse.server.plist"
   echo "API LaunchAgent was not installed because genuine CPK/model credentials are incomplete." >&2
 fi
@@ -92,7 +107,7 @@ for label in $labels; do
   target=$destination/$label.plist
   /usr/bin/plutil -lint "$source" >/dev/null
   /usr/bin/install -m 600 "$source" "$target"
-  /bin/launchctl bootout "$domain/$label" >/dev/null 2>&1 || true
+  stop_loaded_service "$label"
   /bin/launchctl bootstrap "$domain" "$target"
   /bin/launchctl enable "$domain/$label"
   /bin/launchctl kickstart -k "$domain/$label"
