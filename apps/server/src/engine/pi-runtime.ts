@@ -136,8 +136,7 @@ function ollamaMessages(context: TranscriptContext) {
     if (message.role === "toolResult")
       return {
         role: "tool",
-        tool_call_id: message.toolCallId,
-        name: message.toolName,
+        tool_name: message.toolName,
         content: textContent(message.content),
       };
     const calls = message.content.filter((part) => part.type === "toolCall");
@@ -147,9 +146,7 @@ function ollamaMessages(context: TranscriptContext) {
       ...(calls.length
         ? {
             tool_calls: calls.map((call) => ({
-              id: call.id,
-              type: "function",
-              function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+              function: { name: call.name, arguments: call.arguments },
             })),
           }
         : {}),
@@ -177,7 +174,7 @@ function ollamaStream(
     try {
       stream.push({ type: "start", partial: output });
       const tools = ollamaTools(context);
-      const response = await fetch(`${model.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      const response = await fetch(`${model.baseUrl.replace(/\/$/, "")}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: options?.signal,
@@ -186,7 +183,10 @@ function ollamaStream(
           messages: ollamaMessages(context),
           stream: true,
           think: false,
-          stream_options: { include_usage: true },
+          options: {
+            num_ctx: model.contextWindow,
+            num_predict: options?.maxTokens ?? model.maxTokens,
+          },
           ...(tools.length
             ? {
                 tools: tools.map((tool) => ({
@@ -200,7 +200,6 @@ function ollamaStream(
               }
             : {}),
           ...(options?.temperature === undefined ? {} : { temperature: options.temperature }),
-          ...(options?.maxTokens === undefined ? {} : { max_tokens: options.maxTokens }),
         }),
       });
       if (!response.ok)
@@ -218,24 +217,21 @@ function ollamaStream(
       >();
       let finishReason: string | undefined;
       const consume = (data: string) => {
-        if (!data || data === "[DONE]") return;
+        if (!data.trim()) return;
         const chunk = JSON.parse(data) as {
-          choices?: Array<{
-            delta?: {
-              content?: string;
-              tool_calls?: Array<{
-                index?: number;
-                id?: string;
-                function?: { name?: string; arguments?: string };
-              }>;
-            };
-            finish_reason?: string | null;
-          }>;
-          usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+          message?: {
+            content?: string;
+            tool_calls?: Array<{
+              id?: string;
+              function?: { name?: string; arguments?: JsonObject | string };
+            }>;
+          };
+          done?: boolean;
+          done_reason?: string;
+          prompt_eval_count?: number;
+          eval_count?: number;
         };
-        const choice = chunk.choices?.[0];
-        const delta = choice?.delta;
-        if (delta?.content) {
+        if (chunk.message?.content) {
           if (!textBlock) {
             textBlock = { type: "text", text: "" };
             output.content.push(textBlock);
@@ -245,16 +241,15 @@ function ollamaStream(
               partial: output,
             });
           }
-          textBlock.text += delta.content;
+          textBlock.text += chunk.message.content;
           stream.push({
             type: "text_delta",
             contentIndex: output.content.indexOf(textBlock),
-            delta: delta.content,
+            delta: chunk.message.content,
             partial: output,
           });
         }
-        for (const call of delta?.tool_calls ?? []) {
-          const index = call.index ?? 0;
+        for (const [index, call] of (chunk.message?.tool_calls ?? []).entries()) {
           let current = toolBlocks.get(index);
           if (!current) {
             const block = {
@@ -273,41 +268,40 @@ function ollamaStream(
             });
           }
           if (call.id) current.block.id = call.id;
-          if (call.function?.name) current.block.name += call.function.name;
-          if (call.function?.arguments) {
-            current.raw += call.function.arguments;
+          if (call.function?.name) current.block.name = call.function.name;
+          if (call.function?.arguments !== undefined) {
+            current.raw =
+              typeof call.function.arguments === "string"
+                ? call.function.arguments
+                : JSON.stringify(call.function.arguments);
             stream.push({
               type: "toolcall_delta",
               contentIndex: output.content.indexOf(current.block),
-              delta: call.function.arguments,
+              delta: current.raw,
               partial: output,
             });
           }
         }
-        if (choice?.finish_reason) finishReason = choice.finish_reason;
-        if (chunk.usage) {
-          output.usage.input = chunk.usage.prompt_tokens ?? 0;
-          output.usage.output = chunk.usage.completion_tokens ?? 0;
-          output.usage.totalTokens =
-            chunk.usage.total_tokens ?? output.usage.input + output.usage.output;
+        if (chunk.done) {
+          finishReason = chunk.done_reason;
+          output.usage.input = chunk.prompt_eval_count ?? 0;
+          output.usage.output = chunk.eval_count ?? 0;
+          output.usage.totalTokens = output.usage.input + output.usage.output;
         }
       };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
-        let boundary = buffer.indexOf("\n\n");
+        let boundary = buffer.indexOf("\n");
         while (boundary >= 0) {
-          const event = buffer.slice(0, boundary);
-          buffer = buffer.slice(boundary + 2);
-          for (const line of event.split("\n"))
-            if (line.startsWith("data:")) consume(line.slice(5).trim());
-          boundary = buffer.indexOf("\n\n");
+          consume(buffer.slice(0, boundary));
+          buffer = buffer.slice(boundary + 1);
+          boundary = buffer.indexOf("\n");
         }
       }
       buffer += decoder.decode();
-      for (const line of buffer.split(/\r?\n/))
-        if (line.startsWith("data:")) consume(line.slice(5).trim());
+      for (const line of buffer.split(/\r?\n/)) consume(line);
       if (textBlock)
         stream.push({
           type: "text_end",
@@ -405,7 +399,7 @@ export async function configuredPiModel(
         ? customBase?.replace(/\/v1beta\/?$/, "")
         : customBase?.replace(/\/$/, "");
   if (provider === "ollama" && normalizedCustomBase) {
-    normalizedCustomBase = `${normalizeOllamaBaseUrl(normalizedCustomBase)}/v1`;
+    normalizedCustomBase = normalizeOllamaBaseUrl(normalizedCustomBase);
   }
   const baseUrl = normalizedCustomBase ?? builtin?.baseUrl;
   if (!baseUrl) throw new Error(`No base URL is configured for ${provider}`);
