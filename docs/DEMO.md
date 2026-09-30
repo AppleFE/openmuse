@@ -28,7 +28,7 @@ The model responses use [CopilotKit AI Mock](https://github.com/CopilotKit/aimoc
 - **Take control**, which opens that session's live browser console.
 - The open-source repository at [CopilotKit/OpenMuse](https://github.com/CopilotKit/OpenMuse).
 
-Captures are trimmed and paced for readability, including brief slowdowns of the browser card and faster transitions into takeover. This is a reproducible demonstration of the app and tool flow; it is not an evaluation of a live model's reasoning. Site content changes, so your highlights can differ. Personal workspace information is fictional. Live Google, provider quality, Intelligence persistence/replay, and OpenBot require separately configured acceptance runs; see [verification](VERIFICATION.md).
+Captures are trimmed and paced for readability, including brief slowdowns of the browser card and faster transitions into takeover. This is a reproducible demonstration of the app and tool flow; it is not an evaluation of a live model's reasoning. Site content changes, so your highlights can differ. Personal workspace information is fictional. Live Google, provider quality, and OpenBot require separately configured acceptance runs; local thread persistence/replay is provided by the OpenMuse server. See [verification](VERIFICATION.md).
 
 ## Desktop web
 
@@ -62,13 +62,11 @@ From the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
-npx copilotkit@latest login
-npx copilotkit@latest project select
 pnpm --dir apps/worker exec playwright install chromium
 pnpm dev:demo
 ```
 
-This starts AI Mock, the normal OpenMuse API on port **8788**, and a separate real browser worker on **8791**. Demo files and profiles stay in ignored `artifacts/demo/`. The runner reads only the Intelligence key from the project's private `.env` and passes it to its isolated API process; it does not pass provider or Google credentials. The Linux computer is disabled for this focused browser recording.
+This starts AI Mock, the normal OpenMuse API on port **8788**, and a separate real browser worker on **8791**. Demo files, local thread history, and browser profiles stay in ignored `artifacts/demo/`. The runner does not require or pass a hosted-thread key, provider credential, or Google credential. The Linux computer is disabled for this focused browser recording.
 
 Start the app in another terminal:
 

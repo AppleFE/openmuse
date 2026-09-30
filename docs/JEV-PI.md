@@ -6,19 +6,24 @@ The pinned integrations are `@typesafe-ai/sdk` 0.6.0 and `@earendil-works/pi-cod
 
 ## Setup
 
-Set a provider key for every allowlisted coding model that Pi may run. OpenAI, Anthropic, and Google use their normal server environment variables. OpenCodex uses its data-plane key and a base URL ending in `/v1`:
+Configure every allowlisted coding model that Pi may run. A local Ollama profile needs only its bare base origin; OpenAI, Anthropic, and Google use their normal server environment variables. OpenCodex uses its data-plane key and a base URL ending in `/v1`:
 
 ```dotenv
-OPENMUSE_MODELS=[{"id":"coder","label":"Coder","model":"openai/gpt-5.2-codex","capabilities":["chat","coding","tools"],"enabled":true}]
-OPENAI_API_KEY=...
+OPENMUSE_MODELS=[{"id":"local-coder","label":"Local coder","model":"ollama/qwen3:4b","capabilities":["chat","coding","tools"],"enabled":true}]
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+
+# Or a hosted provider:
+# OPENMUSE_MODELS=[{"id":"coder","label":"Coder","model":"openai/gpt-5.2-codex","capabilities":["chat","coding","tools"],"enabled":true}]
+# OPENAI_API_KEY=...
 
 # Or an OpenCodex-routed model:
 # OPENMUSE_MODELS=[{"id":"coder","label":"Coder","model":"opencodex/provider/coder","capabilities":["coding","tools"],"enabled":true}]
 # OPENCODEX_BASE_URL=https://your-data-plane.example/v1
 # OPENCODEX_API_KEY=...
 
-TYPESAFE_API_KEY=...
-TYPESAFE_DEFAULT_MODEL=jev-latest
+# Optional Jev policy service:
+# TYPESAFE_API_KEY=...
+# TYPESAFE_DEFAULT_MODEL=jev-latest
 # TYPESAFE_BASE_URL=https://api.typesafe.ai
 ```
 

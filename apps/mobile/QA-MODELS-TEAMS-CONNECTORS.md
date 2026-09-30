@@ -1,6 +1,6 @@
 # Mobile integration QA
 
-Validated on 2026-09-29 against an isolated sample server and the Expo web app. The test data directory was `%TEMP%\openmuse-mobile-qa`; the fake Rich Threads key intentionally produced 401 responses only on Intelligence-backed paths and did not affect the settings or task APIs exercised here.
+Validated on 2026-09-29 against an isolated sample server and the Expo web app. The test data directory was `%TEMP%\openmuse-mobile-qa`; model, team, connector, and theme checks used only that local server and did not require a hosted thread service.
 
 ## Browser coverage
 

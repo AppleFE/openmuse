@@ -13,7 +13,7 @@ The demos follow a request from chat to the agent's inline browser, then show ho
 - [Native iOS / Android / web setup](../apps/mobile/README.md)
 - [Browser worker, API, persistence, and network boundary](../apps/worker/README.md)
 - [Linux computer, terminal, and workspace files](COMPUTER.md)
-- [CopilotKit Rich Threads](RICH-THREADS.md)
+- [Self-hosted rich threads](RICH-THREADS.md)
 - [Models, OpenCodex, and multi-model teams](MODELS-TEAMS.md)
 - [Jev policy and embedded pi runtime](JEV-PI.md)
 - [Infrastructure connectors](CONNECTORS.md)

@@ -1,33 +1,29 @@
-# CopilotKit Rich Threads and the agent computer
+# Self-hosted rich threads and the agent computer
 
-OpenMuse uses `@copilotkit/react-native/headless` for its custom native and web interface. Chat messages, tool cards and task-linked documents render through CopilotKit's AG-UI agent and tool hooks.
+OpenMuse uses the pinned `@copilotkit/react-native` 1.70.1 headless client for its custom native and web interface. Chat messages, role-labelled assistant output, tool cards, and task-linked documents render through CopilotKit's AG-UI agent and tool hooks, while OpenMuse owns thread storage and access control.
 
-## Rich Threads
+## Local thread lifecycle
 
-Every workspace mode requires a CopilotKit Intelligence project key before the API will start. Create or select a project:
+Threads require no CopilotKit Intelligence account, cloud project, license token, or hosted persistence endpoint. The OpenMuse API stores owner-scoped thread metadata, AG-UI events, messages, and state in its configured PGlite or PostgreSQL database. The same bearer session used by the rest of the app protects every thread and runtime request; client-supplied `userId` values are ignored.
 
-```sh
-npx copilotkit@latest login
-npx copilotkit@latest project select
-```
+The conversation menu calls the local authenticated API to:
 
-Keep the generated key in the API server environment and restart the API:
+- create a stable client-generated side-chat ID;
+- list active and archived conversations with opaque cursor pagination;
+- rename, archive, and restore conversations; and
+- retain the selected public thread ID per API origin in browser local storage or the native app document directory.
 
-```dotenv
-CPK_INTELLIGENCE_API_KEY=your-project-key
-```
+Only the thread ID and public API origin are stored by the client. The workspace access key and bearer session are never written into that selection record, placed in URLs, or compiled into the bundle. The server keeps the main thread ID stable, so both main and side-chat selections survive app reloads. Archiving the selected side chat returns the UI to the main chat; opening an archived chat restores it before replay because archived, deleted, and foreign-owner IDs are not runnable.
 
-Never put the key in an `EXPO_PUBLIC_`, `NEXT_PUBLIC_`, or `VITE_` variable. The server constructs `CopilotKitIntelligence`, and `identifyUser` resolves the owner from the verified OpenMuse session. The existing deployment is a single-user workspace; its access key must not be shared as a multi-user login. See [CopilotKit's runtime setup](https://docs.copilotkit.ai/intelligence/connect-your-runtime) for project-key configuration.
+## Run, replay, and stop
 
-With this configuration, the conversation menu uses CopilotKit's native `useThreads` hook to list, rename, archive, restore and paginate conversations. The server saves an owner-bound main thread ID and provisions it through Intelligence before the first message, so reloading during the first run retains the same conversation. Side chats create a fresh client thread ID and persist on their first run. Selecting a saved conversation mounts a private `useAgent({ agentId, runtimeAgentId, threadId })` instance and calls `copilotkit.connectAgent` to replay the thread. Visited chats remain mounted during navigation, preserving their drafts and queues. Stop explicitly requests `copilotkit.stopAgent`.
+Each open chat mounts its own `useAgent({ agentId, runtimeAgentId: "default", threadId })` instance. Existing conversations call `copilotkit.connectAgent`, which posts a standard CopilotKit 1.70.1 `RunAgentInput` to the self-hosted `/api/copilotkit/agent/default/connect` SSE route. The server replays compacted durable AG-UI events and then any live events. Sending calls the matching `/run` route, and Stop aborts the local client stream while requesting `/stop/:threadId` on the authenticated runtime.
 
-The composer stays editable during replies. Follow-ups enter a visible, removable queue and run in order after the current reply and its persistence finish. Stopping or failing a reply pauses the queue; SDK errors emitted without rejecting the run promise still stop subsequent sends. The queue lives in the open app, not a durable server inbox. Delegated tasks remain separate server work. See the [interaction design](EXPERIENCE.md).
+Visited chats remain mounted during navigation, preserving their drafts and follow-up queues. The composer stays editable during replies. Follow-ups enter a visible, removable queue and run in order after the current reply and its server persistence finish. Stopping or failing a reply pauses the queue; SDK errors emitted without rejecting the run promise still stop subsequent sends. The queue lives in the open app, not a durable server inbox. Delegated tasks remain separate durable server work. See the [interaction design](EXPERIENCE.md).
 
-Rich tool messages retain task IDs. The renderer fetches current task status, browser previews, PDF links and structured artifacts from the authenticated task endpoint. Expiring file/preview URLs are generated by the server rather than stored in thread messages. New Intelligence conversations never load or overwrite `/api/conversation`.
+Message history retains user and assistant content, assistant tool calls, tool results, and role/speaker names. Rich tool messages retain task IDs, so the renderer can hydrate current task status, browser previews, PDF links, and structured artifacts from authenticated endpoints. Expiring file and preview URLs are generated by the server rather than stored in message history.
 
-The API fails at startup with a missing-key error when the key is unset. Existing local sample history is not automatically uploaded to Intelligence.
-
-Automatic thread naming is disabled; conversations can be renamed in the menu. Intelligence is a separately configured service, not bundled with this MIT-licensed application. See [headless threads](https://docs.copilotkit.ai/headless-threads) for the platform lifecycle and hosting options.
+Automatic thread naming is disabled; conversations can be renamed in the menu. The thread routes also expose durable raw events and state for runtime recovery, but the app uses the SDK connect path so streamed tool and generative UI semantics remain intact.
 
 ## Agent computer
 
@@ -39,4 +35,4 @@ Run the browser worker using the `BROWSER_WORKER_URL` and `WORKER_TOKEN` setup i
 
 ## Validation scope
 
-The Rich Threads route tests run against the real CopilotKit runtime with a mocked Intelligence service boundary. They cover session enforcement, owner scoping, pagination, rename, archive, rich message preservation and provider failures. They do not replace a live account test for Intelligence WebSocket persistence/replay. That test requires a configured project key.
+Automated thread tests cover bearer-session enforcement, owner isolation, stable main-thread creation, client-chosen side-chat IDs, pagination, rename, archive/restore/delete, rich message and tool-result replay, role labels, durable state, provider failures, cancellation, and restart recovery. Mobile checks cover selected-thread storage parsing and page merging, followed by TypeScript and Expo web builds. Integrated browser acceptance should additionally exercise create → send → reload → replay, rename, archive/restore, pagination, and Stop against a running API.

@@ -1,19 +1,25 @@
-# Models, OpenCodex, and multi-model teams
+# Local and hosted models, OpenCodex, and multi-model teams
 
 OpenMuse keeps provider credentials on the server while letting each user select from an explicit model allowlist. A selected model affects both new chat runs and new durable tasks; changing the default does not rewrite a task or team run already in progress.
 
 ## Configure models
 
-`OPENMUSE_MODELS` is a JSON array of public, secret-free profiles. Each `id` is a stable app/API value and each `model` is an execution adapter string:
+`OPENMUSE_MODELS` is a JSON array of public, secret-free profiles. Each `id` is a stable app/API value and each `model` is an execution adapter string. For a fully local default, install Ollama, pull the model, and configure its bare origin; OpenMuse appends the provider SDK route:
 
 ```dotenv
 AGENT_BACKEND=model
-OPENMUSE_MODELS=[{"id":"fast","label":"Fast","model":"openai/gpt-example","capabilities":["chat","tools"],"enabled":true},{"id":"review","label":"Review","model":"anthropic/claude-example","capabilities":["chat","coding"],"enabled":true}]
-OPENAI_API_KEY=server-only
+MODEL=ollama/qwen3:4b
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+Ollama does not require an API key. A mixed local/hosted catalog is also explicit:
+
+```dotenv
+OPENMUSE_MODELS=[{"id":"local","label":"Local Qwen","model":"ollama/qwen3:4b","capabilities":["chat","tools","coding"],"enabled":true},{"id":"review","label":"Hosted review","model":"anthropic/claude-example","capabilities":["chat","coding"],"enabled":true}]
 ANTHROPIC_API_KEY=server-only
 ```
 
-Supported providers are `openai`, `anthropic`, `google`, and `opencodex`. The older `MODEL=provider/model` setting remains a backward-compatible one-profile catalog with ID `default`. Duplicate IDs, unsupported providers, and malformed catalogs stop server configuration rather than silently accepting an unusable override.
+Supported providers are `ollama`, `openai`, `anthropic`, `google`, and `opencodex`. The older `MODEL=provider/model` setting remains a backward-compatible one-profile catalog with ID `default`. Duplicate IDs, unsupported providers, and malformed catalogs stop server configuration rather than silently accepting an unusable override. Hosted providers are optional and are contacted only when their configured model is selected.
 
 The API never returns credentials:
 
