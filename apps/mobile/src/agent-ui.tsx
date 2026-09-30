@@ -701,7 +701,7 @@ export function ArtifactCard({ artifact }: { artifact: AgentArtifact }) {
       </Text>
       {(expanded ? rows : rows.slice(0, 4)).map(([key, value]) => (
         <View key={key} style={{ gap: 6 }}>
-          <Text style={s.label}>{key.replace(/_/g, " ")}</Text>
+          <Text style={s.label}>{uiLabel(key).replace(/_/g, " ")}</Text>
           {Array.isArray(value) ? (
             value.slice(0, expanded ? 100 : 5).map((item) => {
               const row = record(item);
@@ -717,7 +717,7 @@ export function ArtifactCard({ artifact }: { artifact: AgentArtifact }) {
                   <Text selectable style={s.text}>
                     {row
                       ? Object.entries(row)
-                          .map(([name, val]) => `${name}: ${display(val)}`)
+                          .map(([name, val]) => `${uiLabel(name)}: ${display(val)}`)
                           .join(" · ")
                       : display(item)}
                   </Text>
@@ -727,7 +727,7 @@ export function ArtifactCard({ artifact }: { artifact: AgentArtifact }) {
           ) : record(value) ? (
             Object.entries(record(value) || {}).map(([name, val]) => (
               <View key={name} style={s.between}>
-                <Text style={s.muted}>{name}</Text>
+                <Text style={s.muted}>{uiLabel(name)}</Text>
                 <Text selectable style={s.text}>
                   {display(val)}
                 </Text>
