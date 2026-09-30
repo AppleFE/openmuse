@@ -26,7 +26,7 @@ Clone this template and customize it however you want.
 
 </div>
 
-> **Alpha, for self-hosting and building on.** Conversation history and the CopilotKit runtime are hosted by OpenMuse. Open-ended model reasoning and live Google or infrastructure accounts are optional and require explicit configuration. See [what is verified](docs/VERIFICATION.md) and the [roadmap](ROADMAP.md).
+> **Alpha, for self-hosting and building on.** The CopilotKit runtime executes inside your OpenMuse server, and conversation history persists in your local PGlite database. The default Ollama inference path runs locally; no hosted CopilotKit service, account, key, or license is required. Other model providers and live Google or infrastructure integrations are optional and require explicit configuration. See [what is verified](docs/VERIFICATION.md) and the [roadmap](ROADMAP.md).
 
 ## Demo
 
