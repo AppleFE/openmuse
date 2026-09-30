@@ -66,6 +66,9 @@ cd "$repo"
 "$node" infra/macos/validate-env.mjs --env "$env_file" --root "$root" --infrastructure-only
 case "$service" in
   server)
+    # launchd/sshd uses a minimal PATH; Docker is installed under Homebrew on Apple silicon.
+    PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    export PATH
     "$node" infra/macos/validate-env.mjs --env "$env_file" --root "$root"
     [ -f dist/apps/server/src/index.js ] || { echo "Server build is missing; run infra/macos/deploy.sh" >&2; exit 78; }
     exec "$node" --env-file="$env_file" dist/apps/server/src/index.js
