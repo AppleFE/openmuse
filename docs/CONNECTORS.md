@@ -200,7 +200,9 @@ the app's existing action route:
 A successful dispatch with a UPID means **submitted**, not finished. Query
 `task_status`; only `status: "stopped"` and `exitstatus: "OK"` confirms job success.
 The review screen can fetch that status and its log. Synchronous null receipts
-are reported as completed. Never blindly retry an uncertain result.
+are reported as completed, as are Proxmox 9.2 storage-create/update object receipts.
+Only their public storage ID/type are returned; generated configuration secrets
+are excluded. Never blindly retry an uncertain result.
 
 The provider token must have the underlying endpoint's privileges. Typical
 reads require `Datastore.Audit`/`VM.Audit`/`Sys.Audit`; changes need corresponding

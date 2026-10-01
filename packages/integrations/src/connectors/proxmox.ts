@@ -606,19 +606,35 @@ export function proxmoxAdapter(): ConnectorAdapter {
         method,
         method === "DELETE" ? undefined : form,
       );
-      const receipt = data(z.union([z.string(), z.null()])).safeParse(response);
-      if (!receipt.success || (receipt.data !== null && !receipt.data.startsWith("UPID:")))
+      const receipt = data(
+        z.union([z.string(), z.null(), z.object({ storage: z.string(), type: z.string() })]),
+      ).safeParse(response);
+      const objectReceipt =
+        receipt.success && receipt.data && typeof receipt.data === "object"
+          ? receipt.data
+          : undefined;
+      if (
+        !receipt.success ||
+        (typeof receipt.data === "string" &&
+          !proxmoxReadParams.task_status.shape.upid.safeParse(receipt.data).success) ||
+        (objectReceipt &&
+          (!["storage_create", "storage_config_update"].includes(input.operation) ||
+            !("storage" in input.params) ||
+            objectReceipt.storage !== input.params.storage))
+      )
         throw new ConnectorError(
           "Provider accepted a write but returned an unrecognized receipt; inspect provider tasks before retrying",
           undefined,
           "outcome_unknown",
         );
+      const upid = typeof receipt.data === "string" ? receipt.data : null;
       return {
         operation: input.operation,
         node,
-        status: receipt.data ? "submitted" : "completed",
-        upid: receipt.data,
-        completion: receipt.data
+        status: upid ? "submitted" : "completed",
+        upid,
+        ...(objectReceipt ? { resource: objectReceipt } : {}),
+        completion: upid
           ? "Query task_status; only stopped with exitstatus OK confirms completion."
           : "The synchronous API operation completed.",
       };

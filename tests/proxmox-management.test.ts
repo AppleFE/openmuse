@@ -254,7 +254,17 @@ test("Proxmox reads node storage, contents, guest configuration and usable provi
 });
 
 test("Proxmox write adapters use exact methods, form encoding, endpoints and async receipts", async (t) => {
-  const mock = await provider(t, (_req, res) => json(res, UPID));
+  const mock = await provider(t, (_req, res, seen) => {
+    if (seen.url === "/api2/json/storage" && seen.method === "POST")
+      return json(res, {
+        storage: seen.body.get("storage"),
+        type: seen.body.get("type"),
+        config: { "encryption-key": SECRET },
+      });
+    if (seen.url === "/api2/json/storage/local")
+      return json(res, seen.method === "PUT" ? { storage: "local", type: "dir" } : null);
+    return json(res, seen.method === "PUT" ? null : UPID);
+  });
   assert.ok(proxmox.write);
   const ctx = {
       config: { baseUrl: mock.baseUrl },
@@ -433,8 +443,15 @@ test("Proxmox write adapters use exact methods, form encoding, endpoints and asy
     for (const [key, value] of Object.entries(c.body ?? {}))
       assert.equal(req.body.get(key), value, `${c.operation}:${key}`);
     assert.equal(req.authorization, `PVEAPIToken=${TOKEN_ID}=${SECRET}`);
-    assert.equal(result.status, "submitted");
-    assert.equal(result.upid, UPID);
+    const synchronous = [
+      "guest_config_update",
+      "storage_config_update",
+      "storage_create",
+      "storage_delete",
+    ].includes(c.operation);
+    assert.equal(result.status, synchronous ? "completed" : "submitted");
+    assert.equal(result.upid, synchronous ? null : UPID);
+    assert.ok(!JSON.stringify(result).includes(SECRET));
   }
   assert.deepEqual(new Set(cases.map((c) => c.operation)), new Set(proxmoxWriteOperations));
   const count = mock.requests.length;
