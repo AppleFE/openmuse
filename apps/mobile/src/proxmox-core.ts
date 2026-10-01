@@ -1,5 +1,31 @@
 import type { ConnectorOperationParam } from "../../../packages/domain/src/connectors";
 
+/** Pi emits its native text-content envelope; other runtimes return the value directly. */
+export function proxmoxToolValue(result: unknown): unknown {
+  let value = result;
+  for (let depth = 0; depth < 4; depth++) {
+    if (typeof value === "string") {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    } else if (
+      value &&
+      typeof value === "object" &&
+      "content" in value &&
+      Array.isArray(value.content)
+    ) {
+      const text = value.content.find(
+        (part) => part?.type === "text" && typeof part.text === "string",
+      );
+      if (!text) return undefined;
+      value = text.text;
+    } else return value;
+  }
+  return value;
+}
+
 const labels: Record<string, string> = {
   node: "노드",
   kind: "종류",

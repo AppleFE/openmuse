@@ -54,7 +54,7 @@ export function connectorTools(
     ),
     tool(
       "query_connector",
-      "Run a read-only provider operation such as storages, guest_config, task_status or permissions. Empty permissions explain filtered empty Proxmox lists.",
+      "Run a read-only provider operation such as storages, guest_config, task_status or permissions. An empty effective permissions map means the current Proxmox token has no granted privileges. Proxmox hides inaccessible storage/guest entries in successful lists; explain the token ACL requirement instead of treating empty lists as absence of storage.",
       connectorQuerySchema.extend({ connectorId: z.string().min(1).max(120) }),
       async ({ connectorId, operation, params }) =>
         service.run(owner, connectorId, operation, params, options.signal),

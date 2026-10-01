@@ -1,6 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseProxmoxForm } from "../src/proxmox-core.ts";
+import { parseProxmoxForm, proxmoxToolValue } from "../src/proxmox-core.ts";
+
+test("Proxmox inline review reads direct and persisted Pi tool envelopes", () => {
+  const action = {
+    id: "review",
+    kind: "connector.write",
+    title: "VM start",
+    status: "awaiting_review",
+  };
+  assert.deepEqual(proxmoxToolValue(action), action);
+  assert.deepEqual(proxmoxToolValue(JSON.stringify(action)), action);
+  assert.deepEqual(
+    proxmoxToolValue(JSON.stringify({ content: [{ type: "text", text: JSON.stringify(action) }] })),
+    action,
+  );
+  assert.deepEqual(
+    proxmoxToolValue({
+      content: [{ type: "text", text: JSON.stringify({ error: "Permission denied" }) }],
+    }),
+    { error: "Permission denied" },
+  );
+  assert.equal(proxmoxToolValue('{"content":'), undefined);
+  assert.equal(proxmoxToolValue({ content: [{ type: "image" }] }), undefined);
+});
 
 test("Proxmox forms preserve explicit false and zero, parse settings and omit empty optional fields", () => {
   const fields = [

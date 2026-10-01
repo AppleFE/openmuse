@@ -27,6 +27,7 @@ import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { MailToolCard } from "./mail-tool-card";
 import { ConversationModelPicker } from "./model-team-settings";
+import { proxmoxToolValue } from "./proxmox-core";
 import { chooseAvailableModel } from "./settings-core";
 import { TaskThreadCard } from "./thread-artifacts";
 import { messageSpeakerLabel } from "./thread-state";
@@ -118,11 +119,7 @@ export function WorkspaceTools() {
 }
 function ConnectorActionCard({ result, loading }: { result: unknown; loading: boolean }) {
   const { workspace, open } = useWorkspace();
-  let value = result;
-  if (typeof value === "string")
-    try {
-      value = JSON.parse(value);
-    } catch {}
+  const value = proxmoxToolValue(result);
   const response = z
     .object({
       id: z.string().optional(),
