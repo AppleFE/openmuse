@@ -158,6 +158,8 @@ test("embedded Pi pauses for Proxmox review, resumes and verifies the provider j
 
 test("Proxmox reads node storage, contents, guest configuration and usable provider task IDs", async (t) => {
   const mock = await provider(t, (_req, res, seen) => {
+    if (seen.url === "/api2/json/access/permissions?path=%2Fstorage")
+      return json(res, { "/storage": { "Datastore.Audit": 1 } });
     if (seen.url === "/api2/json/nodes")
       return json(res, [
         { node: "pve1", status: "online" },
@@ -208,6 +210,9 @@ test("Proxmox reads node storage, contents, guest configuration and usable provi
     config: { baseUrl: mock.baseUrl },
     secrets: { tokenId: TOKEN_ID, tokenSecret: SECRET },
   };
+  assert.deepEqual(await proxmox.run(ctx, "permissions", { path: "/storage" }), {
+    permissions: { "/storage": { "Datastore.Audit": 1 } },
+  });
   const storages = (await proxmox.run(ctx, "storages", { content: "iso" })) as {
     storages: {
       node: string;

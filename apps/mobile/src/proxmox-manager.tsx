@@ -50,6 +50,8 @@ export function ProxmoxManager({
     [guests, setGuests] = useState<Guest[]>([]),
     [tasks, setTasks] = useState<Row[]>([]),
     [operations, setOperations] = useState<ConnectorOperationInfo[]>([]);
+  const [permissions, setPermissions] =
+    useState<Record<string, Record<string, number | boolean>>>();
   const [volumes, setVolumes] = useState<{ node: string; storage: string; rows: Row[] }>(),
     [detail, setDetail] = useState<{ guest: Guest; config: Row; snapshots: Row[] }>();
   const [cores, setCores] = useState(""),
@@ -69,14 +71,18 @@ export function ProxmoxManager({
       api.request<{ operations: ConnectorOperationInfo[] }>(
         `/api/connectors/${connector.id}/operations`,
       ),
+      query<{ permissions: Record<string, Record<string, number | boolean>> }>("permissions").catch(
+        () => ({ permissions: undefined }),
+      ),
     ])
-      .then(([result, info]) => {
+      .then(([result, info, access]) => {
         if (active) {
           setNodes(result.nodes);
           setNode(
             result.nodes.find((n) => n.status === "online")?.node ?? result.nodes[0]?.node ?? "",
           );
           setOperations(info.operations);
+          setPermissions(access.permissions);
         }
       })
       .catch((e) => {
@@ -219,6 +225,24 @@ export function ProxmoxManager({
           ))}
         </View>
         <ErrorNotice error={error} />
+        {permissions &&
+          !Object.values(permissions).some((privileges) =>
+            Object.values(privileges).some((value) => value === 1 || value === true),
+          ) && (
+            <Card style={{ gap: 8 }}>
+              <Text style={s.heading}>이 API 토큰에 접근 권한이 없습니다.</Text>
+              <Text style={s.text}>
+                Proxmox는 권한이 없는 스토리지·VM을 목록에서 숨깁니다. 연결 테스트가 성공해도 목록은
+                비어 있을 수 있습니다.
+              </Text>
+              <Text style={s.small}>
+                Proxmox의 데이터센터 → 권한 → 추가 → API 토큰 권한에서 이 토큰에 역할을 지정하세요.
+                전체 노드에 적용하려면 경로 /와 전파를 선택합니다. 조회만 필요하면 PVEAuditor,
+                조회와 관리가 필요하면 PVEAdmin을 사용할 수 있습니다. 토큰 소유 사용자에게도 해당
+                권한이 있어야 합니다.
+              </Text>
+            </Card>
+          )}
         {!node && !busy && <Text style={s.muted}>이 토큰으로 조회할 수 있는 노드가 없습니다.</Text>}
         {tab === "storages" && (
           <>

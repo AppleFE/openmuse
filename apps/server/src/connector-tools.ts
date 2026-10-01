@@ -54,7 +54,7 @@ export function connectorTools(
     ),
     tool(
       "query_connector",
-      "Run a read-only provider operation such as repos, issues, devices, status, nodes, vms or containers",
+      "Run a read-only provider operation such as storages, guest_config, task_status or permissions. Empty permissions explain filtered empty Proxmox lists.",
       connectorQuerySchema.extend({ connectorId: z.string().min(1).max(120) }),
       async ({ connectorId, operation, params }) =>
         service.run(owner, connectorId, operation, params, options.signal),

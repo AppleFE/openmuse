@@ -12,7 +12,7 @@ changes through the existing persisted action review; other providers remain rea
 | `tailscale`| `devices`                               | `apiKey`                          |
 | `headscale`| `devices`                               | `apiKey`                          |
 | `wireguard`| `status`                                | none (local `wg` binary)          |
-| `proxmox`  | 18 reads and 16 reviewed writes (below) | `tokenId`, `tokenSecret` (API token) |
+| `proxmox`  | 19 reads and 16 reviewed writes (below) | `tokenId`, `tokenSecret` (API token) |
 
 Multiple connections per provider are supported — for example several Proxmox
 clusters or GitHub Enterprise instances, each with its own credentials.
@@ -162,6 +162,7 @@ Identical node names in different clusters remain isolated by connector ID.
 | Reads | Parameters |
 | --- | --- |
 | `nodes`, `vms`, `containers`, `resources` | Optional node; resources can filter type |
+| `permissions` | Current token's effective ACLs; optional ACL path |
 | `node_status`, `node_network`, `node_disks` | Node |
 | `storages` | Optional node and content filter; omitted node aggregates online nodes with per-node errors |
 | `storage_config` | Optional storage ID |
@@ -209,6 +210,15 @@ by both user and token ACLs. Operation support does not bypass Proxmox ACLs.
 Contracts were checked against the deployed Proxmox 9.2.2 API viewer schema;
 the complete per-endpoint rules are in the
 [official API viewer](https://pve.proxmox.com/pve-docs/api-viewer/).
+
+Proxmox filters inaccessible storage/guest entries out of successful list
+responses. An empty list and a passing connection test do not prove storage
+permissions exist. `permissions` and the management screen expose that distinction.
+In Proxmox, **Datacenter → Permissions → Add → API Token Permission**, select
+the configured token and an appropriate role. For all nodes, use path `/` and
+propagate. `PVEAuditor` permits reads; `PVEAdmin` permits broader management.
+Alternatively assign a custom role/scoped ACL for the desired endpoints.
+Privilege-separated tokens also need their owner user's permissions.
 
 `connectorRoutes(service)` mounts the management API and
 `service.connections(owner)` returns `Connection`-shaped entries

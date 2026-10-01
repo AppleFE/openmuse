@@ -122,6 +122,8 @@ function safeData(value: unknown, ctx: ConnectorContext): unknown {
 }
 const record = z.record(z.string(), z.unknown());
 const operationDescriptions: Record<string, string> = {
+  permissions:
+    "Read the current token's effective ACL privileges. Optional path filters the result. Empty permissions explain filtered empty storage/guest lists; the query cannot grant privileges.",
   storages:
     "List node storage capacity, availability, backend and content types. Omit node to aggregate online cluster nodes; failures are reported per node.",
   storage_config:
@@ -322,6 +324,10 @@ export function proxmoxAdapter(): ConnectorAdapter {
       const readList = async (path: string) =>
         safeData(data(z.array(record)).parse(await get(path)), ctx);
       switch (operation) {
+        case "permissions":
+          return {
+            permissions: await readObject(query("/access/permissions", { path: params.path })),
+          };
         case "node_status":
           return { node: params.node, status: await readObject(`${nodePath}/status`) };
         case "node_network":

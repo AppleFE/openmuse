@@ -40,6 +40,14 @@ const page = {
 
 export const proxmoxReadParams = {
   nodes: z.strictObject({}),
+  permissions: z.strictObject({
+    path: z
+      .string()
+      .max(1024)
+      .regex(/^\/[a-zA-Z0-9_./-]*$/)
+      .refine((v) => !v.includes(".."), "Use an ACL path")
+      .optional(),
+  }),
   vms: z.strictObject({ node: node.optional() }),
   containers: z.strictObject({ node: node.optional() }),
   resources: z.strictObject({
@@ -386,6 +394,7 @@ export const connectorWriteSchema = z
 export type ConnectorWriteInput = z.infer<typeof connectorWriteSchema>;
 
 export const proxmoxOperationLabels: Record<string, string> = {
+  permissions: "토큰 접근 권한",
   nodes: "노드 목록",
   vms: "가상 머신 목록",
   containers: "컨테이너 목록",
