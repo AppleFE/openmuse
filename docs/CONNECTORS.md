@@ -1,9 +1,10 @@
 # Connectors
 
-Connectors are owner-scoped, read-only integrations with external
+Connectors are owner-scoped integrations with external
 infrastructure providers: GitHub, Tailscale, Headscale, WireGuard and Proxmox
 VE. They are managed through a small JSON API, store credentials encrypted at
-rest, and expose their read operations to the agent as tools.
+rest, and expose their operations to the agent as tools. Proxmox also supports
+changes through the existing persisted action review; other providers remain read-only.
 
 | Provider   | Operations                              | Credentials                       |
 | ---------- | --------------------------------------- | --------------------------------- |
@@ -11,7 +12,7 @@ rest, and expose their read operations to the agent as tools.
 | `tailscale`| `devices`                               | `apiKey`                          |
 | `headscale`| `devices`                               | `apiKey`                          |
 | `wireguard`| `status`                                | none (local `wg` binary)          |
-| `proxmox`  | `nodes`, `vms`, `containers`, `resources` | `tokenId`, `tokenSecret` (API token) |
+| `proxmox`  | 18 reads and 16 reviewed writes (below) | `tokenId`, `tokenSecret` (API token) |
 
 Multiple connections per provider are supported — for example several Proxmox
 clusters or GitHub Enterprise instances, each with its own credentials.
@@ -30,6 +31,7 @@ GET    /api/connectors/:id                one connection view
 PATCH  /api/connectors/:id                update { name?, config?, secrets? }  (secrets:null clears)
 DELETE /api/connectors/:id                remove connection and its secrets
 POST   /api/connectors/:id/test           live credential check → { ok, detail, checkedAt }
+GET    /api/connectors/:id/operations     read/write metadata and parameter JSON schemas
 POST   /api/connectors/:id/query          run a read operation { operation, params } → { data }
 ```
 
@@ -102,8 +104,15 @@ upstream detail redacted.
   with a schema-validated interface name) via `execFile`.
 - **Timeouts & caps.** Provider calls use a 15s timeout (configurable via
   service deps) and a 4 MB response cap.
-- **Read-only.** Adapters only issue GETs (or the `wg` read command); there are
-  no write paths. Provider 401/403 responses map to a credentials error.
+- **Separate reads and writes.** The query route only permits reads. Proxmox
+  POST/PUT/DELETE operations run through `/api/actions` and the native review
+  workflow. Provider 401/403 responses report authentication or missing permissions.
+- **Reviewed target binding.** Proxmox reviews bind the connector ID, URL, TLS
+  config and encrypted credentials. Existing guest and storage-config targets
+  also bind the provider configuration digest; changed targets fail before dispatch.
+  Config updates send that digest to Proxmox for its own concurrency check.
+  Atomic action claiming permits one dispatch per review. A lost connection
+  after dispatch records `outcome_unknown`, without automatically repeating the write.
 - **Owner isolation.** All records live under the session owner; other users
   cannot see or exercise a connection.
 - **Proxmox TLS.** `verifyTls: false` or a custom PEM `ca` supports self-signed
@@ -131,11 +140,75 @@ upstream detail redacted.
 ## Agent tools
 
 `connectorTools(service, owner)` in `apps/server/src/connector-tools.ts`
-exports three tools for the model runtime, plus `connectorInstructions`:
+exports read tools for the model runtime, plus `connectorInstructions`:
 
 - `list_connectors` — redacted connection list
 - `test_connector` — `{ connectorId }` live check
 - `query_connector` — `{ connectorId, operation, params }` read
+- `connector_operations` — `{ connectorId }` operation and parameter discovery
+
+Conversation and delegated-task runtimes also register `prepare_connector_action`
+and `connector_action_status`. Preparing a write creates an exact persisted review;
+the model has no approve/execute tool. Delegated tasks wait for native approval,
+then resume with the stored receipt. Team Pi roles currently expose read tools only.
+
+## Proxmox management
+
+Open **앱 → 연결된 Proxmox → 관리**. Each connection has its own node selection,
+storage capacity/contents, VM/LXC controls and settings/snapshots, and job logs.
+**전체 작업** exposes all supported operations with metadata-driven forms.
+Identical node names in different clusters remain isolated by connector ID.
+
+| Reads | Parameters |
+| --- | --- |
+| `nodes`, `vms`, `containers`, `resources` | Optional node; resources can filter type |
+| `node_status`, `node_network`, `node_disks` | Node |
+| `storages` | Optional node and content filter; omitted node aggregates online nodes with per-node errors |
+| `storage_config` | Optional storage ID |
+| `storage_status`, `storage_content` | Node, storage ID; content filter optional |
+| `guest_status`, `guest_config`, `snapshots` | Node, kind (`qemu`/`lxc`), VMID |
+| `tasks` | Node, optional VMID, start/limit and source |
+| `task_status`, `task_log` | Node, raw provider UPID; log supports start/limit |
+| `next_id` | No parameters |
+
+Reviewed writes: `guest_power` (start/shutdown/reboot/stop/suspend/resume),
+`guest_config_update`, `guest_create`, `guest_clone`, `guest_migrate`, `guest_delete`,
+`snapshot_create`, `snapshot_delete`, `snapshot_rollback`, `backup`, `restore`,
+`storage_config_update`, `storage_content_delete`, `storage_download`,
+`storage_create` (dir/lvmthin/zfspool/nfs), and `storage_delete` (remove configuration).
+Guest settings support common CPU/memory/boot/disk/network fields; arbitrary
+host QEMU arguments, hooks, and password settings are excluded. Backups preserve
+existing archives; URL downloads verify upstream TLS and optionally SHA-256.
+
+For example, prepare a start request, review its returned hash, and approve through
+the app's existing action route:
+
+```json
+{
+  "kind": "connector.write",
+  "data": {
+    "connectorId": "<connection-id>",
+    "operation": "guest_power",
+    "params": { "node": "pve1", "kind": "qemu", "vmid": 100, "action": "start" }
+  }
+}
+```
+
+`POST /api/actions` creates the review. `POST /api/actions/:id/decide` accepts
+`{ "hash": "<review-hash>", "decision": "approve" }` from the authenticated app.
+A successful dispatch with a UPID means **submitted**, not finished. Query
+`task_status`; only `status: "stopped"` and `exitstatus: "OK"` confirms job success.
+The review screen can fetch that status and its log. Synchronous null receipts
+are reported as completed. Never blindly retry an uncertain result.
+
+The provider token must have the underlying endpoint's privileges. Typical
+reads require `Datastore.Audit`/`VM.Audit`/`Sys.Audit`; changes need corresponding
+`VM.PowerMgmt`, `VM.Config.*`, `VM.Allocate`, `VM.Clone`, `VM.Migrate`, `VM.Backup`
+or `Datastore.Allocate*` privileges. Privilege-separated tokens are restricted
+by both user and token ACLs. Operation support does not bypass Proxmox ACLs.
+Contracts were checked against the deployed Proxmox 9.2.2 API viewer schema;
+the complete per-endpoint rules are in the
+[official API viewer](https://pve.proxmox.com/pve-docs/api-viewer/).
 
 `connectorRoutes(service)` mounts the management API and
 `service.connections(owner)` returns `Connection`-shaped entries
@@ -170,3 +243,6 @@ redaction, the Headscale legacy fallback and `wg` argv).
 routes, encrypted storage, owner isolation, embedded-URL credential rejection,
 stale-check fencing, abort propagation, field-type metadata, and multiple
 simultaneous Proxmox connections.
+`tests/proxmox-management.test.ts` covers storage/config/job reads, all reviewed
+write mappings and form encoding, native review/owner/version/duplicate guards,
+uncertain transport outcomes, and real embedded Pi pause/resume with job verification.

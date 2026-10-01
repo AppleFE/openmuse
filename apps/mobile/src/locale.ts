@@ -170,6 +170,8 @@ const labels: Record<string, string> = {
   "Created with `headscale apikeys create`.": "headscale apikeys create 명령으로 만든 키입니다.",
   "Read nodes, VMs, containers and cluster resources from a Proxmox VE API token.":
     "Proxmox VE API 토큰으로 노드, 가상 머신, 컨테이너와 클러스터 자원을 확인합니다.",
+  "Manage nodes, storage, VMs, containers, snapshots, backups and provider tasks with a Proxmox VE API token.":
+    "Proxmox VE의 노드·스토리지·VM·컨테이너를 조회하고 전원·설정·스냅샷·백업을 관리합니다.",
   "For example https://pve.example.com:8006.": "예: https://pve.example.com:8006",
   "Disable only for self-signed lab deployments.":
     "자체 서명 인증서를 사용하는 실험 환경에서만 끄세요.",
@@ -192,6 +194,23 @@ export function uiLabel(value: string) {
 }
 
 const errors: Record<string, string> = {
+  "Connect Proxmox before preparing an action": "작업을 준비하기 전에 Proxmox를 연결하세요.",
+  "Proxmox is disconnected. Reconnect before approving this action.":
+    "Proxmox 연결이 끊겼습니다. 다시 연결한 뒤 작업을 승인하세요.",
+  "Proxmox connection changed. Prepare a fresh action.":
+    "Proxmox 연결이 변경됐습니다. 작업을 새로 준비하세요.",
+  "Provider accepted a write but returned an unrecognized receipt; inspect provider tasks before retrying":
+    "서버가 변경 요청을 받았지만 실행 결과를 확인할 수 없습니다. 작업 기록을 먼저 확인하세요.",
+  "Configure a Proxmox connector with credentials before preparing a write":
+    "인증 정보가 등록된 Proxmox 연결을 먼저 설정하세요.",
+  "Provider did not return a target configuration version":
+    "서버가 대상 설정의 버전 정보를 반환하지 않았습니다. 대상과 조회 권한을 확인하세요.",
+  "Prepare a fresh Proxmox action before execution": "Proxmox 작업을 새로 준비한 뒤 실행하세요.",
+  "Connector configuration or credentials changed. Prepare a fresh action.":
+    "연결 설정 또는 인증 정보가 변경됐습니다. 작업을 새로 준비하세요.",
+  "Proxmox target configuration changed. Prepare a fresh action.":
+    "Proxmox 대상 설정이 변경됐습니다. 최신 설정을 확인하고 작업을 새로 준비하세요.",
+  "This connector does not support writes": "이 연결은 변경 작업을 지원하지 않습니다.",
   "Provider certificate is not trusted. Configure a CA certificate for this connection.":
     "서버의 인증서를 신뢰할 수 없습니다. 연결 설정에 CA 인증서(PEM)를 등록하세요.",
   "Provider certificate does not match the configured URL.":
@@ -232,6 +251,8 @@ const errors: Record<string, string> = {
 export function errorLabel(value: string) {
   const text = value.replace(/^Error: /, "");
   if (errors[text]) return errors[text];
+  if (text.startsWith("Provider write outcome is unknown; do not retry automatically:"))
+    return "변경 요청을 보낸 후 연결이 끊겨 실행 결과를 확인할 수 없습니다. Proxmox 작업 기록과 대상 상태를 먼저 확인하세요.";
   const auth = /^Provider rejected the configured credentials \(HTTP (401|403)\)$/.exec(text);
   if (auth) return `서버가 인증을 거부했습니다 (HTTP ${auth[1]}). 토큰과 접근 권한을 확인하세요.`;
   const request = /^Request failed \((\d+)\)$/.exec(text);

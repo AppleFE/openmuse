@@ -32,6 +32,7 @@ import {
   type Mail,
   type ProposalInput,
 } from "../../../packages/domain/src";
+import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox";
 import { DelegateSheet, NotificationsSheet, TaskDetail } from "./agent-ui";
 import BrowserConsole from "./BrowserConsole";
 import { browserAddress, browserSite } from "./browser-address";
@@ -40,6 +41,8 @@ import DateTimeEditor from "./DateTimeEditor";
 import { localDateTime, zonedInstant } from "./date-time";
 import { UI_LOCALE, uiLabel } from "./locale";
 import PdfReader from "./PdfReader";
+import { proxmoxParamLabel } from "./proxmox-core";
+import { ProxmoxActionReceipt } from "./proxmox-receipt";
 import {
   Button,
   Card,
@@ -581,13 +584,16 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
     }
   }
   const email = action.kind === "email.send";
+  const connector = action.kind === "connector.write";
   return (
     <Sheet
       title={pending ? "마지막 확인" : action.title}
       subtitle={
-        w.mode === "sample"
-          ? "이 작업은 로컬 워크스페이스 안에서만 처리됩니다."
-          : "연결된 계정을 변경하기 전에 작업 내용을 확인하세요."
+        connector
+          ? "표시된 Proxmox 연결과 대상에 작업을 실행합니다."
+          : w.mode === "sample"
+            ? "이 작업은 로컬 워크스페이스 안에서만 처리됩니다."
+            : "연결된 계정을 변경하기 전에 작업 내용을 확인하세요."
       }
       onClose={close}
     >
@@ -600,12 +606,39 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
           <Text style={s.small}>{action.kind.replace(".", " · ")}</Text>
         </View>
         <Chip tint={pending ? colors.lavender : colors.green}>
-          {action.status.replace(/_/g, " ")}
+          {connector
+            ? {
+                awaiting_review: "검토 대기",
+                executing: "명령 전송 중",
+                succeeded: "요청 접수",
+                failed: "실패",
+                outcome_unknown: "결과 확인 필요",
+                denied: "거절됨",
+                cancelled: "취소됨",
+                expired: "만료됨",
+              }[action.status]
+            : action.status.replace(/_/g, " ")}
         </Chip>
       </View>
       <Card style={{ gap: 13 }}>
-        <ReviewLine label="계정" value={action.account || w.profile.email} />
-        {email ? (
+        <ReviewLine label={connector ? "연결" : "계정"} value={action.account || w.profile.email} />
+        {connector ? (
+          <>
+            <ReviewLine
+              label="작업"
+              value={proxmoxOperationLabels[String(d.operation)] ?? String(d.operation)}
+            />
+            {Object.entries((d.params ?? {}) as Record<string, unknown>)
+              .filter(([key]) => key !== "digest")
+              .map(([key, value]) => (
+                <ReviewLine
+                  key={key}
+                  label={proxmoxParamLabel(key)}
+                  value={typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}
+                />
+              ))}
+          </>
+        ) : email ? (
           <>
             <ReviewLine label="받는 사람" value={arrayText(d.to)} />
             <ReviewLine label="참조" value={arrayText(d.cc) || "없음"} />
@@ -668,13 +701,14 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
         )}
       </Card>
       <ErrorNotice error={error || action.error} />
-      {!!action.result && (
+      {!!action.result && !connector && (
         <Card style={{ marginTop: 16, backgroundColor: colors.green, padding: 18 }}>
           <Text selectable style={s.text}>
             {resultSummary(action.result)}
           </Text>
         </Card>
       )}
+      {connector && action.result && <ProxmoxActionReceipt action={action} />}
       {pending ? (
         <>
           <Text style={[s.small, { marginVertical: 17 }]}>
@@ -691,9 +725,15 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
           </Text>
           <View style={[s.row, { gap: 10, flexWrap: "wrap" }]}>
             <Button primary icon={Check} busy={busy} onPress={() => void decide("approve")}>
-              {w.mode === "sample" ? "로컬에서 승인" : email ? "승인하고 전송" : "변경 승인"}
+              {connector
+                ? "승인하고 실행"
+                : w.mode === "sample"
+                  ? "로컬에서 승인"
+                  : email
+                    ? "승인하고 전송"
+                    : "변경 승인"}
             </Button>
-            {action.kind !== "calendar.delete" && (
+            {action.kind !== "calendar.delete" && !connector && (
               <Button icon={Edit3} disabled={busy} onPress={() => void edit()}>
                 세부 내용 수정
               </Button>

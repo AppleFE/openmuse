@@ -876,8 +876,9 @@ export class AgentService {
     context: TaskContext,
   ) {
     await context.guard();
-    const connection = await this.workspace.connection(owner);
-    if (connection?.id !== task.state.connectionId)
+    const connection =
+      input.kind === "connector.write" ? undefined : await this.workspace.connection(owner);
+    if (input.kind !== "connector.write" && connection?.id !== task.state.connectionId)
       throw new AppError(
         "Google connection changed during this task. Start a new task using the current account.",
         409,

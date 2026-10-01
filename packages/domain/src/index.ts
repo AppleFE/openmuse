@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { connectorWriteSchema } from "./proxmox.ts";
 
 export type WorkspaceMode = "sample" | "live";
 export type Section =
@@ -115,6 +116,7 @@ export const eventDraftSchema = z
     }
   });
 export const proposalSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("connector.write"), data: connectorWriteSchema }),
   z.object({ kind: z.literal("email.send"), data: emailDraftSchema }),
   z.object({ kind: z.literal("calendar.create"), data: eventDraftSchema }),
   z.object({

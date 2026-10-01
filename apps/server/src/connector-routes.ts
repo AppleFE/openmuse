@@ -13,6 +13,9 @@ export function connectorRoutes(service: ConnectorService) {
   app.get("/", async (c) => c.json({ connectors: await service.list(c.get("owner")) }));
   app.post("/", async (c) => c.json(await service.create(c.get("owner"), await c.req.json()), 201));
   app.get("/:id", async (c) => c.json(await service.get(c.get("owner"), c.req.param("id"))));
+  app.get("/:id/operations", async (c) =>
+    c.json(await service.operations(c.get("owner"), c.req.param("id"))),
+  );
   app.patch("/:id", async (c) =>
     c.json(await service.update(c.get("owner"), c.req.param("id"), await c.req.json())),
   );

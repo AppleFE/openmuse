@@ -157,7 +157,7 @@ export function createPiTools(
       defineTool({
         name: "list_connectors",
         label: "List connectors",
-        description: "List configured read-only infrastructure connectors without secrets.",
+        description: "List configured infrastructure connectors without secrets.",
         parameters: Type.Object({}),
         execute: async (_id, params, signal) =>
           piTextResult(
@@ -193,6 +193,24 @@ export function createPiTools(
                   params.params ?? {},
                   combined,
                 ) ?? Promise.resolve({ error: "Connectors are unavailable" }),
+            ),
+          ),
+      }),
+      defineTool({
+        name: "connector_operations",
+        label: "Connector operations",
+        description:
+          "Discover supported operations and exact parameter schemas for one configured connector.",
+        parameters: Type.Object({ connectorId: Type.String({ minLength: 1, maxLength: 120 }) }),
+        execute: async (_id, params, signal) =>
+          piTextResult(
+            await guarded<unknown>(
+              "connector_operations",
+              params,
+              signal,
+              () =>
+                dependencies.connectors?.operations(request.owner, params.connectorId) ??
+                Promise.resolve({ error: "Connectors are unavailable" }),
             ),
           ),
       }),

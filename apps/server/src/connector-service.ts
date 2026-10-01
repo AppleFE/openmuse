@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -20,6 +20,11 @@ import {
   wireguardConfigSchema,
 } from "../../../packages/domain/src/connectors.ts";
 import type { Connection } from "../../../packages/domain/src/index.ts";
+import {
+  type ConnectorWriteInput,
+  connectorWriteSchema,
+  proxmoxWriteSchema,
+} from "../../../packages/domain/src/proxmox.ts";
 import {
   type ConnectorDeps,
   ConnectorError,
@@ -86,6 +91,121 @@ export class ConnectorService {
 
   providers() {
     return connectorProviderInfo();
+  }
+
+  async operations(owner: string, id: string) {
+    const stored = await this.record(owner, id);
+    return {
+      provider: stored.provider,
+      operations: connectorAdapter(stored.provider, this.deps).info.operations,
+    };
+  }
+
+  async actionConnection(owner: string, input: ConnectorWriteInput) {
+    const stored = await this.record(owner, input.connectorId);
+    if (stored.provider !== "proxmox" || !stored.secret)
+      throw new AppError(
+        "Configure a Proxmox connector with credentials before preparing a write",
+        409,
+      );
+    return { id: stored.id, account: `Proxmox VE · ${stored.name} · ${stored.config.baseUrl}` };
+  }
+
+  private connectionVersion(stored: StoredConnector) {
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          id: stored.id,
+          provider: stored.provider,
+          config: stored.config,
+          secret: stored.secret,
+        }),
+      )
+      .digest("hex");
+  }
+
+  async prepareWrite(owner: string, raw: unknown) {
+    const parsed = connectorWriteSchema.parse(raw);
+    await this.actionConnection(owner, parsed);
+    const stored = await this.record(owner, parsed.connectorId);
+    const adapter = connectorAdapter(stored.provider, this.deps);
+    const input = proxmoxWriteSchema.parse({ operation: parsed.operation, params: parsed.params });
+    const params: Record<string, unknown> = { ...input.params };
+    let target:
+      | { operation: "guest_config" | "storage_config"; params: Record<string, unknown> }
+      | undefined;
+    if ("kind" in params && !["guest_create", "restore"].includes(input.operation))
+      target = {
+        operation: "guest_config",
+        params: { node: params.node, kind: params.kind, vmid: params.vmid },
+      };
+    else if (["storage_config_update", "storage_delete"].includes(input.operation))
+      target = { operation: "storage_config", params: { storage: params.storage } };
+    let targetDigest: string | undefined;
+    if (target) {
+      const response = (await adapter.run(
+        {
+          config: stored.config,
+          secrets: await this.secrets(stored),
+          timeoutMs: this.deps.timeoutMs,
+        },
+        target.operation,
+        target.params,
+      )) as { config?: Record<string, unknown>; storages?: Record<string, unknown>[] };
+      const config = response.config ?? response.storages?.[0];
+      if (typeof config?.digest !== "string" || !/^[a-fA-F0-9]{40,64}$/.test(config.digest))
+        throw new AppError("Provider did not return a target configuration version", 502);
+      targetDigest = config.digest;
+      if (["guest_config_update", "storage_config_update"].includes(input.operation))
+        params.digest = targetDigest;
+    }
+    const data = connectorWriteSchema.parse({
+      connectorId: stored.id,
+      operation: input.operation,
+      params,
+    });
+    return {
+      input: { kind: "connector.write" as const, data },
+      targetVersion: JSON.stringify({
+        connection: this.connectionVersion(stored),
+        target,
+        targetDigest,
+      }),
+    };
+  }
+
+  async executeWrite(owner: string, raw: unknown, targetVersion?: string) {
+    const input = connectorWriteSchema.parse(raw);
+    const stored = await this.record(owner, input.connectorId);
+    if (stored.provider !== "proxmox" || !targetVersion)
+      throw new AppError("Prepare a fresh Proxmox action before execution", 409);
+    const expected = JSON.parse(targetVersion) as {
+      connection: string;
+      target?: { operation: string; params: Record<string, unknown> };
+      targetDigest?: string;
+    };
+    if (expected.connection !== this.connectionVersion(stored))
+      throw new AppError(
+        "Connector configuration or credentials changed. Prepare a fresh action.",
+        409,
+      );
+    const adapter = connectorAdapter(stored.provider, this.deps),
+      ctx = {
+        config: stored.config,
+        secrets: await this.secrets(stored),
+        timeoutMs: this.deps.timeoutMs,
+      };
+    if (expected.target) {
+      const response = (await adapter.run(
+        ctx,
+        expected.target.operation,
+        expected.target.params,
+      )) as { config?: Record<string, unknown>; storages?: Record<string, unknown>[] };
+      if ((response.config ?? response.storages?.[0])?.digest !== expected.targetDigest)
+        throw new AppError("Proxmox target configuration changed. Prepare a fresh action.", 409);
+    }
+    if (!adapter.write) throw new AppError("This connector does not support writes", 422);
+    return JSON.stringify(await adapter.write(ctx, input));
   }
 
   private view(record: StoredConnector): ConnectorView {

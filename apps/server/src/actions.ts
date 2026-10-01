@@ -5,6 +5,7 @@ import {
   type ProposalInput,
   proposalSchema,
 } from "../../../packages/domain/src/index.ts";
+import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 
@@ -24,8 +25,11 @@ interface Options {
     target?: CalendarEvent;
     targetVersion?: string;
   }>;
-  connected: (owner: string) => Promise<boolean>;
-  connection?: (owner: string) => Promise<{ id: string; account: string } | null>;
+  connected: (owner: string, input: ProposalInput) => Promise<boolean>;
+  connection?: (
+    owner: string,
+    input: ProposalInput,
+  ) => Promise<{ id: string; account: string } | null>;
   now?: () => number;
 }
 export class ActionService {
@@ -35,6 +39,11 @@ export class ActionService {
     private readonly options: Options,
   ) {
     this.now = options.now ?? Date.now;
+  }
+  async get(owner: string, id: string) {
+    const action = await this.db.get<ActionProposal>(owner, "actions", id);
+    if (!action) throw new AppError("Action not found", 404);
+    return action;
   }
   async propose(
     owner: string,
@@ -51,17 +60,24 @@ export class ActionService {
       if (existing) return existing;
     }
     const parsed = proposalSchema.parse(raw);
-    const connection = await this.options.connection?.(owner);
+    const connection = await this.options.connection?.(owner, parsed);
     if (this.options.connection && !connection)
-      throw new AppError("Connect Google before preparing an action", 409);
+      throw new AppError(
+        parsed.kind === "connector.write"
+          ? "Connect Proxmox before preparing an action"
+          : "Connect Google before preparing an action",
+        409,
+      );
     const prepared = await this.options.prepare?.(owner, parsed, connection?.id);
     const input = proposalSchema.parse(prepared?.input ?? parsed);
     const title =
-      input.kind === "email.send"
-        ? `Send “${input.data.subject}”`
-        : input.kind === "calendar.delete"
-          ? `Delete ${input.data.title}`
-          : `${input.kind === "calendar.create" ? "Create" : "Update"} ${input.data.title}`;
+      input.kind === "connector.write"
+        ? `${proxmoxOperationLabels[input.data.operation]} · ${connection?.account ?? input.data.connectorId}`
+        : input.kind === "email.send"
+          ? `Send “${input.data.subject}”`
+          : input.kind === "calendar.delete"
+            ? `Delete ${input.data.title}`
+            : `${input.kind === "calendar.create" ? "Create" : "Update"} ${input.data.title}`;
     const createdAt = new Date(this.now()).toISOString();
     const proposal: ActionProposal = {
       id,
@@ -133,17 +149,25 @@ export class ActionService {
       }
       throw new AppError("This review expired. Create a fresh proposal.", 409);
     }
-    if (decision === "approve" && !(await this.options.connected(owner)))
-      throw new AppError("Google is disconnected. Reconnect before approving this action.", 409);
+    const reviewedInput = proposalSchema.parse({ kind: proposal.kind, data: proposal.data });
+    if (decision === "approve" && !(await this.options.connected(owner, reviewedInput)))
+      throw new AppError(
+        proposal.kind === "connector.write"
+          ? "Proxmox is disconnected. Reconnect before approving this action."
+          : "Google is disconnected. Reconnect before approving this action.",
+        409,
+      );
     if (decision === "approve" && this.options.connection) {
-      const connection = await this.options.connection(owner);
+      const connection = await this.options.connection(owner, reviewedInput);
       if (
         !connection ||
         connection.id !== proposal.connectionId ||
         connection.account !== proposal.account
       )
         throw new AppError(
-          "Google account or connection changed. Prepare a new action for the connected account.",
+          proposal.kind === "connector.write"
+            ? "Proxmox connection changed. Prepare a fresh action."
+            : "Google account or connection changed. Prepare a new action for the connected account.",
           409,
         );
     }

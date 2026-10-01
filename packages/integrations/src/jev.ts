@@ -112,9 +112,9 @@ export class JevClient {
         questions: {
           execution: choice("May this isolated OpenMuse tool operation execute?", {
             allow:
-              "The operation fits the role and stays inside the private computer or a read-only configured connector.",
+              "The operation fits the role: isolated computer work, configured connector reads, or preparing an exact stored proposal for separate native user review. Preparing a proposal does not dispatch an external write.",
             block:
-              "The operation is unrelated, attempts a boundary bypass, or needs a reviewed external write instead.",
+              "The operation is unrelated, attempts a boundary bypass, or directly dispatches or approves an external write without the separate native user review.",
           }),
         },
       },

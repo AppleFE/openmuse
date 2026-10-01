@@ -36,16 +36,27 @@ export async function createApp(
     files = new Files(db, config, auth),
     google = new GoogleAuth(db, config),
     workspace = new WorkspaceService(db, config, files, google);
+  const connectors = new ConnectorService(db, config);
   const actions = new ActionService(db, {
     execute: (owner, input, connectionId, targetVersion) =>
-      workspace.execute(owner, input, connectionId, targetVersion),
-    prepare: (owner, input, connectionId) => workspace.prepare(owner, input, connectionId),
-    connected: (owner) => workspace.connected(owner),
-    connection: (owner) => workspace.connection(owner),
+      input.kind === "connector.write"
+        ? connectors.executeWrite(owner, input.data, targetVersion)
+        : workspace.execute(owner, input, connectionId, targetVersion),
+    prepare: (owner, input, connectionId) =>
+      input.kind === "connector.write"
+        ? connectors.prepareWrite(owner, input.data)
+        : workspace.prepare(owner, input, connectionId),
+    connected: async (owner, input) =>
+      input.kind === "connector.write"
+        ? Boolean(await connectors.actionConnection(owner, input.data))
+        : workspace.connected(owner),
+    connection: (owner, input) =>
+      input.kind === "connector.write"
+        ? connectors.actionConnection(owner, input.data)
+        : workspace.connection(owner),
   });
   const browser = new BrowserService(db, config, auth, files);
   const computer = new ComputerService(db, config, options.docker);
-  const connectors = new ConnectorService(db, config);
   const agent = new AgentService(
     db,
     config,

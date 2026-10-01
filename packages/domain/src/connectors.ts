@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { proxmoxReadOperations } from "./proxmox.ts";
 
 /**
  * Connector contract for third-party infrastructure providers (GitHub,
@@ -121,7 +122,7 @@ export const connectorOperations = {
   tailscale: ["devices"],
   headscale: ["devices"],
   wireguard: ["status"],
-  proxmox: ["nodes", "vms", "containers", "resources"],
+  proxmox: proxmoxReadOperations,
 } as const satisfies Record<ConnectorProvider, readonly string[]>;
 
 export const connectorQuerySchema = z.object({
@@ -171,13 +172,18 @@ export interface ConnectorFieldInfo {
 }
 export interface ConnectorOperationParam {
   name: string;
-  type: "string" | "number" | "boolean";
+  type: "string" | "number" | "boolean" | "json";
+  enum?: string[];
+  label?: string;
   required?: boolean;
   description: string;
 }
 export interface ConnectorOperationInfo {
   name: string;
   description: string;
+  label?: string;
+  kind?: "read" | "write";
+  paramsSchema?: Record<string, unknown>;
   params: ConnectorOperationParam[];
 }
 export interface ConnectorProviderInfo {

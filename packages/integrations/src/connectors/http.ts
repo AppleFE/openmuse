@@ -11,6 +11,7 @@ export class ConnectorError extends Error {
       | "provider"
       | "malformed"
       | "unreachable"
+      | "outcome_unknown"
       | "tls" = "provider",
   ) {
     super(message);
@@ -51,6 +52,8 @@ export function redact(text: string, secrets: (string | undefined)[]): string {
 }
 
 export interface ConnectorHttpOptions {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  form?: Record<string, string | number | boolean | undefined>;
   headers?: Record<string, string>;
   timeoutMs?: number;
   /** TLS overrides for providers commonly fronted by self-signed certificates. */
@@ -63,12 +66,25 @@ export interface ConnectorHttpOptions {
 }
 
 /**
- * Minimal read-only JSON request on node:http/https so per-connection TLS
+ * Minimal JSON request on node:http/https so per-connection TLS
  * options (custom CA, self-signed Proxmox/Headscale endpoints) work without an
  * extra dependency. Enforces a response cap, a hard timeout, and redacts stored
  * secrets out of every error it raises.
  */
 export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}): Promise<unknown> {
+  const method = options.method ?? "GET";
+  const mutation = method !== "GET";
+  const body = options.form
+    ? new URLSearchParams(
+        Object.entries(options.form)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)]),
+      ).toString()
+    : undefined;
+  if (body && (!mutation || Buffer.byteLength(body) > 65536))
+    return Promise.reject(
+      new ConnectorError("Connector request body is invalid or too large", undefined, "malformed"),
+    );
   const maxBytes = options.maxBytes ?? 4 * 1024 * 1024;
   const timeoutMs = options.timeoutMs ?? 15000;
   const secretList = options.secrets ?? [];
@@ -91,14 +107,38 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
     );
   const client = target.protocol === "https:" ? https : http;
   return new Promise((resolve, reject) => {
+    let sent = false;
+    const transportFailure = (error: Error) => {
+      const tlsError = certificateError(error);
+      const message = redact(error.message, secretList);
+      if (tlsError) return new ConnectorError(tlsError, undefined, "tls");
+      if (mutation && sent)
+        return new ConnectorError(
+          `Provider write outcome is unknown; do not retry automatically: ${message}`,
+          undefined,
+          "outcome_unknown",
+        );
+      return error instanceof ConnectorError
+        ? error
+        : new ConnectorError(`Provider is unreachable: ${message}`, undefined, "unreachable");
+    };
     const onAbort = () =>
       request.destroy(new ConnectorError("Connector request was aborted", undefined, "provider"));
     signal?.addEventListener("abort", onAbort, { once: true });
     const request = client.request(
       target,
       {
-        method: "GET",
-        headers: { Accept: "application/json", ...options.headers },
+        method,
+        headers: {
+          Accept: "application/json",
+          ...(body !== undefined
+            ? {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Length": String(Buffer.byteLength(body)),
+              }
+            : {}),
+          ...options.headers,
+        },
         ca: options.tls?.ca,
         rejectUnauthorized: options.tls?.rejectUnauthorized,
       },
@@ -143,31 +183,32 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
             return;
           }
           try {
+            if (!body.trim() && status === 204) {
+              resolve(null);
+              return;
+            }
             resolve(JSON.parse(body));
           } catch {
-            reject(new ConnectorError("Provider returned malformed JSON", status, "malformed"));
+            reject(
+              new ConnectorError(
+                "Provider returned malformed JSON",
+                status,
+                mutation ? "outcome_unknown" : "malformed",
+              ),
+            );
           }
         });
-        response.on("error", reject);
+        response.on("error", (error) => reject(transportFailure(error)));
       },
     );
     request.setTimeout(timeoutMs, () =>
       request.destroy(new ConnectorError("Provider did not respond in time", undefined, "timeout")),
     );
-    request.on("error", (error) => {
-      if (error instanceof ConnectorError) reject(error);
-      else {
-        const tlsError = certificateError(error);
-        reject(
-          new ConnectorError(
-            tlsError ?? `Provider is unreachable: ${redact(error.message, secretList)}`,
-            undefined,
-            tlsError ? "tls" : "unreachable",
-          ),
-        );
-      }
+    request.on("finish", () => {
+      sent = true;
     });
+    request.on("error", (error) => reject(transportFailure(error)));
     request.on("close", () => signal?.removeEventListener("abort", onAbort));
-    request.end();
+    request.end(body);
   });
 }

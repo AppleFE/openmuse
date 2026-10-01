@@ -551,7 +551,12 @@ test("connector agent tools list, test and query without leaking secrets", async
   });
   const tools = connectorTools(service, "alice");
   const names = tools.map((tool) => tool.name);
-  assert.deepEqual(names, ["list_connectors", "test_connector", "query_connector"]);
+  assert.deepEqual(names, [
+    "list_connectors",
+    "test_connector",
+    "query_connector",
+    "connector_operations",
+  ]);
   const list = tools[0].execute as (args: unknown) => Promise<unknown>;
   const listed = (await list({})) as { id: string }[];
   assert.equal(listed[0].id, created.id);

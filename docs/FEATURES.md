@@ -18,7 +18,7 @@ The native and web agent core runs locally. This inventory describes the current
 | PDF job | Durable import, typed input request, filled-copy preview, reviewed reply, receipt | OCR/scanned forms and additional PDF field types |
 | Generated results | Plans/reports/comparisons, finance CSV metrics, and scripts in the private Linux workspace | Managed tool installation/versioning and image/audio generation |
 | Notifications | Durable in-app inbox, source-linked change alerts, restart reconciliation | APNs/FCM/device push delivery |
-| Connectors | Searchable capability/status catalogue, Google connection, browser worker, and authenticated infrastructure connectors (GitHub, Tailscale, Headscale, WireGuard, Proxmox) with encrypted server-side credentials, health checks, and agent read tools | Plaid, health, Instagram, WhatsApp and partner APIs; connector write operations |
+| Connectors | Searchable catalogue, encrypted credentials, health checks and agent reads for GitHub/Tailscale/Headscale/WireGuard/Proxmox; Proxmox node storage/content and guest/snapshot/job management, plus 16 reviewed write operations in the UI and conversation/delegated Pi tools | Plaid, health, Instagram, WhatsApp and partner APIs; writes for other infrastructure providers and team Pi roles |
 | OpenBot | Disabled adapter with pinned protocol/identity tests | Live session bridge, routines and computer backend wiring |
 
 The Linux computer is disabled until configured on the server and has no network access. It is a single-owner container with a persistent `/workspace`, separate from the browser worker; see [computer setup and limits](COMPUTER.md). It is not a graphical desktop or a full OS VM.

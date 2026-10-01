@@ -9,6 +9,7 @@ import type {
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
 import { connectorCheckLabel, uiLabel } from "./locale";
+import { ProxmoxManager } from "./proxmox-manager";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -228,6 +229,7 @@ function ConnectorEditor({
 export function ConnectorSettings({ query = "" }: { query?: string }) {
   const { api, notify } = useWorkspace();
   const [providers, setProviders] = useState<ConnectorProviderInfo[]>([]);
+  const [managing, setManaging] = useState<ConnectorView>();
   const [connectors, setConnectors] = useState<ConnectorView[]>([]);
   const [editing, setEditing] = useState<{
     provider: ConnectorProviderInfo;
@@ -346,6 +348,11 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
                   수정
                 </Button>
               )}
+              {connector.provider === "proxmox" && (
+                <Button small onPress={() => setManaging(connector)}>
+                  관리
+                </Button>
+              )}
               <Button
                 small
                 danger
@@ -379,6 +386,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
       </View>
       {!providers.length && !error && <Text style={s.muted}>커넥터 옵션을 불러오는 중…</Text>}
       <ErrorNotice error={error} />
+      {managing && <ProxmoxManager connector={managing} onClose={() => setManaging(undefined)} />}
       {!!error && <Button onPress={() => void refresh()}>연결 다시 시도</Button>}
       {editing && (
         <ConnectorEditor
