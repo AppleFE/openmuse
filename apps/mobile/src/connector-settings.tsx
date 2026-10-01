@@ -8,7 +8,7 @@ import type {
   ConnectorProviderInfo,
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
-import { uiLabel } from "./locale";
+import { connectorCheckLabel, uiLabel } from "./locale";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -60,6 +60,7 @@ function ConnectorField({
     return (
       <Pressable
         accessibilityRole="checkbox"
+        accessibilityLabel={uiLabel(field.label)}
         accessibilityState={{ checked }}
         onPress={() => onChange(!checked)}
         style={[s.row, { gap: 10, paddingVertical: 8 }]}
@@ -257,7 +258,11 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
     try {
       const result = await api.request<ConnectorCheck>(`/api/connectors/${connector.id}/test`, {});
       await refresh();
-      notify(result.ok ? `${connector.name} 연결됨.` : `${connector.name}: ${result.detail}`);
+      notify(
+        result.ok
+          ? `${connector.name} 연결됨.`
+          : `${connector.name}: ${connectorCheckLabel(result.detail)}`,
+      );
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -322,7 +327,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
             </View>
             {!!connector.check && (
               <Text style={[s.small, { color: connector.check.ok ? colors.muted : colors.danger }]}>
-                {connector.check.detail}
+                {connectorCheckLabel(connector.check.detail)}
               </Text>
             )}
             <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>

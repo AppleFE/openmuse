@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import test, { type TestContext } from "node:test";
 import {
   ConnectorError,
@@ -42,6 +44,104 @@ const github = connectorAdapter("github");
 const tailscale = connectorAdapter("tailscale");
 const headscale = connectorAdapter("headscale");
 const proxmox = connectorAdapter("proxmox");
+
+async function tlsProvider(t: TestContext, certificate = "server.pem") {
+  const fixture = (name: string) => readFile(new URL(`./fixtures/tls/${name}`, import.meta.url));
+  const [ca, cert, key] = await Promise.all([
+    fixture("ca.pem"),
+    fixture(certificate),
+    fixture("server-key.pem"),
+  ]);
+  const requests: Captured[] = [];
+  const server = createHttpsServer({ cert, key }, (request, response) => {
+    requests.push({ url: request.url ?? "", headers: request.headers });
+    json(response, {
+      data:
+        request.url === "/api2/json/version"
+          ? { version: "9.0.1" }
+          : [{ node: "test-node", status: "online" }],
+    });
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return { baseUrl: `https://127.0.0.1:${address.port}`, ca: ca.toString("utf8"), requests };
+}
+
+test("proxmox rejects an untrusted CA before sending credentials and accepts a connection-specific CA", async (t) => {
+  const mock = await tlsProvider(t);
+  const ctx = {
+    config: { baseUrl: mock.baseUrl },
+    secrets: { tokenId: "monitoring@pve!test", tokenSecret: "fixture-token-secret" },
+  };
+  const untrusted = await proxmox.test(ctx);
+  assert.equal(untrusted.ok, false);
+  assert.match(untrusted.detail, /certificate is not trusted/);
+  assert.equal(untrusted.detail.includes(ctx.secrets.tokenSecret), false);
+  assert.equal(mock.requests.length, 0, "No HTTP credentials may reach an untrusted peer");
+
+  const trusted = await proxmox.test({
+    ...ctx,
+    config: { ...ctx.config, ca: mock.ca, verifyTls: true },
+  });
+  assert.equal(trusted.ok, true);
+  assert.deepEqual(
+    mock.requests.map((r) => r.url),
+    ["/api2/json/version", "/api2/json/nodes"],
+  );
+  assert.equal(
+    mock.requests[1].headers.authorization,
+    "PVEAPIToken=monitoring@pve!test=fixture-token-secret",
+  );
+
+  assert.equal((await proxmox.test(ctx)).ok, false, "Trust must not leak into another connection");
+  assert.equal(
+    (await proxmox.test({ ...ctx, config: { ...ctx.config, verifyTls: false } })).ok,
+    true,
+  );
+  assert.equal(
+    (await proxmox.test(ctx)).ok,
+    false,
+    "A per-connection TLS opt-out must not change the default",
+  );
+});
+
+test("proxmox custom CA still verifies the configured hostname", async (t) => {
+  const mock = await tlsProvider(t, "wrong-host.pem");
+  await assert.rejects(
+    httpJson(`${mock.baseUrl}/api2/json/version`, { tls: { ca: mock.ca } }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConnectorError);
+      assert.equal(error.code, "tls");
+      assert.match(error.message, /does not match the configured URL/);
+      return true;
+    },
+  );
+  assert.equal(mock.requests.length, 0);
+});
+
+test("proxmox test rejects invalid credentials even when the version endpoint is public", async (t) => {
+  const mock = await mockProvider(t, (request, response) => {
+    if (request.url === "/api2/json/version") return json(response, { data: { version: "9.0.1" } });
+    return json(response, { message: "Invalid API token" }, 401);
+  });
+  const check = await proxmox.test({
+    config: { baseUrl: mock.baseUrl },
+    secrets: { tokenId: "monitoring@pve!test", tokenSecret: "invalid-token" },
+  });
+  assert.equal(check.ok, false);
+  assert.match(check.detail, /credentials \(HTTP 401\)/);
+  assert.equal(check.detail.includes("invalid-token"), false);
+  assert.deepEqual(
+    mock.requests.map((r) => r.url),
+    ["/api2/json/version", "/api2/json/nodes"],
+  );
+});
 
 test("github adapter authenticates, lists repositories and maps them", async (t) => {
   const mock = await mockProvider(t, (_request, response) =>

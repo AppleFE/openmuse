@@ -126,7 +126,8 @@ export function proxmoxAdapter(): ConnectorAdapter {
         label: "CA certificate (PEM)",
         required: false,
         type: "text",
-        description: "Custom CA bundle for self-signed deployments.",
+        description:
+          "For the default Proxmox certificate, paste /etc/pve/pve-root-ca.pem from the Proxmox host, including BEGIN/END CERTIFICATE lines.",
       },
     ],
     secretFields: [
@@ -171,9 +172,12 @@ export function proxmoxAdapter(): ConnectorAdapter {
     info,
     async test(ctx) {
       try {
+        const api = client(ctx);
         const version = data(
           z.object({ version: z.string(), release: z.string().optional() }),
-        ).parse(await client(ctx).get("/version"));
+        ).parse(await api.get("/version"));
+        // /version can be public; an authenticated request must also succeed.
+        data(z.array(nodeSchema)).parse(await api.get("/nodes"));
         return { ok: true, detail: `Proxmox VE ${version.version} reachable` };
       } catch (error) {
         return {

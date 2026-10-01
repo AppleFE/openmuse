@@ -175,6 +175,8 @@ const labels: Record<string, string> = {
     "자체 서명 인증서를 사용하는 실험 환경에서만 끄세요.",
   "Custom CA bundle for self-signed deployments.":
     "자체 서명 인증서 환경에서 사용하는 사용자 지정 CA 인증서 묶음입니다.",
+  "For the default Proxmox certificate, paste /etc/pve/pve-root-ca.pem from the Proxmox host, including BEGIN/END CERTIFICATE lines.":
+    "Proxmox 기본 인증서라면 서버 콘솔에서 cat /etc/pve/pve-root-ca.pem을 실행한 결과를 붙여 넣으세요. BEGIN/END CERTIFICATE 줄을 포함해야 합니다. API 토큰 비밀값과 다른 공개 인증서입니다.",
   "user@realm!tokenname, for example monitoring@pve!openmuse.":
     "형식은 user@realm!tokenname입니다. 예: monitoring@pve!openmuse",
   "UUID shown once when the token is created.": "토큰을 만들 때 한 번 표시되는 UUID입니다.",
@@ -190,6 +192,15 @@ export function uiLabel(value: string) {
 }
 
 const errors: Record<string, string> = {
+  "Provider certificate is not trusted. Configure a CA certificate for this connection.":
+    "서버의 인증서를 신뢰할 수 없습니다. 연결 설정에 CA 인증서(PEM)를 등록하세요.",
+  "Provider certificate does not match the configured URL.":
+    "서버 인증서에 지정된 호스트와 API URL이 다릅니다. 인증서에 포함된 주소로 연결하세요.",
+  "Provider certificate has expired.":
+    "서버의 인증서가 만료됐습니다. 서버에서 인증서를 갱신하세요.",
+  "Provider certificate is not yet valid.":
+    "서버 인증서의 유효 기간이 시작되지 않았습니다. 서버의 시간과 인증서를 확인하세요.",
+  "Provider did not respond in time": "서버가 제한 시간 안에 응답하지 않았습니다.",
   "Stored conversation history cannot be modified by the client":
     "앱과 서버의 대화 기록이 다릅니다. 페이지를 새로고침한 뒤 답변을 다시 시도하세요. 저장된 대화는 유지됩니다.",
   "Access key is incorrect": "접속 키가 올바르지 않습니다.",
@@ -221,7 +232,26 @@ const errors: Record<string, string> = {
 export function errorLabel(value: string) {
   const text = value.replace(/^Error: /, "");
   if (errors[text]) return errors[text];
+  const auth = /^Provider rejected the configured credentials \(HTTP (401|403)\)$/.exec(text);
+  if (auth) return `서버가 인증을 거부했습니다 (HTTP ${auth[1]}). 토큰과 접근 권한을 확인하세요.`;
   const request = /^Request failed \((\d+)\)$/.exec(text);
   if (request) return `요청에 실패했습니다 (HTTP ${request[1]}).`;
   return text;
+}
+
+/** Localize persisted provider checks as well as fresh test results. */
+export function connectorCheckLabel(value: string) {
+  const version = /^Proxmox VE (.+) reachable$/.exec(value);
+  if (version) return `Proxmox VE ${version[1]} 연결 확인 완료`;
+  // Old checks stored before structured TLS errors also need actionable text.
+  if (
+    /^Provider is unreachable: (unable to verify the first certificate|unable to get (local )?issuer certificate|self[- ]signed certificate)/i.test(
+      value,
+    )
+  ) {
+    return errorLabel(
+      "Provider certificate is not trusted. Configure a CA certificate for this connection.",
+    );
+  }
+  return errorLabel(value);
 }

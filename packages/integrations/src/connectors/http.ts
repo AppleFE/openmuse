@@ -5,10 +5,36 @@ export class ConnectorError extends Error {
   constructor(
     message: string,
     readonly status?: number,
-    readonly code: "timeout" | "auth" | "provider" | "malformed" | "unreachable" = "provider",
+    readonly code:
+      | "timeout"
+      | "auth"
+      | "provider"
+      | "malformed"
+      | "unreachable"
+      | "tls" = "provider",
   ) {
     super(message);
     this.name = "ConnectorError";
+  }
+}
+
+function certificateError(error: Error): string | undefined {
+  const code = "code" in error ? error.code : undefined;
+  switch (code) {
+    case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
+    case "UNABLE_TO_GET_ISSUER_CERT":
+    case "UNABLE_TO_GET_ISSUER_CERT_LOCALLY":
+    case "DEPTH_ZERO_SELF_SIGNED_CERT":
+    case "SELF_SIGNED_CERT_IN_CHAIN":
+      return "Provider certificate is not trusted. Configure a CA certificate for this connection.";
+    case "ERR_TLS_CERT_ALTNAME_INVALID":
+      return "Provider certificate does not match the configured URL.";
+    case "CERT_HAS_EXPIRED":
+      return "Provider certificate has expired.";
+    case "CERT_NOT_YET_VALID":
+      return "Provider certificate is not yet valid.";
+    default:
+      return undefined;
   }
 }
 
@@ -130,14 +156,16 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
     );
     request.on("error", (error) => {
       if (error instanceof ConnectorError) reject(error);
-      else
+      else {
+        const tlsError = certificateError(error);
         reject(
           new ConnectorError(
-            `Provider is unreachable: ${redact(error.message, secretList)}`,
+            tlsError ?? `Provider is unreachable: ${redact(error.message, secretList)}`,
             undefined,
-            "unreachable",
+            tlsError ? "tls" : "unreachable",
           ),
         );
+      }
     });
     request.on("close", () => signal?.removeEventListener("abort", onAbort));
     request.end();

@@ -108,6 +108,16 @@ upstream detail redacted.
   cannot see or exercise a connection.
 - **Proxmox TLS.** `verifyTls: false` or a custom PEM `ca` supports self-signed
   lab endpoints; verification stays on by default.
+  For the default Proxmox cluster certificate, read the public CA on the
+  Proxmox host with `cat /etc/pve/pve-root-ca.pem` and paste its complete PEM
+  contents into **CA 인증서(PEM)** in the connection editor. Keep **TLS 인증서
+  검증** enabled. This trusts only this connection's CA; hostname and validity
+  checks still apply. CA certificates are separate from API token secrets.
+  Obtain the CA through a trusted server console or authenticated SSH, rather
+  than trusting an unauthenticated certificate download automatically. See
+  [Proxmox certificate management](https://pve.proxmox.com/wiki/Certificate_Management).
+  The connection test requests both `/version` and authenticated `/nodes`, so
+  a publicly readable version endpoint cannot conceal a rejected API token.
 - **No credentials in URLs.** URL config fields reject embedded
   `user:password@` userinfo at validation; any such record written before this
   invariant is still stripped in views.
