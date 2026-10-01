@@ -187,6 +187,54 @@ The P41 application runtime was built and activated from independently reviewed 
   카드에는 CA 등록 필요가 한국어로 표시됩니다. JSON·스크린샷 증빙은 P41의
   `verification/proxmox-20261001`에 보관합니다. 이후 문서 반영은 앱을 재시작하지 않습니다.
 
+## Proxmox 관리 기능 확장 — 2026년 10월 1일
+
+- 노드별 스토리지 용량·상태·내용물과 설정, VM/LXC 상태·설정·스냅샷,
+  노드 네트워크·디스크, 작업 상태·로그와 토큰의 실제 접근 권한을 조회합니다.
+  조회 19종과 변경 16종의 메타데이터·매개변수 스키마를 제공합니다. 전원 제어,
+  설정 변경, 생성·복제·이전·삭제, 스냅샷, 백업·복원, 스토리지 등록·설정·삭제와
+  ISO/템플릿 다운로드는 기존 네이티브 검토 절차로 실행합니다. 조회 API로는 실행할 수 없습니다.
+- 작업 검토는 연결·TLS 설정·인증 정보와 기존 대상의 설정 버전에 묶입니다.
+  승인 전 변경되면 실행하지 않으며 같은 승인은 한 번만 전송됩니다. 전송 후 연결이
+  끊기면 결과 불명으로 기록하고 자동 재실행하지 않습니다. UPID는 작업 접수이며,
+  종료 상태 `stopped`와 `exitstatus: OK`로 비동기 완료를 확인합니다.
+  Proxmox 9.2의 스토리지 등록·설정 변경은 객체 형태의 동기 완료 응답도 처리하며,
+  생성된 설정의 비밀값은 반환하지 않습니다. 이 계약은 실제 서버의 API 명세와
+  [공식 스토리지 API 소스](https://raw.githubusercontent.com/proxmox/pve-storage/master/src/PVE/API2/Storage/Config.pm)를 확인했습니다.
+- 대화와 위임 작업의 Pi가 변경 작업을 준비할 수 있지만 모델이 승인할 수는 없습니다.
+  위임 작업은 승인을 기다린 뒤 승인된 결과를 입력 상태로 받으며 작업 상태를 확인합니다.
+  실제 Pi 결과 봉투를 대화의 검토 카드가 읽도록 보완했습니다. 팀 Pi는 현재 조회만 제공합니다.
+- 기능 소스 `8fdf6d7beea3f6a77af9ff1868d0906fb888ffc2`의 전체 검사 301개 중
+  300개가 통과했고 POSIX CLI 테스트 1개는 Windows에서 제외됐습니다. 후속 권한 조회 수정은
+  커넥터 테스트 30/30과 서버·모바일 타입 검사로, Pi 검토 카드 보완은 회귀 테스트 2/2와
+  모바일 타입 검사로 확인했습니다. 최종 스토리지 완료 응답 수정에서도 Proxmox/Pi/모바일
+  검사 7/7과 서버·모바일 타입 검사가 통과했습니다. 변경 파일 Biome 검사는 통과합니다.
+  Windows 전체 Biome 검사는 변경 밖의 기존 CRLF 형식 차이로 실패하므로 전체 lint 통과로 기록하지 않습니다.
+- 최종 앱 소스 `cc0ea0d11333cc6e27e4026bf329e9877087047d`를 P41에서 서버·웹으로
+  빌드했습니다. 활성 작업·대화가 없을 때 API만 재시작했고, 기존 연결·인증 정보 존재 여부,
+  환경 파일과 기본 모델 `oc-gpt-6-luna`를 보존했습니다. API·웹·브라우저 상태 확인 네 가지는
+  HTTP 200입니다. GitHub 저장소는 private이며 소스 변경은 main에 커밋·푸시했습니다.
+- 실제 `10.0.0.2:8006`, `10.0.0.3:8006`은 이제 각 CA가 등록돼 TLS 검증을 켠 상태로
+  Proxmox 9.2.2 연결 검사와 노드 조회가 성공합니다. 두 연결의 노드 이름은 모두 `reforged`지만
+  서로 다른 연결 ID로 조회합니다. 현재 두 토큰의 `/access/permissions`는 빈 맵이며,
+  스토리지·VM 목록은 권한 필터 때문에 비어 있고 노드 상세는 403입니다. 실제 스토리지가
+  없다는 뜻은 아닙니다. Proxmox에서 토큰 ACL을 부여해야 실제 조회·변경을 사용할 수 있습니다.
+  앱 관리 화면은 이 원인과 PVEAuditor/PVEAdmin 설정 경로를 안내합니다.
+- 배포된 데스크톱·휴대폰 웹에서 실제 두 연결의 권한 안내를 확인했습니다. 임시 루프백
+  Proxmox 호환 제공자로 스토리지 용량·ISO 내용물, VM 설정, 승인 전 미실행, 승인 후 한 번
+  전송, 중복 승인 미실행과 UPID 상태·로그의 완료 결과를 확인했습니다. 페이지 오류와 외부
+  브라우저 요청은 없었고 테스트 커넥터는 삭제했습니다. 실제 운영 VM은 변경하지 않았습니다.
+  증빙은 P41의 `verification/proxmox-management-20261001`에 보관합니다.
+- 실제 OpenCodex `oc-gpt-6-luna`와 내장 Pi의 세 차례 연속 대화도 확인했습니다.
+  두 실제 연결에 각각 스토리지·권한 도구를 호출했고, 테스트 연결의 정확한 VM 시작 요청을
+  준비했습니다. 첫 요청의 `type`/`kind` 매개변수 오류는 실행 전에 거부됐으며 모델이 수정했습니다.
+  대화의 검토 카드에서 승인한 뒤 모델은 저장된 승인 결과, 작업 상태와 로그를 읽어
+  `stopped`/`OK`를 확인했습니다. 시작 요청은 승인 전 미전송·승인 후 한 번만 전송했고
+  후속 대화가 다시 실행하지 않았습니다. 대화 `c32efd38-8387-47a3-ad09-1843a370072f`의
+  세 완료 이벤트가 API 재시작 후에도 저장돼 있고 실행 오류 이벤트는 없습니다. 이 브라우저
+  확인은 `dd46f9c`의 UI에서 수행했으며 최종 `cc0ea0d`의 웹 번들 해시는 동일합니다.
+  최종 API에서도 결과 복원·테스트 연결 삭제·미승인 테스트 작업 없음과 설정 보존을 확인했습니다.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
