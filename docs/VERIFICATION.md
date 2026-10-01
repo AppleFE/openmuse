@@ -159,6 +159,34 @@ The P41 application runtime was built and activated from independently reviewed 
   `reconnect-ui-report.json`, `reconnect-deployment.json`, `04-*`, `05-*`에 보관합니다.
   이후 문서만 반영하며 앱을 다시 재시작하지 않습니다.
 
+## Proxmox 인증서 연결 진단 — 2026년 10월 1일
+
+- 실제 연결 `https://10.0.0.2:8006/`은 TLS 검증이 켜져 있지만 CA가 비어 있었습니다.
+  맥미니에서 공개 인증서만 확인한 결과 Proxmox 클러스터 CA가 서명한 인증서를 사용하며,
+  해당 IP는 인증서의 SAN에 포함되고 유효 기간 안에 있었습니다. 실패 원인은
+  `UNABLE_TO_VERIFY_LEAF_SIGNATURE`로, HTTP 토큰 인증에 도달하기 전의 신뢰 체인 오류입니다.
+  기존 SSH 키로 Proxmox에 로그인되지 않아 CA를 직접 읽지 못했습니다. 사용자에게 서버
+  콘솔의 `cat /etc/pve/pve-root-ca.pem` 결과를 요청했으며, 실제 연결은 CA 등록 대기 상태입니다.
+  실제 토큰의 유효성이나 접근 권한은 아직 검증되지 않았습니다. TLS 검증을 임의로 끄지 않았습니다.
+- 인증서 신뢰·호스트 불일치·만료 오류를 구분하고, 기존에 저장된 영문 오류도 UI에서 한국어로
+  표시하도록 수정했습니다. CA 입력 안내에 공개 CA를 얻는 명령과 PEM 형식을 설명했고,
+  TLS 스위치의 웹 접근성 상태와 입력 예시를 보완했습니다. 연결 테스트는 공개될 수 있는
+  `/version` 외에 인증이 필요한 `/nodes`도 확인하므로 토큰 거부를 성공으로 표시하지 않습니다.
+- 실제 HTTPS 테스트 서버로 CA 누락 시 인증 정보를 보내지 않고 실패하는지, 연결별 CA를
+  등록하면 TLS 검증을 유지한 채 성공하는지, 신뢰 설정이 다른 연결로 번지지 않는지,
+  사용자 지정 CA로도 호스트 검증을 하는지, 공개 버전 API 뒤의 토큰 거부를 탐지하는지
+  검증했습니다. 관련 커넥터 테스트 25/25, 서버·모바일 타입 검사, Biome, 서버 빌드가 통과했습니다.
+- 서버 소스 `25d533cbabadd508f0db09aab0f6d0be0879120c`와 웹 소스
+  `cffde2c82348fbcd42818eb544be6057e0b5b0a9`를 P41에서 빌드·적용했습니다. 활성 작업과
+  대화가 없는 상태에서 API만 한 번 재시작했고, 기존 연결 설정·인증 정보 존재 여부·환경 파일과
+  사용자가 지정한 기본 모델 `oc-gpt-6-luna`를 유지했습니다. API PID는 96361이며,
+  서버·웹·브라우저 상태 확인 네 가지가 HTTP 200입니다.
+- 실제 웹 화면의 임시 HTTPS 커넥터로 CA를 입력·저장하고 기존 토큰을 비워 유지한 뒤,
+  인증된 연결 테스트와 노드 조회가 성공함을 확인했습니다. 자격 증명은 응답에 포함되지 않고
+  페이지 오류와 외부 브라우저 요청은 0건입니다. 임시 커넥터는 삭제했습니다. 실제 Proxmox
+  카드에는 CA 등록 필요가 한국어로 표시됩니다. JSON·스크린샷 증빙은 P41의
+  `verification/proxmox-20261001`에 보관합니다. 이후 문서 반영은 앱을 재시작하지 않습니다.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
