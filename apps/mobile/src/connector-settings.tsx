@@ -61,6 +61,7 @@ function ConnectorField({
       <Pressable
         accessibilityRole="checkbox"
         accessibilityLabel={uiLabel(field.label)}
+        aria-checked={checked}
         accessibilityState={{ checked }}
         onPress={() => onChange(!checked)}
         style={[s.row, { gap: 10, paddingVertical: 8 }]}
@@ -94,7 +95,13 @@ function ConnectorField({
         autoCapitalize="none"
         autoCorrect={false}
         multiline={field.name === "ca"}
-        placeholder={secret ? "서버에 안전하게 저장됩니다" : uiLabel(field.description ?? "")}
+        placeholder={
+          secret
+            ? "서버에 안전하게 저장됩니다"
+            : field.name === "ca"
+              ? "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
+              : uiLabel(field.description ?? "")
+        }
       />
       {!!field.description && !secret && (
         <Text style={[s.small, { marginTop: -10, marginBottom: 14 }]}>
