@@ -262,6 +262,48 @@ The P41 application runtime was built and activated from independently reviewed 
   `verification/proxmox-acl-20261002` (`deployment.json`, `acceptance.json` and
   screenshots).
 
+## GitHub private source inspection (2026-10-02)
+
+- Added six authenticated reads (`repo`, `branches`, `contents`, `tree`, `file`,
+  `commits`) alongside the existing repository/issue/PR lists. Operation discovery
+  publishes exact input schemas and Korean labels. Lists support pagination;
+  files decode UTF-8 and support bounded character sections and continuation.
+  Commit SHAs can pin inspection to one revision. Binary files and files above
+  1 MiB return explicit unavailable metadata, and truncated tree responses remain
+  marked incomplete. Stored PAT values and external download links are excluded
+  from tool results. GitHub Enterprise API prefixes and encoded branch/file paths
+  are preserved. Contracts follow the official GitHub APIs linked in
+  [CONNECTORS.md](CONNECTORS.md#github-source-inspection).
+- Updated shared connector and embedded Pi instructions to use authenticated
+  GitHub source tools for private repositories and to inspect actual files before
+  making claims about dependency usage. The GitHub setup description is Korean
+  and now includes source/branch reads and Contents read permission requirements.
+- Connector/Pi/Proxmox/mobile regression checks passed 39/39; server/mobile type
+  checks and changed-file Biome checks passed. Source
+  `d92f02c06910db07fca7568caba80e9f93b23f2d` was committed, pushed to private main
+  and built as server/web on P41. API restart happened with no active tasks or
+  conversations; environment, existing connections and default `oc-gpt-6-luna`
+  were preserved. All four service health endpoints returned HTTP 200.
+- The existing stored GitHub token authenticated as AppleFE. Actual private
+  `AppleFE/openmuse` reads returned its main branch SHA, 23 root entries,
+  283 recursive tree entries, three recent commits, decoded README.md and
+  package.json. The newly paginated repository list returned 146 accessible
+  repositories. `AppleFE/PPAI` returned 404 with this token and was absent from
+  that list; its existence or code contents are not claimed as verified.
+- Real Chromium verified the Korean GitHub setup text and an OpenCodex
+  `oc-gpt-6-luna` conversation using embedded Pi. The model discovered operations,
+  read repo/branches/contents, then read README.md and package.json using the same
+  branch commit SHA. The finished conversation is named
+  `검증: GitHub 비공개 소스 조회` (thread
+  `c1bbc5b8-7ccd-4014-8f98-545885f82ff2`). There were no page errors, browser requests
+  to other hosts or external writes. Evidence is on P41 under
+  `verification/github-source-20261002` (`deployment.json`, `live-reads.json`,
+  `repo-discovery.json`, `pi-acceptance.json` and screenshots).
+- A contemporaneous Proxmox check confirmed that the user's ACL changes now
+  provide effective permissions on both existing connections. Connection 2
+  returned five node storages; connection 3 returned two. The prior empty-token
+  ACL findings above are historical; no operational Proxmox write was performed.
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
