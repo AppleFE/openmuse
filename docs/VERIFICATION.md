@@ -235,6 +235,33 @@ The P41 application runtime was built and activated from independently reviewed 
   확인은 `dd46f9c`의 UI에서 수행했으며 최종 `cc0ea0d`의 웹 번들 해시는 동일합니다.
   최종 API에서도 결과 복원·테스트 연결 삭제·미승인 테스트 작업 없음과 설정 보존을 확인했습니다.
 
+## Proxmox token diagnosis and refresh (2026-10-02)
+
+- Added the configured public token ID to `permissions` results and the management
+  screen, without returning the token secret. Permission reads now run again when
+  the user refreshes the node data. The screen treats a defined privilege with
+  propagation flag `0` as granted, matching the
+  [official ACL implementation](https://raw.githubusercontent.com/proxmox/pve-access-control/master/src/PVE/RPCEnvironment.pm).
+- Proxmox/Pi, connector and mobile regression tests passed 21/21; server/mobile
+  type checks and changed-file Biome checks passed. Source
+  `a10069d9f4c4c60305df0dad912f70ac24381669` was committed and pushed to the private
+  repository, then built on P41 as server and web. The API restarted only after
+  confirming no active tasks or conversations. Existing connection configurations,
+  environment file and default model `oc-gpt-6-luna` were preserved; all four
+  service health endpoints returned HTTP 200.
+- At 2026-10-02 01:51 UTC, both actual servers (`10.0.0.2:8006` and `10.0.0.3:8006`)
+  were using `root@pam!openmuse` and still returned `{}` from the effective
+  permissions endpoint. Their node storage lists were empty. The correct token
+  and URLs are now confirmed; the saved Proxmox ACL still needs investigation.
+- Real Chromium confirmed token IDs on both actual connection screens. A
+  disposable loopback provider confirmed that refresh observes a new
+  non-propagated privilege, displays storage, and observes subsequent revocation
+  without reopening the screen. Desktop and phone views had no page errors and
+  did not display the private token value. The fixture connector was deleted;
+  actual Proxmox resources were never modified. Evidence is on P41 under
+  `verification/proxmox-acl-20261002` (`deployment.json`, `acceptance.json` and
+  screenshots).
+
 ## Earlier automated checks
 
 - **154 tests pass**, with no failures or skipped tests, across the API, task engine, integrations, computer lifecycle, Docker runner, conversation queue, browser address handling, domain, and native date handling. Five new checks cover email search/read ownership, disconnected mail, evidence-based demo replies, and exhibit extraction without navigation noise.
