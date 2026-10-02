@@ -236,7 +236,7 @@ test("providers metadata, query validation and read operations work end to end",
   const githubInfo = infos.find((info: { provider: string }) => info.provider === "github");
   assert.deepEqual(
     githubInfo.operations.map((op: { name: string }) => op.name),
-    ["repos", "issues", "pulls"],
+    ["repos", "issues", "pulls", "repo", "branches", "contents", "tree", "file", "commits"],
   );
   const created = await app.request("/api/connectors", {
     method: "POST",
@@ -281,6 +281,77 @@ test("providers metadata, query validation and read operations work end to end",
   const detailBody = await detail.json();
   assert.equal(detailBody.check.ok, true);
   assert.equal(JSON.stringify(detailBody).includes(TOKEN_SECRET), false);
+});
+
+test("private GitHub source reads use the owner's stored token through API and agent tools", async (t) => {
+  const source = "// private source\nexport const enabled = true;\n";
+  const mock = await mockProvider(t, (request, response) => {
+    assert.equal(request.method, "GET");
+    assert.equal(request.headers.authorization, `Bearer ${TOKEN_SECRET}`);
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        name: "feature.ts",
+        path: "src/feature.ts",
+        sha: "a".repeat(40),
+        size: Buffer.byteLength(source),
+        type: "file",
+        encoding: "base64",
+        content: Buffer.from(source).toString("base64"),
+      }),
+    );
+  });
+  const { app, service } = await fixture(t);
+  const connector = await service.create("alice", {
+    provider: "github",
+    name: "Private source",
+    config: { baseUrl: mock.baseUrl },
+    secrets: { token: TOKEN_SECRET },
+  });
+  const query = (owner: string, params: Record<string, unknown>) =>
+    app.request(`/api/connectors/${connector.id}/query`, {
+      method: "POST",
+      headers: headers(owner),
+      body: JSON.stringify({ operation: "file", params }),
+    });
+  assert.equal((await query("bob", { repo: "octo/private", path: "src/feature.ts" })).status, 404);
+  assert.equal(mock.requests.length, 0);
+  assert.equal((await query("alice", { repo: "octo/private", path: "../secret" })).status, 422);
+  assert.equal(mock.requests.length, 0);
+  const response = await query("alice", {
+    repo: "octo/private",
+    path: "src/feature.ts",
+    ref: "feature/private",
+  });
+  assert.equal(response.status, 200);
+  const { data } = await response.json();
+  assert.equal(data.file.content, source);
+  assert.equal(
+    mock.requests[0].url,
+    "/repos/octo/private/contents/src/feature.ts?ref=feature%2Fprivate",
+  );
+  const tools = connectorTools(service, "alice"),
+    discovery = tools.find((t) => t.name === "connector_operations"),
+    read = tools.find((t) => t.name === "query_connector");
+  assert.ok(discovery?.execute && read?.execute);
+  const invoke = (tool: NonNullable<typeof discovery>, args: unknown) =>
+    (tool.execute as (args: unknown) => Promise<unknown>)(args);
+  const info = (await invoke(discovery, { connectorId: connector.id })) as {
+    operations: { name: string; kind: string; paramsSchema: Record<string, unknown> }[];
+  };
+  assert.ok(info.operations.some((o) => o.name === "file" && o.kind === "read" && o.paramsSchema));
+  assert.deepEqual(info.operations.find((o) => o.name === "file")?.paramsSchema.required, [
+    "repo",
+    "path",
+  ]);
+  const viaTool = (await invoke(read, {
+    connectorId: connector.id,
+    operation: "file",
+    params: { repo: "octo/private", path: "src/feature.ts", offset: 3, limit: 8 },
+  })) as { file: { content: string; nextOffset: number } };
+  assert.equal(viaTool.file.content, source.slice(3, 11));
+  assert.equal(viaTool.file.nextOffset, 11);
+  assert.ok(!JSON.stringify(viaTool).includes(TOKEN_SECRET));
 });
 
 test("provider failures at the API stay redacted and timeout cleanly", async (t) => {

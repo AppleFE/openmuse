@@ -8,7 +8,7 @@ changes through the existing persisted action review; other providers remain rea
 
 | Provider   | Operations                              | Credentials                       |
 | ---------- | --------------------------------------- | --------------------------------- |
-| `github`   | `repos`, `issues`, `pulls`              | `token` (PAT)                     |
+| `github`   | 9 reads, including private repository source (below) | `token` (PAT)                     |
 | `tailscale`| `devices`                               | `apiKey`                          |
 | `headscale`| `devices`                               | `apiKey`                          |
 | `wireguard`| `status`                                | none (local `wg` binary)          |
@@ -90,6 +90,44 @@ POST   /api/connectors/:id/query          run a read operation { operation, para
 
 Unknown operations return `422`; provider failures surface as `502` with the
 upstream detail redacted.
+
+## GitHub source inspection
+
+The agent and API expose these authenticated reads, including private repositories:
+
+| Operation | Parameters and result |
+| --- | --- |
+| `repos` | Optional `page`/`limit`; token-visible repositories and `nextPage` |
+| `repo` | `repo: "owner/name"`; private status, default branch and metadata |
+| `branches` | `repo`, optional `page`/`limit`; branch names and commit SHAs |
+| `contents` | `repo`, optional relative `path`, `ref`, `offset`/`limit`; folder entries |
+| `tree` | `repo`, optional `ref` (default HEAD), `recursive` (default false), prefix `path`, `offset`/`limit`; tree SHA and entries |
+| `file` | `repo`, relative `path`, optional `ref`, `offset`/`limit`; decoded UTF-8 text, blob SHA, line range and `nextOffset` |
+| `commits` | `repo`, optional `ref`, `path`, `page`/`limit`; SHAs, messages, authors and dates |
+| `issues`, `pulls` | `repo`, optional `state`, `page`/`limit`; issues or PRs with `nextPage` |
+
+Use a commit SHA returned by `branches` as `ref` when inspecting several files.
+Repository visibility does not imply source access: a fine-grained token needs
+the selected repository and **Contents: Read**; a classic PAT needs `repo` scope
+for private repositories. GitHub uses authenticated API requests, rather than
+opening public web pages. No stored PAT is returned in results or followed to an
+external download URL.
+
+Text files up to 1 MiB are decoded; larger files, binary/non-UTF-8 files and
+submodules return metadata with `content: null` and `unavailableReason`. File
+output defaults to 20,000 characters and is capped at 40,000; `nextOffset` resumes
+the remaining text. Folder/tree output defaults to 200 entries and is capped at
+1,000 per tool result. An upstream truncated tree remains explicitly truncated;
+fetch subtrees by SHA to continue. Tree transport is capped at 8 MiB to cover
+GitHub's documented 7 MB response limit, while tool output remains bounded.
+Other responses retain the 4 MiB cap. GitHub enables recursion even for the query
+value `false`, so the connector omits that parameter when recursion is disabled.
+
+These contracts follow the official
+[Contents API](https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28),
+[Trees API](https://docs.github.com/en/rest/git/trees?apiVersion=2022-11-28),
+[Branches API](https://docs.github.com/en/rest/branches/branches?apiVersion=2022-11-28)
+and [Commits API](https://docs.github.com/en/rest/commits/commits?apiVersion=2022-11-28).
 
 ## Security invariants
 

@@ -152,10 +152,14 @@ const labels: Record<string, string> = {
   Interface: "인터페이스",
   "Read repositories, issues and pull requests from GitHub or GitHub Enterprise.":
     "GitHub 또는 GitHub Enterprise의 저장소, 이슈와 풀 리퀘스트를 읽습니다.",
+  "Read repositories, branches, files, commits, issues and pull requests from GitHub or GitHub Enterprise.":
+    "GitHub 또는 GitHub Enterprise의 비공개 저장소, 브랜치, 파일 내용, 커밋, 이슈와 풀 리퀘스트를 읽습니다.",
   "Defaults to https://api.github.com. Set for GitHub Enterprise Server.":
     "기본값은 https://api.github.com입니다. GitHub Enterprise 서버 사용 시 변경하세요.",
   "Fine-grained or classic PAT with repository read access.":
     "저장소 읽기 권한이 있는 세분화 또는 클래식 개인 액세스 토큰입니다.",
+  "Fine-grained PAT: select the repository and grant Contents read access. Classic PAT: repo scope for private repositories.":
+    "세분화 토큰은 대상 저장소와 Contents 읽기 권한을 지정하세요. 클래식 토큰은 비공개 저장소 접근에 repo 범위가 필요합니다.",
   "List devices on a Tailscale tailnet.": "Tailscale 테일넷의 기기 목록을 확인합니다.",
   'Tailnet name, or "-" for the key\'s default tailnet.':
     '테일넷 이름을 입력하세요. 키의 기본 테일넷은 "-"로 지정합니다.',

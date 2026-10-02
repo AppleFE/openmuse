@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { githubReadOperations } from "./github.ts";
 import { proxmoxReadOperations } from "./proxmox.ts";
 
 /**
@@ -118,7 +119,7 @@ export type ConnectorUpdateInput = z.infer<typeof connectorUpdateSchema>;
 
 /** Read-only operations each provider supports. */
 export const connectorOperations = {
-  github: ["repos", "issues", "pulls"],
+  github: githubReadOperations,
   tailscale: ["devices"],
   headscale: ["devices"],
   wireguard: ["status"],

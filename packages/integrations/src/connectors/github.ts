@@ -4,13 +4,12 @@ import {
   githubConfigSchema,
   githubSecretsSchema,
 } from "../../../domain/src/connectors.ts";
-import { ConnectorError, httpJson } from "./http.ts";
+import { githubOperationLabels, githubReadParams } from "../../../domain/src/github.ts";
+import { ConnectorError, httpJson, redact } from "./http.ts";
 import type { ConnectorAdapter, ConnectorContext } from "./types.ts";
 
 const DEFAULT_BASE = "https://api.github.com";
-const repoRef = z
-  .string()
-  .regex(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, "Use a repository reference like owner/name");
+const MAX_FILE_BYTES = 1024 * 1024;
 
 const repoSchema = z.object({
   id: z.number(),
@@ -55,13 +54,57 @@ const pullSchema = z.object({
   updated_at: z.string().nullable().optional(),
   merged_at: z.string().nullable().optional(),
 });
-const listParams = z.object({
-  repo: repoRef,
-  state: z.enum(["open", "closed", "all"]).default("open"),
-  limit: z.number().int().min(1).max(100).default(30),
+const branchSchema = z.object({
+  name: z.string(),
+  commit: z.object({ sha: z.string() }),
+  protected: z.boolean().optional(),
+});
+const entrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  sha: z.string(),
+  size: z.number().int().nonnegative(),
+  type: z.enum(["file", "dir", "symlink", "submodule"]),
+  html_url: z.string().nullable().optional(),
+  submodule_git_url: z.string().nullable().optional(),
+  encoding: z.string().optional(),
+  content: z.string().optional(),
+});
+const treeSchema = z.object({
+  sha: z.string(),
+  truncated: z.boolean(),
+  tree: z.array(
+    z.object({
+      path: z.string(),
+      type: z.enum(["blob", "tree", "commit"]),
+      sha: z.string(),
+      mode: z.string(),
+      size: z.number().optional(),
+    }),
+  ),
+});
+const commitSchema = z.object({
+  sha: z.string(),
+  html_url: z.string(),
+  author: z.object({ login: z.string() }).nullable().optional(),
+  commit: z.object({
+    message: z.string(),
+    author: z
+      .object({
+        name: z.string().nullable().optional(),
+        date: z.string().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  }),
 });
 
-function request(ctx: ConnectorContext, path: string) {
+function request(
+  ctx: ConnectorContext,
+  path: string,
+  accept = "application/vnd.github+json",
+  maxBytes?: number,
+) {
   const config = githubConfigSchema.parse(ctx.config);
   const secrets = githubSecretsSchema.parse(ctx.secrets);
   const base = (config.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
@@ -69,12 +112,103 @@ function request(ctx: ConnectorContext, path: string) {
     timeoutMs: ctx.timeoutMs,
     signal: ctx.signal,
     secrets: [secrets.token],
+    maxBytes,
     headers: {
       Authorization: `Bearer ${secrets.token}`,
-      Accept: "application/vnd.github+json",
+      Accept: accept,
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "OpenMuse-Connector",
     },
+  });
+}
+
+function safeData(value: unknown, ctx: ConnectorContext): unknown {
+  if (typeof value === "string") return redact(value, [String(ctx.secrets.token)]);
+  if (Array.isArray(value)) return value.map((v) => safeData(v, ctx));
+  if (value && typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, safeData(v, ctx)]));
+  return value;
+}
+const segment = encodeURIComponent;
+const filePath = (path: string) => path.split("/").map(segment).join("/");
+function query(path: string, params: Record<string, unknown>) {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params))
+    if (v !== undefined && v !== "") search.set(k, String(v));
+  return `${path}${search.size ? `?${search}` : ""}`;
+}
+const nextPage = (page: number, count: number, limit: number) =>
+  count === limit ? page + 1 : null;
+function repoView(repo: z.infer<typeof repoSchema>) {
+  return {
+    id: repo.id,
+    name: repo.name,
+    fullName: repo.full_name,
+    private: repo.private,
+    description: repo.description,
+    url: repo.html_url,
+    defaultBranch: repo.default_branch ?? null,
+    language: repo.language,
+    stars: repo.stargazers_count ?? 0,
+    openIssues: repo.open_issues_count ?? 0,
+    archived: repo.archived ?? false,
+    updatedAt: repo.updated_at ?? null,
+    pushedAt: repo.pushed_at ?? null,
+  };
+}
+function entryView(entry: z.infer<typeof entrySchema>) {
+  return {
+    name: entry.name,
+    path: entry.path,
+    sha: entry.sha,
+    size: entry.size,
+    type: entry.submodule_git_url ? "submodule" : entry.type,
+    url: entry.html_url ?? null,
+  };
+}
+const descriptions: Record<string, string> = {
+  repos:
+    "List repositories visible to the configured token, including private repositories. Supports page and limit; nextPage can require one extra request to establish completion.",
+  issues: "List repository issues, excluding pull requests. Supports state, page and limit.",
+  pulls:
+    "List repository pull requests with head and base branches. Supports state, page and limit.",
+  repo: "Read repository details including private status and defaultBranch. Repository Metadata read permission is required.",
+  branches:
+    "List branches and immutable commit SHAs. Requires repository Contents read access; pass a returned commitSha to ref when inspecting code consistently.",
+  contents:
+    "List a folder at ref (branch, tag or commit SHA), defaulting to the repository default branch. path is relative; omit it for the root. Supports offset and limit. An upstream directory may be capped at 1000 entries; use tree for larger directories.",
+  tree: "Read a Git file tree by ref, default HEAD. recursive defaults false; true includes descendants. Optional path filters a prefix. Offset/limit bound output; providerTruncated means fetch each subtree by its SHA rather than treating this list as complete. Requires Contents read access.",
+  file: "Read UTF-8 source text from a private or public repository at ref. Relative path required. Supports offset/limit in characters; nextOffset retrieves the next section. Returns blob SHA, line range and truncation status. Files above 1 MiB, binary files and submodules return metadata with an unavailableReason. Requires Contents read access. Credentials and external download URLs are never returned or followed.",
+  commits:
+    "List commit SHAs, messages, authors and dates at ref (branch, tag or SHA), optionally filtered by path. Supports page/limit. Requires Contents read access.",
+};
+function operations() {
+  return Object.entries(githubReadParams).map(([name, schema]) => {
+    const paramsSchema = z.toJSONSchema(schema, { io: "input" }) as Record<string, unknown>;
+    const properties = paramsSchema.properties as Record<
+      string,
+      { type?: string; enum?: string[]; description?: string }
+    >;
+    const required = paramsSchema.required as string[] | undefined;
+    return {
+      name,
+      kind: "read" as const,
+      label: githubOperationLabels[name],
+      description: descriptions[name],
+      paramsSchema,
+      params: Object.entries(properties).map(([key, spec]) => ({
+        name: key,
+        type:
+          spec.type === "boolean"
+            ? ("boolean" as const)
+            : spec.type === "number" || spec.type === "integer"
+              ? ("number" as const)
+              : ("string" as const),
+        required: required?.includes(key),
+        enum: spec.enum,
+        description: spec.description ?? key,
+      })),
+    };
   });
 }
 
@@ -82,7 +216,8 @@ export function githubAdapter(): ConnectorAdapter {
   const info: ConnectorProviderInfo = {
     provider: "github",
     label: "GitHub",
-    description: "Read repositories, issues and pull requests from GitHub or GitHub Enterprise.",
+    description:
+      "Read repositories, branches, files, commits, issues and pull requests from GitHub or GitHub Enterprise.",
     configFields: [
       {
         name: "baseUrl",
@@ -98,34 +233,11 @@ export function githubAdapter(): ConnectorAdapter {
         label: "Personal access token",
         required: true,
         type: "password",
-        description: "Fine-grained or classic PAT with repository read access.",
+        description:
+          "Fine-grained PAT: select the repository and grant Contents read access. Classic PAT: repo scope for private repositories.",
       },
     ],
-    operations: [
-      {
-        name: "repos",
-        description: "List repositories visible to the token, most recently updated first.",
-        params: [],
-      },
-      {
-        name: "issues",
-        description: "List issues in a repository.",
-        params: [
-          { name: "repo", type: "string", required: true, description: "owner/name" },
-          { name: "state", type: "string", description: "open, closed or all" },
-          { name: "limit", type: "number", description: "1-100, default 30" },
-        ],
-      },
-      {
-        name: "pulls",
-        description: "List pull requests in a repository.",
-        params: [
-          { name: "repo", type: "string", required: true, description: "owner/name" },
-          { name: "state", type: "string", description: "open, closed or all" },
-          { name: "limit", type: "number", description: "1-100, default 30" },
-        ],
-      },
-    ],
+    operations: operations(),
   };
   return {
     info,
@@ -141,83 +253,248 @@ export function githubAdapter(): ConnectorAdapter {
       }
     },
     async run(ctx, operation, params) {
-      switch (operation) {
-        case "repos": {
-          const repos = z
-            .array(repoSchema)
-            .parse(
-              await request(
-                ctx,
-                "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
-              ),
-            );
-          return {
-            repos: repos.map((repo) => ({
-              id: repo.id,
-              name: repo.name,
-              fullName: repo.full_name,
-              private: repo.private,
-              description: repo.description,
-              url: repo.html_url,
-              defaultBranch: repo.default_branch ?? null,
-              language: repo.language,
-              stars: repo.stargazers_count ?? 0,
-              openIssues: repo.open_issues_count ?? 0,
-              archived: repo.archived ?? false,
-              updatedAt: repo.updated_at ?? null,
-              pushedAt: repo.pushed_at ?? null,
-            })),
-          };
-        }
-        case "issues":
-        case "pulls": {
-          const input = listParams.parse(params);
-          const items = z
-            .array(operation === "issues" ? issueSchema : pullSchema)
-            .parse(
-              await request(
-                ctx,
-                `/repos/${input.repo}/${operation === "issues" ? "issues" : "pulls"}?state=${input.state}&per_page=${input.limit}`,
-              ),
-            );
-          const toView = (item: z.infer<typeof issueSchema>) => ({
-            id: item.id,
-            number: item.number,
-            title: item.title,
-            state: item.state,
-            url: item.html_url,
-            author: item.user?.login ?? null,
-            labels: item.labels
-              .map((label) => (typeof label === "string" ? label : (label.name ?? "")))
-              .filter(Boolean),
-            comments: item.comments,
-            createdAt: item.created_at ?? null,
-            updatedAt: item.updated_at ?? null,
-          });
-          if (operation === "issues")
-            // The issues endpoint mixes in pull requests; drop them here.
+      const read = async () => {
+        switch (operation) {
+          case "repos": {
+            const input = githubReadParams.repos.parse(params);
+            const repos = z
+              .array(repoSchema)
+              .parse(
+                await request(
+                  ctx,
+                  `/user/repos?per_page=${input.limit}&sort=updated&affiliation=owner,collaborator,organization_member${input.page > 1 ? `&page=${input.page}` : ""}`,
+                ),
+              );
             return {
-              issues: (items as z.infer<typeof issueSchema>[])
-                .filter((item) => !item.pull_request)
-                .map(toView),
+              repos: repos.map(repoView),
+              page: input.page,
+              nextPage: nextPage(input.page, repos.length, input.limit),
             };
-          return {
-            pulls: (items as z.infer<typeof pullSchema>[]).map((pull) => ({
-              ...toView({ comments: 0, labels: [], ...pull }),
-              draft: pull.draft ?? false,
-              head: pull.head?.ref ?? null,
-              base: pull.base?.ref ?? null,
-              mergedAt: pull.merged_at ?? null,
-            })),
-          };
+          }
+          case "repo": {
+            const input = githubReadParams.repo.parse(params);
+            return { repo: repoView(repoSchema.parse(await request(ctx, `/repos/${input.repo}`))) };
+          }
+          case "branches": {
+            const input = githubReadParams.branches.parse(params);
+            const branches = z.array(branchSchema).parse(
+              await request(
+                ctx,
+                query(`/repos/${input.repo}/branches`, {
+                  per_page: input.limit,
+                  page: input.page,
+                }),
+              ),
+            );
+            return {
+              repo: input.repo,
+              branches: branches.map((b) => ({
+                name: b.name,
+                commitSha: b.commit.sha,
+                protected: b.protected ?? false,
+              })),
+              page: input.page,
+              nextPage: nextPage(input.page, branches.length, input.limit),
+            };
+          }
+          case "contents": {
+            const input = githubReadParams.contents.parse(params);
+            const raw = await request(
+              ctx,
+              query(
+                `/repos/${input.repo}/contents${input.path ? `/${filePath(input.path)}` : ""}`,
+                { ref: input.ref },
+              ),
+              "application/vnd.github.object+json",
+            );
+            const entries = Array.isArray(raw)
+              ? z.array(entrySchema).parse(raw)
+              : raw && typeof raw === "object" && "entries" in raw
+                ? z.object({ entries: z.array(entrySchema) }).parse(raw).entries
+                : [entrySchema.parse(raw)];
+            const end = Math.min(entries.length, input.offset + input.limit);
+            return {
+              repo: input.repo,
+              ref: input.ref ?? null,
+              path: input.path,
+              entries: entries.slice(input.offset, end).map(entryView),
+              totalEntries: entries.length,
+              offset: input.offset,
+              nextOffset: end < entries.length ? end : null,
+              truncated: input.offset > 0 || end < entries.length,
+              providerMayBeTruncated: entries.length >= 1000,
+            };
+          }
+          case "tree": {
+            const input = githubReadParams.tree.parse(params);
+            const tree = treeSchema.parse(
+              await request(
+                ctx,
+                query(`/repos/${input.repo}/git/trees/${segment(input.ref)}`, {
+                  recursive: input.recursive ? "1" : undefined,
+                }),
+                "application/vnd.github+json",
+                8 * 1024 * 1024,
+              ),
+            );
+            const entries = input.path
+              ? tree.tree.filter(
+                  (e) => e.path === input.path || e.path.startsWith(`${input.path}/`),
+                )
+              : tree.tree;
+            const end = Math.min(entries.length, input.offset + input.limit);
+            return {
+              repo: input.repo,
+              ref: input.ref,
+              treeSha: tree.sha,
+              entries: entries.slice(input.offset, end),
+              totalEntries: entries.length,
+              offset: input.offset,
+              nextOffset: end < entries.length ? end : null,
+              providerTruncated: tree.truncated,
+              truncated: tree.truncated || input.offset > 0 || end < entries.length,
+            };
+          }
+          case "file": {
+            const input = githubReadParams.file.parse(params);
+            const entry = entrySchema.parse(
+              await request(
+                ctx,
+                query(`/repos/${input.repo}/contents/${filePath(input.path)}`, { ref: input.ref }),
+                "application/vnd.github.object+json",
+              ),
+            );
+            const meta = { ...entryView(entry), repo: input.repo, ref: input.ref ?? null };
+            const unavailable = (unavailableReason: string) => ({
+              file: { ...meta, content: null, unavailableReason },
+            });
+            if (entry.type !== "file" || entry.submodule_git_url) return unavailable("not_a_file");
+            if (entry.size > MAX_FILE_BYTES) return unavailable("too_large");
+            if (entry.encoding !== "base64" || entry.content === undefined)
+              return unavailable("unsupported_encoding");
+            const encoded = entry.content.replace(/\s/g, "");
+            if (!/^[a-zA-Z0-9+/]*={0,2}$/.test(encoded))
+              throw new ConnectorError(
+                "GitHub returned malformed file encoding",
+                undefined,
+                "malformed",
+              );
+            const bytes = Buffer.from(encoded, "base64");
+            if (
+              bytes.length !== entry.size ||
+              bytes.toString("base64").replace(/=+$/, "") !== encoded.replace(/=+$/, "")
+            )
+              throw new ConnectorError(
+                "GitHub returned inconsistent file contents",
+                undefined,
+                "malformed",
+              );
+            let text: string;
+            try {
+              text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+            } catch {
+              return unavailable("binary");
+            }
+            if (text.includes("\0")) return unavailable("binary");
+            text = redact(text, [String(ctx.secrets.token)]);
+            const end = Math.min(text.length, input.offset + input.limit),
+              content = text.slice(input.offset, end),
+              lineStart = text.slice(0, input.offset).split("\n").length;
+            return {
+              file: {
+                ...meta,
+                content,
+                offset: input.offset,
+                nextOffset: end < text.length ? end : null,
+                totalCharacters: text.length,
+                lineStart,
+                lineEnd: lineStart + content.split("\n").length - 1,
+                truncated: input.offset > 0 || end < text.length,
+              },
+            };
+          }
+          case "commits": {
+            const input = githubReadParams.commits.parse(params);
+            const commits = z.array(commitSchema).parse(
+              await request(
+                ctx,
+                query(`/repos/${input.repo}/commits`, {
+                  sha: input.ref,
+                  path: input.path,
+                  per_page: input.limit,
+                  page: input.page,
+                }),
+              ),
+            );
+            return {
+              repo: input.repo,
+              ref: input.ref ?? null,
+              commits: commits.map((c) => ({
+                sha: c.sha,
+                url: c.html_url,
+                message: c.commit.message.slice(0, 2000),
+                author: c.author?.login ?? c.commit.author?.name ?? null,
+                date: c.commit.author?.date ?? null,
+              })),
+              page: input.page,
+              nextPage: nextPage(input.page, commits.length, input.limit),
+            };
+          }
+          case "issues":
+          case "pulls": {
+            const input = githubReadParams[operation].parse(params);
+            const items = z
+              .array(operation === "issues" ? issueSchema : pullSchema)
+              .parse(
+                await request(
+                  ctx,
+                  `/repos/${input.repo}/${operation === "issues" ? "issues" : "pulls"}?state=${input.state}&per_page=${input.limit}${input.page > 1 ? `&page=${input.page}` : ""}`,
+                ),
+              );
+            const toView = (item: z.infer<typeof issueSchema>) => ({
+              id: item.id,
+              number: item.number,
+              title: item.title,
+              state: item.state,
+              url: item.html_url,
+              author: item.user?.login ?? null,
+              labels: item.labels
+                .map((label) => (typeof label === "string" ? label : (label.name ?? "")))
+                .filter(Boolean),
+              comments: item.comments,
+              createdAt: item.created_at ?? null,
+              updatedAt: item.updated_at ?? null,
+            });
+            if (operation === "issues")
+              // The issues endpoint mixes in pull requests; drop them here.
+              return {
+                issues: (items as z.infer<typeof issueSchema>[])
+                  .filter((item) => !item.pull_request)
+                  .map(toView),
+                page: input.page,
+                nextPage: nextPage(input.page, items.length, input.limit),
+              };
+            return {
+              page: input.page,
+              nextPage: nextPage(input.page, items.length, input.limit),
+              pulls: (items as z.infer<typeof pullSchema>[]).map((pull) => ({
+                ...toView({ comments: 0, labels: [], ...pull }),
+                draft: pull.draft ?? false,
+                head: pull.head?.ref ?? null,
+                base: pull.base?.ref ?? null,
+                mergedAt: pull.merged_at ?? null,
+              })),
+            };
+          }
+          default:
+            throw new ConnectorError(
+              `Unsupported GitHub operation: ${operation}`,
+              undefined,
+              "malformed",
+            );
         }
-        default:
-          throw new ConnectorError(
-            `Unsupported GitHub operation: ${operation}`,
-            undefined,
-            "malformed",
-          );
-      }
+      };
+      return safeData(await read(), ctx);
     },
   };
 }
