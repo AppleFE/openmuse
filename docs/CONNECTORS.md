@@ -21,7 +21,8 @@ clusters or GitHub Enterprise instances, each with its own credentials.
 
 Mounted by the server under `/api/connectors`; every route requires the session
 Bearer token like the rest of `/api/*`. All responses are redacted views —
-secrets are write-only and never returned.
+private credential values are write-only and never returned. Proxmox permission
+diagnostics include the public token ID so the corresponding ACL can be identified.
 
 ```
 GET    /api/connectors/providers          static provider contract (config/secret fields, operations)
@@ -216,6 +217,12 @@ the complete per-endpoint rules are in the
 Proxmox filters inaccessible storage/guest entries out of successful list
 responses. An empty list and a passing connection test do not prove storage
 permissions exist. `permissions` and the management screen expose that distinction.
+The query also returns the configured public `tokenId` (never `tokenSecret`), so
+the server URL and token receiving the ACL can be compared with the actual
+connection. Refresh in the management screen re-reads effective permissions.
+The numbers in the permission map are propagation flags: a privilege with value
+`0` is still granted at that path. Only an empty privilege map means no access.
+See the [official ACL implementation](https://raw.githubusercontent.com/proxmox/pve-access-control/master/src/PVE/RPCEnvironment.pm).
 In Proxmox, **Datacenter → Permissions → Add → API Token Permission**, select
 the configured token and an appropriate role. For all nodes, use path `/` and
 propagate. `PVEAuditor` permits reads; `PVEAdmin` permits broader management.

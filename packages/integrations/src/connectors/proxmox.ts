@@ -123,7 +123,7 @@ function safeData(value: unknown, ctx: ConnectorContext): unknown {
 const record = z.record(z.string(), z.unknown());
 const operationDescriptions: Record<string, string> = {
   permissions:
-    "Read the current token's effective ACL privileges. Optional path filters the result. Empty permissions explain filtered empty storage/guest lists; the query cannot grant privileges.",
+    "Read the configured public token ID and its current effective ACL privileges. Optional path filters the result. Compare this ID and connection URL with the token granted an ACL in Proxmox. Privilege values 0/1 indicate propagation, not denial/grant. Empty permissions explain filtered empty storage/guest lists; the query cannot grant privileges. The token secret is never returned.",
   storages:
     "List node storage capacity, availability, backend and content types. Omit node to aggregate online cluster nodes; failures are reported per node.",
   storage_config:
@@ -326,6 +326,7 @@ export function proxmoxAdapter(): ConnectorAdapter {
       switch (operation) {
         case "permissions":
           return {
+            tokenId: proxmoxSecretsSchema.parse(ctx.secrets).tokenId,
             permissions: await readObject(query("/access/permissions", { path: params.path })),
           };
         case "node_status":

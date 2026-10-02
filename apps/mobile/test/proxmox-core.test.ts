@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseProxmoxForm, proxmoxToolValue } from "../src/proxmox-core.ts";
+import { parseProxmoxForm, proxmoxHasPrivileges, proxmoxToolValue } from "../src/proxmox-core.ts";
+
+test("Proxmox non-propagated privileges are granted rather than interpreted as denied", () => {
+  assert.equal(proxmoxHasPrivileges({}), false);
+  assert.equal(proxmoxHasPrivileges({ "/": {} }), false);
+  assert.equal(proxmoxHasPrivileges({ "/storage/local": { "Datastore.Audit": 0 } }), true);
+  assert.equal(proxmoxHasPrivileges({ "/storage/local": { "Datastore.Audit": false } }), true);
+  assert.equal(proxmoxHasPrivileges({ "/": { "Sys.Audit": 1 } }), true);
+});
 
 test("Proxmox inline review reads direct and persisted Pi tool envelopes", () => {
   const action = {

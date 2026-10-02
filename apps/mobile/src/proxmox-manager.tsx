@@ -6,8 +6,10 @@ import type {
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
 import {
+  type ProxmoxTokenAccess,
   parseProxmoxForm,
   proxmoxBytes,
+  proxmoxHasPrivileges,
   proxmoxParamLabel,
   proxmoxValueLabel,
 } from "./proxmox-core";
@@ -50,8 +52,7 @@ export function ProxmoxManager({
     [guests, setGuests] = useState<Guest[]>([]),
     [tasks, setTasks] = useState<Row[]>([]),
     [operations, setOperations] = useState<ConnectorOperationInfo[]>([]);
-  const [permissions, setPermissions] =
-    useState<Record<string, Record<string, number | boolean>>>();
+  const [access, setAccess] = useState<ProxmoxTokenAccess>();
   const [volumes, setVolumes] = useState<{ node: string; storage: string; rows: Row[] }>(),
     [detail, setDetail] = useState<{ guest: Guest; config: Row; snapshots: Row[] }>();
   const [cores, setCores] = useState(""),
@@ -71,18 +72,14 @@ export function ProxmoxManager({
       api.request<{ operations: ConnectorOperationInfo[] }>(
         `/api/connectors/${connector.id}/operations`,
       ),
-      query<{ permissions: Record<string, Record<string, number | boolean>> }>("permissions").catch(
-        () => ({ permissions: undefined }),
-      ),
     ])
-      .then(([result, info, access]) => {
+      .then(([result, info]) => {
         if (active) {
           setNodes(result.nodes);
           setNode(
             result.nodes.find((n) => n.status === "online")?.node ?? result.nodes[0]?.node ?? "",
           );
           setOperations(info.operations);
-          setPermissions(access.permissions);
         }
       })
       .catch((e) => {
@@ -105,18 +102,21 @@ export function ProxmoxManager({
     setStorages([]);
     setGuests([]);
     setTasks([]);
+    setAccess(undefined);
     Promise.allSettled([
       query<{ storages: Storage[] }>("storages", { node }),
       query<{ resources: Guest[] }>("resources", { node, type: "vm" }),
       query<{ tasks: Row[] }>("tasks", { node, limit: 50 }),
+      query<ProxmoxTokenAccess>("permissions"),
     ])
-      .then(([a, b, c]) => {
+      .then(([a, b, c, d]) => {
         if (active) {
           if (a.status === "fulfilled") setStorages(a.value.storages);
           if (b.status === "fulfilled") setGuests(b.value.resources);
           if (c.status === "fulfilled") setTasks(c.value.tasks);
+          if (d.status === "fulfilled") setAccess(d.value);
           setError(
-            [a, b, c]
+            [a, b, c, d]
               .filter((r) => r.status === "rejected")
               .map((r) => (r.status === "rejected" ? errorText(r.reason) : ""))
               .join("\n"),
@@ -225,24 +225,38 @@ export function ProxmoxManager({
           ))}
         </View>
         <ErrorNotice error={error} />
-        {permissions &&
-          !Object.values(permissions).some((privileges) =>
-            Object.values(privileges).some((value) => value === 1 || value === true),
-          ) && (
-            <Card style={{ gap: 8 }}>
-              <Text style={s.heading}>이 API 토큰에 접근 권한이 없습니다.</Text>
-              <Text style={s.text}>
-                Proxmox는 권한이 없는 스토리지·VM을 목록에서 숨깁니다. 연결 테스트가 성공해도 목록은
-                비어 있을 수 있습니다.
-              </Text>
-              <Text style={s.small}>
-                Proxmox의 데이터센터 → 권한 → 추가 → API 토큰 권한에서 이 토큰에 역할을 지정하세요.
-                전체 노드에 적용하려면 경로 /와 전파를 선택합니다. 조회만 필요하면 PVEAuditor,
-                조회와 관리가 필요하면 PVEAdmin을 사용할 수 있습니다. 토큰 소유 사용자에게도 해당
-                권한이 있어야 합니다.
-              </Text>
-            </Card>
-          )}
+        {access && (
+          <Card style={{ gap: 8 }}>
+            <Text style={s.heading}>현재 사용하는 API 토큰</Text>
+            <Text selectable style={s.text}>
+              {access.tokenId}
+            </Text>
+            <Text style={s.small}>
+              {proxmoxHasPrivileges(access.permissions)
+                ? "Proxmox에서 이 토큰의 접근 권한을 확인했습니다."
+                : "Proxmox에서 이 토큰의 유효 권한을 0개로 반환했습니다."}
+            </Text>
+          </Card>
+        )}
+        {access && !proxmoxHasPrivileges(access.permissions) && (
+          <Card style={{ gap: 8 }}>
+            <Text style={s.heading}>이 API 토큰에 접근 권한이 없습니다.</Text>
+            <Text style={s.text}>
+              Proxmox는 권한이 없는 스토리지·VM을 목록에서 숨깁니다. 연결 테스트가 성공해도 목록은
+              비어 있을 수 있습니다.
+            </Text>
+            <Text style={s.small}>
+              위 서버 주소와 토큰 ID가 권한을 추가한 대상과 정확히 일치하는지 확인하세요. 저장된
+              권한 목록에 경로 /, 이 토큰, PVEAdmin, 전파가 표시되어야 합니다.
+            </Text>
+            <Text style={s.small}>
+              Proxmox의 데이터센터 → 권한 → 추가 → API 토큰 권한에서 이 토큰에 역할을 지정하세요.
+              전체 노드에 적용하려면 경로 /와 전파를 선택합니다. 조회만 필요하면 PVEAuditor, 조회와
+              관리가 필요하면 PVEAdmin을 사용할 수 있습니다. 토큰 소유 사용자에게도 해당 권한이
+              있어야 합니다.
+            </Text>
+          </Card>
+        )}
         {!node && !busy && <Text style={s.muted}>이 토큰으로 조회할 수 있는 노드가 없습니다.</Text>}
         {tab === "storages" && (
           <>

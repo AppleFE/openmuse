@@ -1,5 +1,15 @@
 import type { ConnectorOperationParam } from "../../../packages/domain/src/connectors";
 
+export type ProxmoxTokenAccess = {
+  tokenId: string;
+  permissions: Record<string, Record<string, number | boolean>>;
+};
+
+/** Proxmox privilege values are propagation flags; a defined zero still grants access. */
+export function proxmoxHasPrivileges(permissions: ProxmoxTokenAccess["permissions"]) {
+  return Object.values(permissions).some((privileges) => Object.keys(privileges).length > 0);
+}
+
 /** Pi emits its native text-content envelope; other runtimes return the value directly. */
 export function proxmoxToolValue(result: unknown): unknown {
   let value = result;
