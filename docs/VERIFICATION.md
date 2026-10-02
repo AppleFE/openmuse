@@ -290,6 +290,14 @@ The P41 application runtime was built and activated from independently reviewed 
   package.json. The newly paginated repository list returned 146 accessible
   repositories. `AppleFE/PPAI` returned 404 with this token and was absent from
   that list; its existence or code contents are not claimed as verified.
+- The user corrected the intended repository name to `AppleFE/PBAI`. With the
+  same stored GitHub connection, the private repository and default branch
+  `master` were successfully read at commit
+  `08341f8ab9b220c9daff3dad8ab2515a6c0ee9d9`. The connector returned 39 branches,
+  19 root entries, a complete recursive tree of 549 entries, three recent commits,
+  and decoded README.md, package.json and Cargo.toml. The earlier PPAI 404 was
+  for the incorrect name; PBAI does not require reconnecting this token. Evidence
+  is `verification/github-source-20261002/pbai-live-reads.json` on P41.
 - Real Chromium verified the Korean GitHub setup text and an OpenCodex
   `oc-gpt-6-luna` conversation using embedded Pi. The model discovered operations,
   read repo/branches/contents, then read README.md and package.json using the same
