@@ -1,7 +1,9 @@
 import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
 import { createApp } from "./app.ts";
 import { readConfig } from "./config.ts";
 import { createStore } from "./db.ts";
+import { attachBrowserStreams } from "./browser-stream.ts";
 
 const config = readConfig();
 const db = await createStore({
@@ -9,12 +11,13 @@ const db = await createStore({
   databaseUrl: config.databaseUrl,
 });
 await db.recoverInterruptedActions();
-const { app, agent } = await createApp(db, config);
+const { app, agent, auth, browser } = await createApp(db, config);
 if (config.taskWorkerEnabled) agent.start();
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () =>
   console.log(`OpenMuse ${config.mode} API ready at ${config.publicUrl}`),
 );
 const shutdown = () => {
+  streams.close();
   server.close(() => {
     void agent
       .stop()
@@ -22,5 +25,6 @@ const shutdown = () => {
       .then(() => process.exit(0));
   });
 };
+const streams = attachBrowserStreams(server as Server, auth, browser);
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

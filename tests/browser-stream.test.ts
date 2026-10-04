@@ -1,0 +1,109 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { serve } from "@hono/node-server";
+import type { Server } from "node:http";
+import test from "node:test";
+import { chromium } from "playwright";
+import { PNG } from "pngjs";
+import { WebSocket } from "ws";
+import { createApp } from "../apps/server/src/app.ts";
+import { attachBrowserStreams } from "../apps/server/src/browser-stream.ts";
+import { browserFixture } from "./helpers/browser.ts";
+
+test("actual noVNC client receives framebuffer and sends direct mouse and keyboard input through owner controls", async (t) => {
+  const inputs: Record<string, unknown>[] = [];
+  const fixture = await browserFixture(t, (_path, body) => {
+    inputs.push(body);
+    return { data: { ok: true } };
+  });
+  const id = "c541b4f1-0969-450a-ac13-0f1905a8da8c";
+  await fixture.db.put("owner", "browsers", {
+    id,
+    title: "fixture",
+    url: "https://example.com",
+    status: "active",
+    control: "agent",
+    updatedAt: new Date().toISOString(),
+  });
+  let handler: (request: Request) => Response | Promise<Response>;
+  const server = serve({
+    fetch: (request) => handler(request),
+    port: 0,
+    hostname: "127.0.0.1",
+  }) as Server;
+  await once(server, "listening");
+  const address = server.address() as { port: number };
+  fixture.config.publicUrl = `http://127.0.0.1:${address.port}`;
+  const app = await createApp(fixture.db, fixture.config);
+  handler = app.app.fetch;
+  t.after(() => app.agent.stop());
+  const png = new PNG({ width: 1280, height: 800 });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = 45;
+    png.data[i + 1] = 85;
+    png.data[i + 2] = 125;
+    png.data[i + 3] = 255;
+  }
+  t.mock.method(app.browser, "preview", async (owner: string, sessionId: string) => {
+    await app.browser.get(owner, sessionId);
+    return new Response(new Uint8Array(PNG.sync.write(png)));
+  });
+  const streams = attachBrowserStreams(server, app.auth, app.browser);
+  t.after(() => {
+    streams.close();
+    server.closeAllConnections();
+    server.close();
+  });
+  const browser = await chromium.launch({ headless: true });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
+  const errors: string[] = [],
+    diagnostics: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => diagnostics.push(m.text()));
+  page.on("response", (r) => {
+    if (r.status() >= 400) diagnostics.push(`${r.status()} ${new URL(r.url()).pathname}`);
+  });
+  page.on("requestfailed", (r) => diagnostics.push(r.failure()?.errorText ?? "failed"));
+  await page.goto(app.browser.decorate("owner", await app.browser.get("owner", id)).consoleUrl);
+  await page
+    .waitForFunction(
+      () => {
+        const c = document.querySelector("canvas");
+        return c?.width === 1280 && c.height === 800;
+      },
+      {},
+      { timeout: 8000 },
+    )
+    .catch(async (e) => {
+      throw new Error(
+        `${e.message}; page errors=${JSON.stringify(errors)}; diagnostics=${JSON.stringify(diagnostics)}; body=${await page.locator("body").innerText()}`,
+      );
+    });
+  await page.waitForFunction(() => {
+    const c = document.querySelector("canvas");
+    return c?.getContext("2d")?.getImageData(0, 0, 1, 1).data[0] === 45;
+  });
+  assert.equal(inputs.length, 0);
+  await page.getByRole("button", { name: "직접 제어", exact: true }).click();
+  await page.locator("canvas").click({ position: { x: 100, y: 100 } });
+  await page.keyboard.type("Hello");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(350);
+  assert.ok(inputs.some((v) => v.type === "vnc_mouse" && (v.buttons as number) & 1));
+  assert.ok(inputs.some((v) => v.type === "vnc_key" && v.key === "Enter"));
+  assert.deepEqual(errors, []);
+  await page.getByRole("button", { name: "에이전트에게 반환", exact: true }).click();
+  await page.getByRole("button", { name: "직접 제어", exact: true }).waitFor();
+  assert.equal((await app.browser.get("owner", id)).control, "agent");
+  const unsigned = new WebSocket(`ws://127.0.0.1:${address.port}/api/browsers/${id}/stream`);
+  const denied = await new Promise<number>((resolve) => {
+    unsigned.on("unexpected-response", (_req, res) => {
+      res.resume();
+      unsigned.terminate();
+      resolve(res.statusCode!);
+    });
+    unsigned.on("error", () => {});
+  });
+  assert.equal(denied, 403);
+});

@@ -49,7 +49,10 @@ export const remoteHostSecretsSchema = z
     passphrase: z.string().min(1).max(1024).optional(),
     password: z.string().min(1).max(1024).optional(),
   })
-  .refine((v) => !!v.token || !!v.privateKey || !!v.password, "에이전트 토큰 또는 SSH 키·비밀번호가 필요합니다");
+  .refine(
+    (v) => !!v.token || !!v.privateKey || !!v.password,
+    "에이전트 토큰 또는 SSH 키·비밀번호가 필요합니다",
+  );
 export type RemoteHostConfig = z.infer<typeof remoteHostConfigSchema>;
 export type RemoteHostSecrets = z.infer<typeof remoteHostSecretsSchema>;
 
@@ -121,7 +124,9 @@ export const remoteHostStatusSchema = z.object({
   platform: z.string().min(1).max(64),
   arch: z.string().min(1).max(64),
   shell: z.string().min(1).max(2048),
-  identity: z.object({ username: z.string().max(256), elevated: z.boolean(), detail: z.string().max(512) }).optional(),
+  identity: z
+    .object({ username: z.string().max(256), elevated: z.boolean(), detail: z.string().max(512) })
+    .optional(),
   capabilities: z.object({
     shell: z.boolean(),
     browser: z.boolean(),
@@ -130,6 +135,14 @@ export const remoteHostStatusSchema = z.object({
   }),
 });
 export const browserInputSchema = z.discriminatedUnion("type", [
+  z.strictObject({
+    type: z.literal("vnc_mouse"),
+    x: z.number().int().min(0).max(1279),
+    y: z.number().int().min(0).max(799),
+    buttons: z.number().int().min(0).max(255),
+  }),
+  z.strictObject({ type: z.literal("vnc_key"), key: z.string().min(1).max(32), down: z.boolean() }),
+  z.strictObject({ type: z.literal("vnc_reset") }),
   z.strictObject({
     type: z.literal("click"),
     x: z.number().int().min(0).max(1279),

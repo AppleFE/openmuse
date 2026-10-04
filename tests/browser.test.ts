@@ -25,6 +25,26 @@ const savedSession: BrowserSession = {
   status: "active",
   updatedAt: "2026-09-15T00:00:00.000Z",
 };
+test("browser deletion removes only owned profiles and their chat association", async (t) => {
+  const calls: string[] = [];
+  const { db, service } = await browserFixture(t, (path) => {
+    calls.push(path);
+    return { data: { ok: true } };
+  });
+  await db.put("owner", "browsers", savedSession);
+  await db.put("other", "browsers", {
+    ...savedSession,
+    id: "00000000-0000-4000-8000-000000000002",
+  });
+  await db.put("owner", "chat-browsers", { id: "chat:host", sessionId });
+  await assert.rejects(service.remove("stranger", sessionId), { status: 404 });
+  assert.equal(calls.length, 0);
+  await service.remove("owner", sessionId);
+  assert.equal((await db.list("owner", "browsers")).length, 0);
+  assert.equal((await db.list("owner", "chat-browsers")).length, 0);
+  assert.equal((await db.list("other", "browsers")).length, 1);
+  assert.equal(calls[0], `/sessions/${sessionId}/delete`);
+});
 
 test("browser API reopens an owned profile at the edited address and renews console access", async (t) => {
   const calls: { path: string; body: Record<string, unknown> }[] = [];
@@ -67,7 +87,7 @@ test("browser API reopens an owned profile at the edited address and renews cons
   assert.notEqual(renewed.consoleUrl, previous.consoleUrl);
   const console = await app.request(renewed.consoleUrl);
   assert.equal(console.status, 200);
-  assert.match(await console.text(), /브라우저에 입력할 텍스트/);
+  assert.match(await console.text(), /공유 브라우저 화면/);
   assert.equal((await app.request(path)).status, 401);
   const hiddenId = "00000000-0000-4000-8000-000000000099";
   await db.put("someone-else", "browsers", { ...savedSession, id: hiddenId });

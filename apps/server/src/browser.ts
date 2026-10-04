@@ -136,6 +136,8 @@ export class BrowserService {
   async setControl(owner: string, id: string, control: "agent" | "user") {
     return this.serial(id, async () => {
       const session = await this.get(owner, id);
+      if (session.control === "user" && control === "agent" && session.status === "active")
+        await this.sessionRequest(owner, id, `/sessions/${id}/input`, { type: "vnc_reset" });
       const saved = { ...session, control, updatedAt: new Date().toISOString() };
       await this.db.put(owner, "browsers", saved);
       return this.decorate(owner, saved);
@@ -170,6 +172,7 @@ export class BrowserService {
     return this.decorate(owner, saved);
   }
   async create(owner: string, url: string, connectorId?: string) {
+    await this.cleanup(owner, connectorId);
     const target = connectorId
       ? await this.connectors?.browserTarget(owner, connectorId)
       : undefined;
@@ -251,6 +254,7 @@ export class BrowserService {
     connectorId?: string,
   ) {
     signal?.throwIfAborted();
+    await this.cleanup(owner, connectorId);
     // Persist the association before contacting the worker so failed/lost responses
     // and later chat turns keep using the same profile instead of exhausting its limit.
     const associationId = connectorId ? `${threadId}:${connectorId}` : threadId;
@@ -324,6 +328,38 @@ export class BrowserService {
       );
     });
   }
+  async streamInput(owner: string, id: string, value: unknown) {
+    return this.serial(id, async () => {
+      const session = await this.get(owner, id);
+      if (session.control !== "user")
+        throw new AppError("브라우저 제어를 가져온 뒤 조작하세요", 409);
+      const parsed = browserInputSchema.parse(value);
+      const payload = await (
+        await this.sessionRequest(owner, id, `/sessions/${id}/input`, parsed)
+      ).json();
+      if (!parsed.type.startsWith("vnc_")) return this.save(owner, payload, id);
+      return payload;
+    });
+  }
+  async remove(owner: string, id: string) {
+    return this.serial(id, async () => {
+      await this.get(owner, id);
+      await this.sessionRequest(owner, id, `/sessions/${id}/delete`, {});
+      await this.db.remove(owner, "browsers", id);
+      for (const link of await this.db.list<ChatBrowser>(owner, "chat-browsers"))
+        if (link.sessionId === id) await this.db.remove(owner, "chat-browsers", link.id);
+      return { ok: true };
+    });
+  }
+  async cleanup(owner: string, connectorId?: string) {
+    const all = (await this.db.list<BrowserSession>(owner, "browsers"))
+      .filter((s) => (s.connectorId ?? "") === (connectorId ?? ""))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const inactive = all.filter((s) => s.status !== "active" && s.status !== "idle");
+    for (const [index, session] of inactive.entries())
+      if (index >= 12 || this.now() - Date.parse(session.updatedAt) > 30 * 86400000)
+        await this.remove(owner, session.id).catch(() => {});
+  }
   async imports(owner: string, id: string) {
     await this.get(owner, id);
     const { downloads, failures } = z
@@ -362,6 +398,6 @@ export class BrowserService {
     return { files: saved, failures };
   }
   console(owner: string, id: string) {
-    return browserConsole(this.auth.sign(owner, `/api/browsers/${id}/preview`));
+    return browserConsole(this.auth.sign(owner, `/api/browsers/${id}/stream`));
   }
 }

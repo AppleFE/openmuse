@@ -23,6 +23,7 @@ type Running = {
   context: BrowserContext;
   page: Page;
   touched: number;
+  vncButtons?: number;
   pending: Set<Promise<void>>;
   downloadError?: boolean;
 };
@@ -374,8 +375,61 @@ export async function createBrowserManager(options: {
       }),
     input: (id: string, input: Record<string, unknown>) =>
       serial(id, async () => {
-        const { page } = active(id);
+        const instance = active(id),
+          { page } = instance;
         const { type, x, y, key, text, deltaY } = input;
+        if (type === "vnc_reset") {
+          for (const button of ["left", "middle", "right"] as const)
+            await page.mouse.up({ button });
+          for (const modifier of ["Shift", "Control", "Alt", "Meta"])
+            await page.keyboard.up(modifier);
+          instance.vncButtons = 0;
+          return { ok: true };
+        }
+        if (
+          type === "vnc_mouse" &&
+          typeof x === "number" &&
+          typeof y === "number" &&
+          Number.isInteger(x) &&
+          Number.isInteger(y) &&
+          x >= 0 &&
+          x < 1280 &&
+          y >= 0 &&
+          y < 800 &&
+          typeof input.buttons === "number" &&
+          Number.isInteger(input.buttons) &&
+          input.buttons >= 0 &&
+          input.buttons <= 255
+        ) {
+          const buttons = input.buttons,
+            previous = instance.vncButtons ?? 0;
+          await page.mouse.move(x, y);
+          for (const [bit, button] of [
+            [1, "left"],
+            [2, "middle"],
+            [4, "right"],
+          ] as const)
+            if ((buttons & bit) !== (previous & bit))
+              await page.mouse[buttons & bit ? "down" : "up"]({ button });
+          if (buttons & 8) await page.mouse.wheel(0, -120);
+          if (buttons & 16) await page.mouse.wheel(0, 120);
+          instance.vncButtons = buttons;
+          return { ok: true };
+        }
+        if (
+          type === "vnc_key" &&
+          typeof key === "string" &&
+          typeof input.down === "boolean" &&
+          (/^(Enter|Tab|Escape|Backspace|Delete|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End|PageUp|PageDown|Shift|Control|Alt|Meta|Insert|F([1-9]|1[0-2]))$/.test(
+            key,
+          ) ||
+            [...key].length === 1)
+        ) {
+          if (key.codePointAt(0)! > 255 && [...key].length === 1) {
+            if (input.down) await page.keyboard.insertText(key);
+          } else await page.keyboard[input.down ? "down" : "up"](key);
+          return { ok: true };
+        }
         if (
           type === "click" &&
           typeof x === "number" &&
@@ -418,6 +472,15 @@ export async function createBrowserManager(options: {
         );
       return { downloads: saved, failures: await readDownloadFailures(directory(id)) };
     },
+    remove: (id: string) =>
+      serial(id, async () => {
+        validateSessionId(id);
+        if (sessions.has(id)) await closeSession(id);
+        await rm(directory(id), { recursive: true, force: true });
+        await rm(join(tmpdir(), `openmuse-downloads-${id}`), { recursive: true, force: true });
+        sessions.delete(id);
+        return { ok: true };
+      }),
     download: async (id: string, downloadId: string) => {
       validateSessionId(downloadId);
       const metadata = (await downloads(id)).find((item) => item.id === downloadId);

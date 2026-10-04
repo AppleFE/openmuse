@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve, relative } from "node:path";
 import { EventType, MessageSchema } from "@ag-ui/core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -152,6 +155,7 @@ export async function createApp(
     );
   });
   app.use("/api/*", async (c, next) => {
+    if (c.req.path.startsWith("/api/novnc/")) return next();
     const signedRoute =
       /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
         c.req.path,
@@ -178,6 +182,22 @@ export async function createApp(
     );
     snapshot.connections.push(...(connectorConnections as Connection[]));
     return c.json(snapshot);
+  });
+  app.get("/api/novnc/*", async (c) => {
+    const root = dirname(dirname(fileURLToPath(import.meta.resolve("@novnc/novnc"))));
+    const part = c.req.path.slice("/api/novnc/".length);
+    if (!/^(core|vendor)\/[a-zA-Z0-9_./-]+\.(js|wasm)$/.test(part))
+      throw new AppError("Not found", 404);
+    const path = resolve(root, part);
+    if (relative(root, path).startsWith("..")) throw new AppError("Not found", 404);
+    const bytes = await readFile(path).catch(() => {
+      throw new AppError("Not found", 404);
+    });
+    c.header(
+      "Content-Type",
+      path.endsWith(".wasm") ? "application/wasm" : "text/javascript; charset=utf-8",
+    );
+    return c.body(bytes);
   });
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
@@ -305,7 +325,9 @@ export async function createApp(
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ messages: thread.messages });
   });
-  app.get("/api/usage", async (c) => c.json(await new UsageService(db).summary(c.get("owner"), c.req.query("threadId"))));
+  app.get("/api/usage", async (c) =>
+    c.json(await new UsageService(db).summary(c.get("owner"), c.req.query("threadId"))),
+  );
   app.get("/api/copilotkit/threads/:id/events", async (c) => {
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ events: thread.events });
@@ -393,6 +415,28 @@ export async function createApp(
       .parse(await c.req.json());
     return c.json(await browser.create(c.get("owner"), body.url, body.connectorId), 201);
   });
+  app.delete("/api/browsers/:id", async (c) =>
+    c.json(await browser.remove(c.get("owner"), c.req.param("id"))),
+  );
+  app.post("/api/browsers/delete", async (c) => {
+    const body = z
+      .strictObject({ ids: z.array(z.uuid()).min(1).max(100) })
+      .parse(await c.req.json());
+    const results = [];
+    for (const id of body.ids) {
+      try {
+        await browser.remove(c.get("owner"), id);
+        results.push({ id, ok: true });
+      } catch (error) {
+        results.push({
+          id,
+          ok: false,
+          error: error instanceof Error ? error.message : "삭제 실패",
+        });
+      }
+    }
+    return c.json({ results });
+  });
   app.get("/api/browsers/:id", async (c) => {
     const owner = c.get("owner");
     return c.json(browser.decorate(owner, await browser.get(owner, c.req.param("id"))));
@@ -428,12 +472,23 @@ export async function createApp(
     await browser.get(c.get("owner"), c.req.param("id"));
     c.header(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' blob:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'",
+      "default-src 'self'; img-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' ws: wss:",
     );
     return c.html(browser.console(c.get("owner"), c.req.param("id")));
   });
   app.post("/api/browsers/:id/console", async (c) => {
-    await browser.input(c.get("owner"), c.req.param("id"), await c.req.json());
+    const body = await c.req.json();
+    if (body.op === "state") {
+      const session = await browser.get(c.get("owner"), c.req.param("id"));
+      return c.json({ control: session.control, status: session.status });
+    }
+    if (body.op === "control") {
+      const input = z
+        .strictObject({ op: z.literal("control"), control: z.enum(["agent", "user"]) })
+        .parse(body);
+      return c.json(await browser.setControl(c.get("owner"), c.req.param("id"), input.control));
+    }
+    await browser.streamInput(c.get("owner"), c.req.param("id"), body);
     return c.json({ ok: true });
   });
   app.all("/api/copilotkit/*", async (c) => {
@@ -457,5 +512,16 @@ export async function createApp(
   app.get("/", (c) =>
     c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),
   );
-  return { app, auth, files, actions, workspace, agent, computer, connectors, conversations };
+  return {
+    app,
+    auth,
+    files,
+    actions,
+    workspace,
+    agent,
+    computer,
+    connectors,
+    conversations,
+    browser,
+  };
 }

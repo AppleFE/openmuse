@@ -205,6 +205,59 @@ async function handle(request, response) {
 }
 
 const servers = [];
+const upgraded = new Set();
+function proxyStream(request, socket, head) {
+  const url = new URL(request.url ?? "/", "http://openmuse.invalid");
+  if (!/^\/api\/browsers\/[a-f0-9-]{36}\/stream$/.test(url.pathname)) {
+    socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
+    return;
+  }
+  const headers = { ...request.headers, host: api.host };
+  const upstream = (api.protocol === "https:" ? httpsRequest : httpRequest)(
+    new URL(api.origin + request.url),
+    { headers },
+  );
+  const timer = setTimeout(() => {
+    upstream.destroy();
+    socket.destroy();
+  }, 10000);
+  upstream.on("upgrade", (response, remote, remoteHead) => {
+    clearTimeout(timer);
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\n${Object.entries(response.headers)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\r\n")}\r\n\r\n`,
+    );
+    if (remoteHead.length) socket.write(remoteHead);
+    if (head.length) remote.write(head);
+    socket.pipe(remote);
+    remote.pipe(socket);
+    upgraded.add(socket);
+    upgraded.add(remote);
+    socket.on("close", () => {
+      upgraded.delete(socket);
+      remote.destroy();
+    });
+    remote.on("close", () => {
+      upgraded.delete(remote);
+      socket.destroy();
+    });
+    socket.on("error", () => remote.destroy());
+    remote.on("error", () => socket.destroy());
+  });
+  upstream.on("response", (response) => {
+    clearTimeout(timer);
+    socket.end(
+      `HTTP/1.1 ${response.statusCode ?? 502} Stream unavailable\r\nConnection: close\r\n\r\n`,
+    );
+    response.resume();
+  });
+  upstream.on("error", () => {
+    clearTimeout(timer);
+    socket.destroy();
+  });
+  upstream.end();
+}
 try {
   for (const host of hosts) {
     const server = createServer((request, response) => {
@@ -216,6 +269,7 @@ try {
       });
     });
     server.headersTimeout = 15_000;
+    server.on("upgrade", proxyStream);
     server.requestTimeout = 0;
     server.keepAliveTimeout = 5_000;
     server.maxRequestsPerSocket = 500;
@@ -238,6 +292,7 @@ let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  for (const socket of upgraded) socket.destroy();
   for (const server of servers) server.closeAllConnections();
   await Promise.all(
     servers.map((server) => new Promise((resolveClose) => server.close(resolveClose))),

@@ -7,6 +7,8 @@ allowBuilds:
   '@scarf/scarf': false
   '@google/genai': false
   protobufjs: false
+  cpu-features: false
+  ssh2: false
 minimumReleaseAgeExclude:
   - '@tanstack/ai-anthropic@0.18.13'
   - '@tanstack/ai-gemini@0.32.1'

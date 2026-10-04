@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Terminal,
+  Trash2,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { AppState, Image, Pressable, Text, View } from "react-native";
@@ -56,8 +57,16 @@ export function ComputerEntry() {
     </Pressable>
   );
 }
-export function BrowserThreadCard({ browser }: { browser: BrowserSession }) {
-  const { open } = useWorkspace();
+export function BrowserThreadCard({
+  browser,
+  removable = false,
+}: {
+  browser: BrowserSession;
+  removable?: boolean;
+}) {
+  const { open, api, refresh } = useWorkspace();
+  const [deleting, setDeleting] = useState(false),
+    [error, setError] = useState("");
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     setFailed(false);
@@ -125,6 +134,26 @@ export function BrowserThreadCard({ browser }: { browser: BrowserSession }) {
             ? "브라우저 다시 연결"
             : "직접 제어"}
       </Button>
+      {removable && (
+        <Button
+          small
+          danger
+          icon={Trash2}
+          onPress={() => {
+            if (!deleting) {
+              setDeleting(true);
+              return;
+            }
+            void api
+              .request(`/api/browsers/${browser.id}`, undefined, "DELETE")
+              .then(() => refresh())
+              .catch((e) => setError(e.message));
+          }}
+        >
+          {deleting ? "로그인·다운로드 포함 삭제 확인" : "세션 삭제"}
+        </Button>
+      )}
+      <ErrorNotice error={error} />
     </Card>
   );
 }
@@ -135,6 +164,7 @@ export function ComputerSheet() {
   const [error, setError] = useState("");
   const [hosts, setHosts] = useState<ConnectorView[]>([]);
   const [hostId, setHostId] = useState("");
+  const [clearConfirmed, setClearConfirmed] = useState(false);
   const [tab, setTab] = useComputerDraft("tab");
   const available = hostId
     ? hosts.some((host) => host.id === hostId)
@@ -269,10 +299,47 @@ export function ComputerSheet() {
                 브라우저 세션 열기
               </Button>
             </View>
+            <View style={[s.row, { gap: 8 }]}>
+              <Text style={[s.small, { flex: 1 }]}>
+                종료된 세션은 호스트별 최근 12개·30일을 보관합니다.
+              </Text>
+              <Button
+                small
+                danger
+                disabled={busy || !workspace.browsers.some((b) => b.status !== "active")}
+                onPress={() => {
+                  if (!clearConfirmed) {
+                    setClearConfirmed(true);
+                    return;
+                  }
+                  setBusy(true);
+                  void api
+                    .request<{ results: { ok: boolean; error?: string }[] }>(
+                      "/api/browsers/delete",
+                      {
+                        ids: workspace.browsers
+                          .filter((b) => b.status !== "active")
+                          .map((b) => b.id)
+                          .slice(0, 100),
+                      },
+                    )
+                    .then(async (result) => {
+                      const failures = result.results.filter((r) => !r.ok);
+                      if (failures.length) setError(failures.map((r) => r.error).join("\n"));
+                      await refresh();
+                      setClearConfirmed(false);
+                    })
+                    .catch((e) => setError(e.message))
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {clearConfirmed ? "종료된 세션 일괄 삭제 확인" : "기록 정리"}
+              </Button>
+            </View>
             {[...workspace.browsers]
               .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
               .map((browser) => (
-                <BrowserThreadCard key={browser.id} browser={browser} />
+                <BrowserThreadCard key={browser.id} browser={browser} removable />
               ))}
             {!workspace.browsers.length && (
               <Text style={s.muted}>

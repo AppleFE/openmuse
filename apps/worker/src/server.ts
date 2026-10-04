@@ -75,7 +75,7 @@ export async function createWorkerServer(options: {
         return;
       }
       const match =
-        /^\/sessions\/([^/]+)\/(navigate|close|screenshot|read|input|downloads)(?:\/([^/]+))?$/.exec(
+        /^\/sessions\/([^/]+)\/(navigate|close|delete|screenshot|read|input|downloads)(?:\/([^/]+))?$/.exec(
           pathname,
         );
       if (!match) throw new WorkerError("NOT_FOUND", "Worker endpoint not found.", 404);
@@ -86,6 +86,8 @@ export async function createWorkerServer(options: {
         json(200, await browser.navigate(id, requiredUrl(await readBody(request))));
       else if (action === "close" && !downloadId && request.method === "POST")
         json(200, await browser.closeSession(id));
+      else if (action === "delete" && !downloadId && request.method === "POST")
+        json(200, await browser.remove(id));
       else if (action === "input" && !downloadId && request.method === "POST")
         json(200, await browser.input(id, await readBody(request)));
       else if (action === "read" && !downloadId && request.method === "GET")
