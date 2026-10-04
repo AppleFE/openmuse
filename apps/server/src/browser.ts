@@ -173,6 +173,7 @@ export class BrowserService {
   }
   async create(owner: string, url: string, connectorId?: string) {
     await this.cleanup(owner, connectorId);
+    await this.checkHistoryLimit(owner, connectorId);
     const target = connectorId
       ? await this.connectors?.browserTarget(owner, connectorId)
       : undefined;
@@ -270,6 +271,8 @@ export class BrowserService {
       (await this.db.get<ChatBrowser>(owner, "chat-browsers", associationId));
     if (!association) throw new AppError("Could not reserve the chat browser session", 500);
     const id = association.sessionId;
+    if (!(await this.db.get(owner, "browsers", id)))
+      await this.checkHistoryLimit(owner, connectorId);
     await this.db.insertIfAbsent(owner, "browsers", {
       id,
       url,
@@ -313,19 +316,13 @@ export class BrowserService {
       await this.get(owner, id);
       if (agent) await this.agentAccess(owner, id);
       signal?.throwIfAborted();
-      return this.save(
-        owner,
-        await (
-          await this.sessionRequest(
-            owner,
-            id,
-            `/sessions/${id}/input`,
-            browserInputSchema.parse(value),
-            signal,
-          )
-        ).json(),
-        id,
-      );
+      const parsed = browserInputSchema.parse(value);
+      const payload = await (
+        await this.sessionRequest(owner, id, `/sessions/${id}/input`, parsed, signal)
+      ).json();
+      return parsed.type.startsWith("vnc_")
+        ? this.decorate(owner, await this.get(owner, id))
+        : this.save(owner, payload, id);
     });
   }
   async streamInput(owner: string, id: string, value: unknown) {
@@ -359,6 +356,16 @@ export class BrowserService {
     for (const [index, session] of inactive.entries())
       if (index >= 12 || this.now() - Date.parse(session.updatedAt) > 30 * 86400000)
         await this.remove(owner, session.id).catch(() => {});
+  }
+  private async checkHistoryLimit(owner: string, connectorId?: string) {
+    const rows = (await this.db.list<BrowserSession>(owner, "browsers")).filter(
+      (s) => (s.connectorId ?? "") === (connectorId ?? ""),
+    );
+    if (rows.length >= 50)
+      throw new AppError(
+        "브라우저 기록 한도에 도달했습니다. 호스트 연결을 확인하고 기존 기록을 정리하세요",
+        409,
+      );
   }
   async imports(owner: string, id: string) {
     await this.get(owner, id);

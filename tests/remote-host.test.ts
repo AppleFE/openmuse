@@ -238,7 +238,11 @@ test("SSH verifies the host key before remote execution and allocates a real PTY
     client.on("error", () => {});
     client.on("close", () => clients.delete(client));
     client.on("authentication", (ctx) =>
-      ctx.username === "tester" && ctx.method === "publickey" ? ctx.accept() : ctx.reject(),
+      ctx.username === "tester" &&
+      (ctx.method === "publickey" ||
+        (ctx.method === "password" && ctx.password === "fixture-password"))
+        ? ctx.accept()
+        : ctx.reject(),
     );
     client.on("ready", () =>
       client.on("session", (accept) => {
@@ -285,6 +289,18 @@ test("SSH verifies the host key before remote execution and allocates a real PTY
   assert.equal((await adapter.test(wrong)).ok, false);
   assert.equal(executions, 0);
   assert.equal((await adapter.test(ctx)).ok, true);
+  const passwordContext = {
+    ...ctx,
+    config: { ...ctx.config, authMethod: "password" },
+    secrets: { password: "fixture-password" },
+  };
+  assert.equal((await adapter.test(passwordContext)).ok, true);
+  const beforeWrongPassword = executions;
+  assert.equal(
+    (await adapter.test({ ...passwordContext, secrets: { password: "wrong" } })).ok,
+    false,
+  );
+  assert.equal(executions, beforeWrongPassword);
   const { job } = (await adapter.write!(ctx, {
     connectorId: "ssh",
     operation: "host_command",

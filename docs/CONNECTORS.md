@@ -6,11 +6,12 @@ Connectors are owner-scoped integrations with external
 infrastructure providers: GitHub, Tailscale, Headscale, WireGuard and Proxmox
 VE. They are managed through a small JSON API, store credentials encrypted at
 rest, and expose their operations to the agent as tools. Proxmox also supports
-changes through the existing persisted action review; other providers remain read-only.
+changes through the existing persisted action review. GitHub also supports reviewed writes;
+Tailscale, Headscale and WireGuard remain read-only.
 
 | Provider   | Operations                              | Credentials                       |
 | ---------- | --------------------------------------- | --------------------------------- |
-| `github`   | 9 reads, including private repository source (below) | `token` (PAT)                     |
+| `github`   | 13 reads and 14 reviewed writes (below) | `token` (PAT)                     |
 | `tailscale`| `devices`                               | `apiKey`                          |
 | `headscale`| `devices`                               | `apiKey`                          |
 | `wireguard`| `status`                                | none (local `wg` binary)          |
@@ -133,6 +134,24 @@ and [Commits API](https://docs.github.com/en/rest/commits/commits?apiVersion=202
 
 ## Security invariants
 
+GitHub 쓰기는 `repo_update`(공개/비공개 포함), `branch_create`, `branch_delete`, `file_put`,
+`file_delete`, `commit_files`, `issue_create`, `issue_update`, `issue_comment`(PR 댓글 포함),
+`pull_create`, `pull_update`, `pull_merge`, `release_create`, `workflow_dispatch`를 지원합니다.
+정확한 스키마는 `connector_operations`로 조회합니다. `prepare_connector_action`이 네이티브
+검토를 만들고 `/api/actions/:id/decide`에서 실행합니다. 읽기 도구는 변경을 실행하지 않습니다.
+
+`commit_files`는 여러 파일을 하나의 커밋으로 만들어 브랜치를 갱신합니다. 예상 HEAD SHA를
+검증하고 force push를 허용하지 않습니다. 연결 정보가 바뀌면 이전 검토를 무효화하며,
+응답을 잃은 변경은 결과 불명으로 기록하고 자동 반복하지 않습니다.
+
+PAT에도 대상 저장소와 쓰기 권한이 있어야 합니다. 공개 여부·설정은 Administration write,
+코드·브랜치는 Contents write, 이슈·PR은 Issues/Pull requests write, 워크플로 호출은 Actions
+write가 필요합니다. 커넥터 업데이트로 읽기 전용 PAT의 권한이 늘어나지는 않습니다.
+GitHub 계정·조직 정책도 그대로 적용됩니다.
+[공식 저장소 API](https://docs.github.com/en/rest/repos/repos),
+[Git refs API](https://docs.github.com/en/rest/git/refs),
+[이슈 API](https://docs.github.com/en/rest/issues/issues)
+
 - **Encrypted at rest.** Secrets are stored AES-256-GCM encrypted
   (`packages/integrations/src/vault.ts`) under `TOKEN_ENCRYPTION_KEY`; in sample
   mode a random key is generated in the data directory like the session signing
@@ -145,7 +164,7 @@ and [Commits API](https://docs.github.com/en/rest/commits/commits?apiVersion=202
   with a schema-validated interface name) via `execFile`.
 - **Timeouts & caps.** Provider calls use a 15s timeout (configurable via
   service deps) and a 4 MB response cap.
-- **Separate reads and writes.** The query route only permits reads. Proxmox
+- **Separate reads and writes.** The query route only permits reads. GitHub and Proxmox
   POST/PUT/DELETE operations run through `/api/actions` and the native review
   workflow. Provider 401/403 responses report authentication or missing permissions.
 - **Reviewed target binding.** Proxmox reviews bind the connector ID, URL, TLS

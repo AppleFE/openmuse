@@ -91,7 +91,7 @@ export class AgentService {
         new JevGuardRuntimeHook(jev),
         new PiRuntimeHook(db, config, computer, connectors, jev, undefined, browser),
       ]);
-    const teamModels = new TeamModelExecutor(this.models, hooks);
+    const teamModels = new TeamModelExecutor(this.models, hooks, db);
     this.teams = new TeamEngine(db, (input) => teamModels.execute(input));
     this.worker = new TaskWorker(db, (owner, task, context) => this.execute(owner, task, context), {
       settled: (owner, task) => this.publishOutcome(owner, task),

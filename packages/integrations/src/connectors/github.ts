@@ -4,7 +4,12 @@ import {
   githubConfigSchema,
   githubSecretsSchema,
 } from "../../../domain/src/connectors.ts";
-import { githubOperationLabels, githubReadParams, githubWriteParams, parseGithubWrite } from "../../../domain/src/github.ts";
+import {
+  githubOperationLabels,
+  githubReadParams,
+  githubWriteParams,
+  parseGithubWrite,
+} from "../../../domain/src/github.ts";
 import { ConnectorError, httpJson, redact } from "./http.ts";
 import type { ConnectorAdapter, ConnectorContext } from "./types.ts";
 
@@ -115,7 +120,8 @@ function request(
     signal: ctx.signal,
     secrets: [secrets.token],
     maxBytes,
-    method, json,
+    method,
+    json,
     headers: {
       Authorization: `Bearer ${secrets.token}`,
       Accept: accept,
@@ -195,9 +201,11 @@ function operations() {
     const required = paramsSchema.required as string[] | undefined;
     return {
       name,
-      kind: name in githubWriteParams ? "write" as const : "read" as const,
+      kind: name in githubWriteParams ? ("write" as const) : ("read" as const),
       label: githubOperationLabels[name],
-      description: descriptions[name] ?? `${githubOperationLabels[name]}. Writes require a prepared connector action and the corresponding GitHub token write permission.`,
+      description:
+        descriptions[name] ??
+        `${githubOperationLabels[name]}. Writes require a prepared connector action and the corresponding GitHub token write permission.`,
       paramsSchema,
       params: Object.entries(properties).map(([key, spec]) => ({
         name: key,
@@ -258,11 +266,25 @@ export function githubAdapter(): ConnectorAdapter {
     async run(ctx, operation, params) {
       const read = async () => {
         switch (operation) {
-          case "issue": case "pull": case "comments": case "releases": {
+          case "issue":
+          case "pull":
+          case "comments":
+          case "releases": {
             const input = githubReadParams[operation].parse(params);
             const base = `/repos/${input.repo}`;
-            const suffix = operation === "releases" ? "/releases" : operation === "pull" ? `/pulls/${"number" in input ? input.number : 0}` : `/issues/${"number" in input ? input.number : 0}${operation === "comments" ? "/comments" : ""}`;
-            return request(ctx, query(base + suffix, "page" in input ? { page: input.page, per_page: input.limit } : {}));
+            const suffix =
+              operation === "releases"
+                ? "/releases"
+                : operation === "pull"
+                  ? `/pulls/${"number" in input ? input.number : 0}`
+                  : `/issues/${"number" in input ? input.number : 0}${operation === "comments" ? "/comments" : ""}`;
+            return request(
+              ctx,
+              query(
+                base + suffix,
+                "page" in input ? { page: input.page, per_page: input.limit } : {},
+              ),
+            );
           }
           case "repos": {
             const input = githubReadParams.repos.parse(params);
@@ -509,35 +531,116 @@ export function githubAdapter(): ConnectorAdapter {
       const p = parseGithubWrite(input.operation, input.params);
       const { repo, ...body } = p;
       const base = `/repos/${repo}`;
-      const send = (path: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", json?: unknown) => request(ctx, base + path, undefined, undefined, method, json);
+      const send = (
+        path: string,
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+        json?: unknown,
+      ) => request(ctx, base + path, undefined, undefined, method, json);
       let result: unknown;
       switch (input.operation) {
-        case "repo_update": result = await send("", "PATCH", p.settings); break;
-        case "branch_create": result = await send("/git/refs", "POST", { ref: `refs/heads/${p.branch}`, sha: p.sha }); break;
-        case "branch_delete": result = await send(`/git/refs/heads/${filePath(String(p.branch))}`, "DELETE"); break;
-        case "file_put": case "file_delete": {
+        case "repo_update":
+          result = await send("", "PATCH", p.settings);
+          break;
+        case "branch_create":
+          result = await send("/git/refs", "POST", { ref: `refs/heads/${p.branch}`, sha: p.sha });
+          break;
+        case "branch_delete":
+          result = await send(`/git/refs/heads/${filePath(String(p.branch))}`, "DELETE");
+          break;
+        case "file_put":
+        case "file_delete": {
           const { path, content, ...fields } = body;
-          result = await send(`/contents/${filePath(String(path))}`, input.operation === "file_put" ? "PUT" : "DELETE", { ...fields, ...(content !== undefined ? { content: Buffer.from(String(content), "utf8").toString("base64") } : {}) }); break;
+          result = await send(
+            `/contents/${filePath(String(path))}`,
+            input.operation === "file_put" ? "PUT" : "DELETE",
+            {
+              ...fields,
+              ...(content !== undefined
+                ? { content: Buffer.from(String(content), "utf8").toString("base64") }
+                : {}),
+            },
+          );
+          break;
         }
         case "commit_files": {
-          const head = z.object({ object: z.object({ sha: z.string() }) }).parse(await send(`/git/ref/heads/${filePath(String(p.branch))}`, "GET"));
-          if (head.object.sha !== p.expectedHeadSha) throw new ConnectorError("브랜치가 변경되었습니다. 최신 HEAD로 다시 준비하세요", 409, "provider");
-          const parent = z.object({ tree: z.object({ sha: z.string() }) }).parse(await send(`/git/commits/${p.expectedHeadSha}`, "GET"));
+          const head = z
+            .object({ object: z.object({ sha: z.string() }) })
+            .parse(await send(`/git/ref/heads/${filePath(String(p.branch))}`, "GET"));
+          if (head.object.sha !== p.expectedHeadSha)
+            throw new ConnectorError(
+              "브랜치가 변경되었습니다. 최신 HEAD로 다시 준비하세요",
+              409,
+              "provider",
+            );
+          const parent = z
+            .object({ tree: z.object({ sha: z.string() }) })
+            .parse(await send(`/git/commits/${p.expectedHeadSha}`, "GET"));
           const files = p.files as { path: string; content?: string; delete: boolean }[];
-          const tree = z.object({ sha: z.string() }).parse(await send("/git/trees", "POST", { base_tree: parent.tree.sha, tree: files.map((f) => ({ path: f.path, mode: "100644", type: "blob", ...(f.delete ? { sha: null } : { content: f.content }) })) }));
-          const commit = z.object({ sha: z.string() }).parse(await send("/git/commits", "POST", { message: p.message, tree: tree.sha, parents: [p.expectedHeadSha] }));
-          result = await send(`/git/refs/heads/${filePath(String(p.branch))}`, "PATCH", { sha: commit.sha, force: false }); break;
+          const tree = z
+            .object({ sha: z.string() })
+            .parse(
+              await send("/git/trees", "POST", {
+                base_tree: parent.tree.sha,
+                tree: files.map((f) => ({
+                  path: f.path,
+                  mode: "100644",
+                  type: "blob",
+                  ...(f.delete ? { sha: null } : { content: f.content }),
+                })),
+              }),
+            );
+          const commit = z
+            .object({ sha: z.string() })
+            .parse(
+              await send("/git/commits", "POST", {
+                message: p.message,
+                tree: tree.sha,
+                parents: [p.expectedHeadSha],
+              }),
+            );
+          result = await send(`/git/refs/heads/${filePath(String(p.branch))}`, "PATCH", {
+            sha: commit.sha,
+            force: false,
+          });
+          break;
         }
-        case "issue_create": result = await send("/issues", "POST", body); break;
-        case "issue_update": case "pull_update": case "pull_merge": case "issue_comment": {
+        case "issue_create":
+          result = await send("/issues", "POST", body);
+          break;
+        case "issue_update":
+        case "pull_update":
+        case "pull_merge":
+        case "issue_comment": {
           const { number, ...fields } = body;
           const isPull = input.operation.startsWith("pull_");
-          result = await send(`/${isPull ? "pulls" : "issues"}/${number}${input.operation === "pull_merge" ? "/merge" : input.operation === "issue_comment" ? "/comments" : ""}`, input.operation === "pull_merge" ? "PUT" : input.operation === "issue_comment" ? "POST" : "PATCH", fields); break;
+          result = await send(
+            `/${isPull ? "pulls" : "issues"}/${number}${input.operation === "pull_merge" ? "/merge" : input.operation === "issue_comment" ? "/comments" : ""}`,
+            input.operation === "pull_merge"
+              ? "PUT"
+              : input.operation === "issue_comment"
+                ? "POST"
+                : "PATCH",
+            fields,
+          );
+          break;
         }
-        case "pull_create": result = await send("/pulls", "POST", body); break;
-        case "release_create": result = await send("/releases", "POST", body); break;
-        case "workflow_dispatch": { const { workflow, ...fields } = body; result = await send(`/actions/workflows/${segment(String(workflow))}/dispatches`, "POST", fields); break; }
-        default: throw new ConnectorError("지원하지 않는 GitHub 쓰기 작업입니다");
+        case "pull_create":
+          result = await send("/pulls", "POST", body);
+          break;
+        case "release_create":
+          result = await send("/releases", "POST", body);
+          break;
+        case "workflow_dispatch": {
+          const { workflow, ...fields } = body;
+          result = await send(
+            `/actions/workflows/${segment(String(workflow))}/dispatches`,
+            "POST",
+            fields,
+          );
+          break;
+        }
+        default:
+          throw new ConnectorError("지원하지 않는 GitHub 쓰기 작업입니다");
       }
       return safeData({ operation: input.operation, repo, result, completed: true }, ctx);
     },

@@ -4,11 +4,13 @@ import type { AgentTask, AgentTeamRole } from "../../../../packages/domain/src/a
 import type { ModelRegistry } from "./models.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { tanstackAgent } from "./tanstack-agent.ts";
+import type { Store } from "../db.ts";
 
 export class TeamModelExecutor {
   constructor(
     private readonly models: ModelRegistry,
     private readonly runtimeHooks = new RuntimeHookPipeline(),
+    private readonly db?: Store,
   ) {}
 
   async execute(input: {
@@ -26,6 +28,9 @@ export class TeamModelExecutor {
     if (executor) return executor.execute?.({ ...request, ...preparation }) ?? { output: "" };
     const agent = tanstackAgent({
       model: profile.model,
+      usage: this.db
+        ? { db: this.db, owner: input.owner, modelId: profile.id, threadId: null }
+        : undefined,
       maxSteps: 1,
       tools: [],
       prompt:

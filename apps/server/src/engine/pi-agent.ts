@@ -188,16 +188,41 @@ export class PiAgentRunner {
       },
     });
     let usageWrites = Promise.resolve();
-    let generationStart = Date.now(), firstTokenAt = 0;
+    let generationStart = Date.now(),
+      firstTokenAt = 0;
     const unsubscribe = session.subscribe((event) => {
-      if (event.type === "message_start" && event.message.role === "assistant") { generationStart = Date.now(); firstTokenAt = 0; }
-      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta" && !firstTokenAt) firstTokenAt = Date.now();
+      if (event.type === "message_start" && event.message.role === "assistant") {
+        generationStart = Date.now();
+        firstTokenAt = 0;
+      }
+      if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "text_delta" &&
+        !firstTokenAt
+      )
+        firstTokenAt = Date.now();
       if (event.type === "message_end" && event.message.role === "assistant") {
         const message = event.message;
         const usage = message.usage;
-        const value = { threadId: input.sessionKey.startsWith("chat:") ? input.sessionKey.slice(5) : null, modelId: input.profile.id, input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, totalTokens: usage.totalTokens, reported: usage.totalTokens > 0, durationMs: Math.max(1, Date.now() - (firstTokenAt || generationStart)), createdAt: new Date().toISOString() };
+        const value = {
+          threadId: input.sessionKey.startsWith("chat:") ? input.sessionKey.slice(5) : null,
+          modelId: input.profile.id,
+          input: usage.input,
+          output: usage.output,
+          cacheRead: usage.cacheRead,
+          cacheWrite: usage.cacheWrite,
+          totalTokens:
+            usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
+          reported:
+            (usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite) >
+            0,
+          durationMs: Math.max(1, Date.now() - (firstTokenAt || generationStart)),
+          createdAt: new Date().toISOString(),
+        };
         const messageKey = `${input.runKey}:${message.timestamp}:${createHash("sha256").update(JSON.stringify(message.content)).digest("hex")}`;
-        usageWrites = usageWrites.then(() => new UsageService(this.db).record(input.owner, messageKey, value)).then(() => {});
+        usageWrites = usageWrites
+          .then(() => new UsageService(this.db).record(input.owner, messageKey, value))
+          .then(() => {});
         input.onUsage?.(value);
       }
       this.forwardEvent(event, input);

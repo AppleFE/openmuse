@@ -14,7 +14,12 @@ export function connectorRoutes(service: ConnectorService) {
   const app = new Hono<{ Variables: { owner: string } }>();
   app.get("/providers", (c) => c.json({ providers: service.providers() }));
   app.post("/ssh-fingerprint", async (c) => {
-    const input = z.strictObject({ host: z.string().regex(/^[a-zA-Z0-9.:[\]_-]{1,253}$/), port: z.number().int().min(1).max(65535).default(22) }).parse(await c.req.json());
+    const input = z
+      .strictObject({
+        host: z.string().regex(/^[a-zA-Z0-9.:[\]_-]{1,253}$/),
+        port: z.number().int().min(1).max(65535).default(22),
+      })
+      .parse(await c.req.json());
     return c.json({ fingerprint: await probeSshFingerprint(input.host, input.port) });
   });
   app.get("/", async (c) => c.json({ connectors: await service.list(c.get("owner")) }));

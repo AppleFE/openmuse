@@ -376,9 +376,17 @@ export function ChatScreen({
   );
   const visible = messages.filter((m) => m.role === "user" || m.role === "assistant");
   const replying = busy || agent.isRunning;
-  const { usage, speed } = useChatUsage(threadId, replying, messages.filter((m) => m.role === "assistant").reduce((n,m) => n + (typeof m.content === "string" ? m.content.length : 0), 0));
-  const localTimes = useRef<Record<string,string>>({});
-  for (const message of visible) if (replying && !localTimes.current[message.id]) localTimes.current[message.id] = new Date().toISOString();
+  const { usage, speed } = useChatUsage(
+    threadId,
+    replying,
+    messages
+      .filter((m) => m.role === "assistant")
+      .reduce((n, m) => n + (typeof m.content === "string" ? m.content.length : 0), 0),
+  );
+  const localTimes = useRef<Record<string, string>>({});
+  for (const message of visible)
+    if (replying && !localTimes.current[message.id])
+      localTimes.current[message.id] = new Date().toISOString();
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -470,7 +478,22 @@ export function ChatScreen({
                     {speakerLabel}
                   </Text>
                 )}
-                {(usage?.messageTimes[message.id] || localTimes.current[message.id]) && <Text style={[s.small, { alignSelf: user ? "flex-end" : "flex-start", marginHorizontal: 8 }]}>{new Date(usage?.messageTimes[message.id] || localTimes.current[message.id]).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}</Text>}
+                {(usage?.messageTimes[message.id] || localTimes.current[message.id]) && (
+                  <Text
+                    style={[
+                      s.small,
+                      { alignSelf: user ? "flex-end" : "flex-start", marginHorizontal: 8 },
+                    ]}
+                  >
+                    {new Date(
+                      usage?.messageTimes[message.id] || localTimes.current[message.id],
+                    ).toLocaleTimeString("ko-KR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })}
+                  </Text>
+                )}
                 {!!text && (
                   <View
                     style={{
@@ -642,12 +665,15 @@ export function ChatScreen({
             </Button>
           </Card>
         )}
-        <View style={[s.row, { gap: 12, marginBottom: 8 }]}><ConversationModelPicker
-          models={models}
-          value={selectedModelId}
-          onChange={setSelectedModelId}
-          disabled={replying}
-        /><ChatUsage usage={usage} speed={speed}/></View>
+        <View style={[s.row, { gap: 12, marginBottom: 8 }]}>
+          <ConversationModelPicker
+            models={models}
+            value={selectedModelId}
+            onChange={setSelectedModelId}
+            disabled={replying}
+          />
+          <ChatUsage usage={usage} speed={speed} />
+        </View>
         <View
           style={{
             backgroundColor: colors.input,

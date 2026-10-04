@@ -158,10 +158,18 @@ function useLocalThreads(api: MuseApi) {
     [api, mutate, replaceThread],
   );
 
-  const deleteThread = useCallback((threadId: string) => mutate(async () => {
-    await api.request(`/api/copilotkit/threads/${encodeURIComponent(threadId)}`, undefined, "DELETE");
-    setThreads((current) => current.filter((thread) => thread.id !== threadId));
-  }), [api, mutate]);
+  const deleteThread = useCallback(
+    (threadId: string) =>
+      mutate(async () => {
+        await api.request(
+          `/api/copilotkit/threads/${encodeURIComponent(threadId)}`,
+          undefined,
+          "DELETE",
+        );
+        setThreads((current) => current.filter((thread) => thread.id !== threadId));
+      }),
+    [api, mutate],
+  );
   return {
     threads,
     isLoading,
@@ -435,7 +443,27 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                     >
                       {thread.archived ? "복원" : "보관"}
                     </Button>
-                    {thread.archived && <Button small danger icon={Trash2} disabled={isMutating} onPress={() => { if (deleting !== thread.id) { setDeleting(thread.id); return; } void mutate(async () => { await deleteThread(thread.id); if (selection.id === thread.id) select({ id: mainId, existing: true }); setDeleting(undefined); }); }}>{deleting === thread.id ? "복구 불가 · 삭제 확인" : "완전 삭제"}</Button>}
+                    {thread.archived && (
+                      <Button
+                        small
+                        danger
+                        icon={Trash2}
+                        disabled={isMutating}
+                        onPress={() => {
+                          if (deleting !== thread.id) {
+                            setDeleting(thread.id);
+                            return;
+                          }
+                          void mutate(async () => {
+                            await deleteThread(thread.id);
+                            if (selection.id === thread.id) select({ id: mainId, existing: true });
+                            setDeleting(undefined);
+                          });
+                        }}
+                      >
+                        {deleting === thread.id ? "복구 불가 · 삭제 확인" : "완전 삭제"}
+                      </Button>
+                    )}
                   </View>
                 </View>
               ))}

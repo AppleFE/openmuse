@@ -13,6 +13,8 @@ import { createOpenaiChat, type OpenAIChatModel, openaiText } from "@tanstack/ai
 import { map, mergeMap, type Observable } from "rxjs";
 import { z } from "zod";
 import { MODEL_MAX_RETRIES } from "../config.ts";
+import type { Store } from "../db.ts";
+import { UsageService } from "../usage.ts";
 
 // Same "provider/model" strings, env vars and base URL formats as the AI SDK resolver in
 // @copilotkit/runtime. Each provider SDK retries transient failures up to MODEL_MAX_RETRIES times.
@@ -122,6 +124,7 @@ export function tanstackAgent(options: {
   prompt: string;
   /** Said when the step limit, not the model, ends a run; otherwise the reply just stops. */
   stepLimitNote?: string;
+  usage?: { db: Store; owner: string; modelId: string; threadId: string | null };
 }) {
   const agent = new BuiltInAgent({
     type: "tanstack",
@@ -139,7 +142,7 @@ export function tanstackAgent(options: {
         !(typeof input.state === "object" && Object.keys(input.state).length === 0)
       )
         system += `\n## Application State\nThis is state from the application that you can edit by calling AGUISendStateSnapshot or AGUISendStateDelta.\n\`\`\`json\n${JSON.stringify(input.state, null, 2)}\n\`\`\`\n`;
-      return chat({
+      const stream = chat({
         adapter: adapter(options.model),
         messages: converted.messages,
         systemPrompts: system ? [system] : [],
@@ -156,6 +159,46 @@ export function tanstackAgent(options: {
         agentLoopStrategy: maxIterations(options.maxSteps),
         abortController,
       });
+      return (async function* () {
+        const started = Date.now();
+        let firstTokenAt = 0;
+        for await (const event of stream) {
+          if (event.type === "TEXT_MESSAGE_CONTENT" && !firstTokenAt) firstTokenAt = Date.now();
+          if (event.type === "RUN_FINISHED" && options.usage) {
+            const raw = event.usage;
+            const entries = Array.isArray(raw) ? raw : [];
+            const inputTokens = entries.reduce((n, row) => n + (row.inputTokens ?? 0), 0);
+            const output = entries.reduce((n, row) => n + (row.outputTokens ?? 0), 0);
+            const totalTokens = entries.reduce(
+              (n, row) => n + (row.totalTokens ?? (row.inputTokens ?? 0) + (row.outputTokens ?? 0)),
+              0,
+            );
+            const legacy = raw && !Array.isArray(raw) ? raw : undefined;
+            await new UsageService(options.usage.db).record(
+              options.usage.owner,
+              `tanstack:${input.runId}`,
+              {
+                threadId: options.usage.threadId,
+                modelId: options.usage.modelId,
+                input: legacy?.promptTokens ?? inputTokens,
+                output: legacy?.completionTokens ?? output,
+                cacheRead: entries.reduce((n, row) => n + (row.cachedInputTokens ?? 0), 0),
+                cacheWrite: 0,
+                totalTokens:
+                  (legacy?.totalTokens ?? totalTokens) ||
+                  (legacy?.promptTokens ?? inputTokens) + (legacy?.completionTokens ?? output),
+                reported:
+                  ((legacy?.totalTokens ?? totalTokens) ||
+                    (legacy?.promptTokens ?? inputTokens) + (legacy?.completionTokens ?? output)) >
+                  0,
+                durationMs: Math.max(1, Date.now() - (firstTokenAt || started)),
+                createdAt: new Date().toISOString(),
+              },
+            );
+          }
+          yield event;
+        }
+      })();
     },
   });
   const run = agent.run.bind(agent);

@@ -236,8 +236,24 @@ test("providers metadata, query validation and read operations work end to end",
   ]);
   const githubInfo = infos.find((info: { provider: string }) => info.provider === "github");
   assert.deepEqual(
-    githubInfo.operations.filter((op: { kind: string }) => op.kind === "read").map((op: { name: string }) => op.name),
-    ["repos", "issues", "pulls", "repo", "branches", "contents", "tree", "file", "commits", "issue", "pull", "comments", "releases"],
+    githubInfo.operations
+      .filter((op: { kind: string }) => op.kind === "read")
+      .map((op: { name: string }) => op.name),
+    [
+      "repos",
+      "issues",
+      "pulls",
+      "repo",
+      "branches",
+      "contents",
+      "tree",
+      "file",
+      "commits",
+      "issue",
+      "pull",
+      "comments",
+      "releases",
+    ],
   );
   const created = await app.request("/api/connectors", {
     method: "POST",

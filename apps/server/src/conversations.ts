@@ -520,10 +520,19 @@ export class ConversationStoreRunner extends AgentRunner {
     const sessionKey = `chat:${threadId}`;
     const digest = (value: string) => createHash("sha256").update(value).digest("hex");
     await this.db.remove(owner, "pi-agent-sessions", digest(sessionKey));
-    for (const run of await this.db.list<{ id: string; sessionKey: string }>(owner, "pi-agent-runs")) if (run.sessionKey === sessionKey) await this.db.remove(owner, "pi-agent-runs", run.id);
-    for (const linked of await this.db.list<{id:string}>(owner, "chat-browsers")) if (linked.id === threadId || linked.id.startsWith(`${threadId}:`)) await this.db.remove(owner, "chat-browsers", linked.id);
+    for (const run of await this.db.list<{ id: string; sessionKey: string }>(
+      owner,
+      "pi-agent-runs",
+    ))
+      if (run.sessionKey === sessionKey) await this.db.remove(owner, "pi-agent-runs", run.id);
+    for (const linked of await this.db.list<{ id: string }>(owner, "chat-browsers"))
+      if (linked.id === threadId || linked.id.startsWith(`${threadId}:`))
+        await this.db.remove(owner, "chat-browsers", linked.id);
     // Both path segments are cryptographic digests, never user-controlled filesystem paths.
-    await rm(join(this.config.dataDir, "pi", "sessions", digest(owner).slice(0,24), digest(sessionKey)), { recursive: true, force: true });
+    await rm(
+      join(this.config.dataDir, "pi", "sessions", digest(owner).slice(0, 24), digest(sessionKey)),
+      { recursive: true, force: true },
+    );
   }
 
   run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
@@ -560,7 +569,13 @@ export class ConversationStoreRunner extends AgentRunner {
       messages = trustedInputMessages(thread.messages ?? [], request.input.messages ?? []);
       const messageTimes = { ...(thread.messageTimes ?? {}) };
       for (const message of messages) messageTimes[message.id] ??= new Date().toISOString();
-      await this.db.compareAndSwap(owner, "conversation-threads", request.threadId, { activeRunId: request.input.runId }, { messageTimes });
+      await this.db.compareAndSwap(
+        owner,
+        "conversation-threads",
+        request.threadId,
+        { activeRunId: request.input.runId },
+        { messageTimes },
+      );
       if (jsonBytes(messages) > MAX_RUN_BYTES)
         throw new AppError("Conversation history is too large; start a new conversation", 413);
       const state = trustedInputState(thread.state, request.input.state);
@@ -636,7 +651,15 @@ export class ConversationStoreRunner extends AgentRunner {
               if (messageId && !messageTimes[messageId]) {
                 messageTimes[messageId] = new Date().toISOString();
                 const snapshot = { ...messageTimes };
-                writeChain = writeChain.then(async () => { await this.db.compareAndSwap(owner, "conversation-threads", request.threadId, { activeRunId: request.input.runId }, { messageTimes: snapshot }); });
+                writeChain = writeChain.then(async () => {
+                  await this.db.compareAndSwap(
+                    owner,
+                    "conversation-threads",
+                    request.threadId,
+                    { activeRunId: request.input.runId },
+                    { messageTimes: snapshot },
+                  );
+                });
               }
             }
             if (events.length >= MAX_EVENTS_PER_RUN || jsonBytes(events) >= MAX_RUN_BYTES) {

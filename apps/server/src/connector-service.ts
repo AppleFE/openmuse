@@ -136,7 +136,13 @@ export class ConnectorService {
     const adapter = connectorAdapter(stored.provider, this.deps);
     if (stored.provider === "github") {
       const params = parseGithubWrite(parsed.operation, parsed.params);
-      return { input: { kind: "connector.write" as const, data: connectorWriteSchema.parse({ ...parsed, params }) }, targetVersion: JSON.stringify({ connection: this.connectionVersion(stored) }) };
+      return {
+        input: {
+          kind: "connector.write" as const,
+          data: connectorWriteSchema.parse({ ...parsed, params }),
+        },
+        targetVersion: JSON.stringify({ connection: this.connectionVersion(stored) }),
+      };
     }
     if (stored.provider === "remote_host") {
       const params = parseRemoteOperation(parsed.operation, parsed.params, true);
@@ -524,7 +530,9 @@ export class ConnectorService {
       id: `connector:${record.id}`,
       name: record.name,
       status: record.check ? (record.check.ok ? "connected" : "unavailable") : "unconfigured",
-      capabilities: [...connectorOperations[record.provider]],
+      capabilities: connectorAdapter(record.provider, this.deps).info.operations.map(
+        (operation) => operation.name,
+      ),
     }));
   }
 }

@@ -301,7 +301,7 @@ export function ComputerSheet() {
             </View>
             <View style={[s.row, { gap: 8 }]}>
               <Text style={[s.small, { flex: 1 }]}>
-                종료된 세션은 호스트별 최근 12개·30일을 보관합니다.
+                새 세션을 열 때 종료된 기록을 호스트별 최근 12개·30일 범위로 정리합니다.
               </Text>
               <Button
                 small

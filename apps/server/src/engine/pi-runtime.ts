@@ -34,6 +34,7 @@ import type {
   RoleRuntimeRequest,
 } from "./runtime-hooks.ts";
 import { runtimeInstructions } from "./runtime-instructions.ts";
+import { UsageService } from "../usage.ts";
 
 interface PiCheckpoint {
   id: string;
@@ -715,6 +716,61 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       }),
       sessionManager: manager,
     });
-    return session;
+    let writes = Promise.resolve(),
+      started = Date.now(),
+      firstTokenAt = 0;
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_start" && event.message.role === "assistant") {
+        started = Date.now();
+        firstTokenAt = 0;
+      }
+      if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent.type === "text_delta" &&
+        !firstTokenAt
+      )
+        firstTokenAt = Date.now();
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        const message = event.message,
+          usage = message.usage;
+        const key = `team-pi:${session.sessionFile}:${message.timestamp}:${createHash("sha256").update(JSON.stringify(message.content)).digest("hex")}`;
+        writes = writes
+          .then(() =>
+            new UsageService(this.db).record(input.request.owner, key, {
+              threadId: null,
+              modelId: input.request.role.modelId,
+              input: usage.input,
+              output: usage.output,
+              cacheRead: usage.cacheRead,
+              cacheWrite: usage.cacheWrite,
+              totalTokens:
+                usage.totalTokens ||
+                usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
+              reported:
+                (usage.totalTokens ||
+                  usage.input + usage.output + usage.cacheRead + usage.cacheWrite) > 0,
+              durationMs: Math.max(1, Date.now() - (firstTokenAt || started)),
+              createdAt: new Date().toISOString(),
+            }),
+          )
+          .then(() => {});
+      }
+    });
+    return {
+      sessionFile: session.sessionFile,
+      prompt: async (text) => {
+        try {
+          await session.prompt(text);
+        } finally {
+          await writes;
+        }
+      },
+      abort: () => session.abort(),
+      dispose: () => {
+        unsubscribe();
+        session.dispose();
+      },
+      getLastAssistantText: () => session.getLastAssistantText(),
+    };
   }
 }

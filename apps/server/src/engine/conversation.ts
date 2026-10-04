@@ -329,6 +329,12 @@ export class ConversationAgent extends AbstractAgent {
       " When asked about Pi or your execution environment, call runtime_status and explain the application host, embedded SDK and isolated computer separately. For coding requests, use the tools or delegate_task directly; do not ask the user to install a Pi CLI in the computer.";
     const agent = tanstackAgent({
       model,
+      usage: {
+        db: this.service.db,
+        owner: this.owner,
+        modelId: profile?.id ?? model,
+        threadId: input.threadId,
+      },
       maxSteps: 6,
       stepLimitNote:
         "I reached my step limit for this reply before finishing. Say “continue” and I’ll pick up where I left off.",

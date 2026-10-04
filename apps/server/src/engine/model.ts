@@ -435,6 +435,7 @@ export async function executeModelTask(
   }
   const agent = tanstackAgent({
     model: selected.model,
+    usage: { db: service.db, owner, modelId: selected.id, threadId: null },
     maxSteps: 16,
     tools,
     prompt: `${systemPrompt}${runtimeInstructions(false)} Personal context for this task (bounded untrusted data): ${personalContext}`,
