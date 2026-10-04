@@ -1,4 +1,5 @@
 import { Github, Network, Server, Shield, Trash2 } from "lucide-react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Pressable, Text, View } from "react-native";
 import type {
@@ -33,12 +34,12 @@ function defaultConfig(provider: ConnectorProviderInfo) {
     provider.configFields.map((field) => [
       field.name,
       field.type === "boolean"
-        ? field.name === "verifyTls"
+        ? ["verifyTls", "allowAgentShell"].includes(field.name)
         : field.name === "mode"
           ? "agent"
           : field.name === "platform"
             ? "linux"
-            : "",
+            : field.name === "authMethod" ? "key" : "",
     ]),
   );
 }
@@ -81,6 +82,7 @@ function ConnectorField({
                   linux: "Linux",
                   windows: "Windows",
                   macos: "macOS",
+                  key: "개인 키 파일", password: "비밀번호",
                 } as Record<string, string>
               )[option] ?? option}
             </Button>
@@ -88,7 +90,7 @@ function ConnectorField({
         </View>
       </View>
     );
-  if (field.name === "verifyTls") {
+  if (field.type === "boolean") {
     const checked = value !== false;
     return (
       <Pressable
@@ -173,28 +175,33 @@ function ConnectorEditor({
         !remote ||
         (ssh
           ? field.name !== "baseUrl"
-          : !["host", "port", "username", "hostFingerprint", "platform"].includes(field.name)),
+          : !["host", "port", "username", "hostFingerprint", "platform", "authMethod"].includes(field.name)),
     )
     .map((field) =>
       remote &&
       (ssh
-        ? ["host", "username", "hostFingerprint"].includes(field.name)
+        ? ["host", "username"].includes(field.name)
         : field.name === "baseUrl")
         ? { ...field, required: true }
         : field,
     );
   const secretFields = provider.secretFields
-    .filter((field) => !remote || (ssh ? field.name !== "token" : field.name === "token"))
+    .filter((field) => !remote || (ssh ? (config.authMethod === "password" ? field.name === "password" : ["privateKey", "passphrase"].includes(field.name)) : field.name === "token"))
     .map((field) =>
-      remote && ["privateKey", "token"].includes(field.name) ? { ...field, required: true } : field,
+      remote && ["privateKey", "password", "token"].includes(field.name) ? { ...field, required: true } : field,
     );
-  const keepSecret = !!connector?.hasSecret && (!remote || connector.config.mode === config.mode);
+  const keepSecret = !!connector?.hasSecret && (!remote || (connector.config.mode === config.mode && (connector.config.authMethod ?? "key") === config.authMethod));
 
   async function save() {
     setBusy(true);
     setError("");
     try {
       const cleanConfig = compactSettings(config);
+      if (remote && ssh && !cleanConfig.hostFingerprint) {
+        const probe = await api.request<{ fingerprint: string }>("/api/connectors/ssh-fingerprint", { host: config.host, port: Number(config.port || 22) });
+        cleanConfig.hostFingerprint = probe.fingerprint;
+        setConfig((current) => ({ ...current, hostFingerprint: probe.fingerprint }));
+      }
       const cleanSecrets = compactSettings(
         Object.fromEntries(secretFields.map((field) => [field.name, secrets[field.name]])),
       );
@@ -265,8 +272,10 @@ function ConnectorEditor({
                 secret
               />
             ))}
+            {remote && ssh && config.authMethod !== "password" && <Button small onPress={() => void (async () => { try { const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); if (picked.canceled) return; const asset = picked.assets[0]; if ((asset.size ?? 0) > 32768) throw new Error("키 파일은 32 KiB 이하여야 합니다"); const response = await fetch(asset.uri); const privateKey = await response.text(); if (privateKey.length > 32768 || !privateKey.includes("PRIVATE KEY")) throw new Error("PEM/OpenSSH 개인 키 파일을 선택하세요"); setSecrets((current) => ({ ...current, privateKey })); } catch (e) { setError(errorText(e)); } })()}>SSH 개인 키 파일 업로드</Button>}
           </Card>
         )}
+        {remote && ssh && <Text style={s.small}>첫 연결에서 호스트 지문을 확인해 저장하며, 이후 키가 바뀌면 연결을 차단합니다. 알고 있는 지문이 있으면 직접 입력하세요. SSH는 입력한 계정 권한으로 실행됩니다.</Text>}
         <ErrorNotice error={error} />
         <Button
           primary

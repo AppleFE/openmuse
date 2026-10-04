@@ -195,8 +195,7 @@ export function RemoteHostManager({
             명령 실행 검토
           </Button>
           <Text style={s.small}>
-            이 호스트의 로그인 사용자 권한으로 실행됩니다. 설치된 Herdr·Codex 등도 명령으로 호출할
-            수 있습니다.
+            {status?.identity ? `${status.identity.username} · ${status.identity.detail}` : "권한 정보가 없는 구버전입니다. Host Agent를 업데이트하세요."} 설치된 Herdr·Codex 등도 호출할 수 있습니다.
           </Text>
         </Card>
         {status?.capabilities.browser && (

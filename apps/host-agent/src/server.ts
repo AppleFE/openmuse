@@ -8,6 +8,7 @@ import {
 } from "../../../packages/integrations/src/remote-jobs.ts";
 import { WorkerError } from "../../worker/src/errors.ts";
 import { createWorkerServer, readBody } from "../../worker/src/server.ts";
+import { hostIdentity } from "./identity.ts";
 
 export async function createHostAgent(options: { token: string; dataDir: string }) {
   const jobs = await new RemoteJobManager(
@@ -25,6 +26,7 @@ export async function createHostAgent(options: { token: string; dataDir: string 
           platform: process.platform,
           arch: arch(),
           shell: process.platform === "win32" ? "powershell.exe" : "/bin/sh",
+          identity: await hostIdentity(),
           capabilities: { shell: true, browser: true, pty: false, desktop: false },
         });
         return true;

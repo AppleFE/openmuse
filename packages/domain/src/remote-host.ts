@@ -10,7 +10,8 @@ export const remoteHostConfigSchema = z
   .strictObject({
     mode: z.enum(["agent", "ssh"]).default("agent"),
     platform: z.enum(["linux", "windows", "macos"]).default("linux"),
-    allowAgentShell: z.boolean().default(false),
+    allowAgentShell: z.boolean().default(true),
+    authMethod: z.enum(["key", "password"]).default("key"),
     baseUrl: z
       .url()
       .max(2048)
@@ -46,8 +47,9 @@ export const remoteHostSecretsSchema = z
     token: z.string().min(32).max(512).optional(),
     privateKey: z.string().min(32).max(32768).optional(),
     passphrase: z.string().min(1).max(1024).optional(),
+    password: z.string().min(1).max(1024).optional(),
   })
-  .refine((v) => !!v.token || !!v.privateKey, "에이전트 토큰 또는 SSH 개인 키가 필요합니다");
+  .refine((v) => !!v.token || !!v.privateKey || !!v.password, "에이전트 토큰 또는 SSH 키·비밀번호가 필요합니다");
 export type RemoteHostConfig = z.infer<typeof remoteHostConfigSchema>;
 export type RemoteHostSecrets = z.infer<typeof remoteHostSecretsSchema>;
 
@@ -111,6 +113,7 @@ export interface RemoteHostStatus {
   platform: string;
   arch: string;
   shell: string;
+  identity?: { username: string; elevated: boolean; detail: string };
   capabilities: { shell: boolean; browser: boolean; pty: boolean; desktop: boolean };
 }
 export const remoteHostStatusSchema = z.object({
@@ -118,6 +121,7 @@ export const remoteHostStatusSchema = z.object({
   platform: z.string().min(1).max(64),
   arch: z.string().min(1).max(64),
   shell: z.string().min(1).max(2048),
+  identity: z.object({ username: z.string().max(256), elevated: z.boolean(), detail: z.string().max(512) }).optional(),
   capabilities: z.object({
     shell: z.boolean(),
     browser: z.boolean(),

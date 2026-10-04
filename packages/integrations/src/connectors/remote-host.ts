@@ -19,14 +19,24 @@ import type { ConnectorAdapter, ConnectorContext } from "./types.ts";
 
 const managers = new Map<string, Promise<RemoteJobManager>>();
 const { Client } = ssh2;
-const secretsOf = (s: RemoteHostSecrets) => [s.token, s.privateKey, s.passphrase];
+/** First-use host key observation: no credentials are supplied or commands executed. */
+export function probeSshFingerprint(host: string, port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const client = new Client();
+    let observed = false;
+    client.on("error", () => { if (!observed) reject(new ConnectorError("SSH 호스트 키를 확인할 수 없습니다", undefined, "unreachable")); });
+    client.on("close", () => { if (!observed) reject(new ConnectorError("SSH 호스트 키 응답이 없습니다")); });
+    client.connect({ host, port, username: "openmuse-host-key-probe", readyTimeout: 10000, hostVerifier: (key: Buffer) => { observed = true; resolve(`SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`); return false; } });
+  });
+}
+const secretsOf = (s: RemoteHostSecrets) => [s.token, s.privateKey, s.passphrase, s.password];
 function context(ctx: ConnectorContext) {
   const config = remoteHostConfigSchema.parse(ctx.config),
     secrets = remoteHostSecretsSchema.parse(ctx.secrets);
   if (config.mode === "agent" && !secrets.token)
     throw new ConnectorError("Host Agent 토큰이 필요합니다", undefined, "auth");
-  if (config.mode === "ssh" && !secrets.privateKey)
-    throw new ConnectorError("SSH 개인 키가 필요합니다", undefined, "auth");
+  if (config.mode === "ssh" && !(config.authMethod === "password" ? secrets.password : secrets.privateKey))
+    throw new ConnectorError("선택한 SSH 키·비밀번호가 필요합니다", undefined, "auth");
   return { config, secrets };
 }
 export function sshCommand(
@@ -110,8 +120,7 @@ export function sshJobDriver(config: RemoteHostConfig, secrets: RemoteHostSecret
         host: config.host,
         port: config.port,
         username: config.username,
-        privateKey: secrets.privateKey,
-        passphrase: secrets.passphrase,
+        ...(config.authMethod === "password" ? { password: secrets.password } : { privateKey: secrets.privateKey, passphrase: secrets.passphrase }),
         readyTimeout: 15000,
         keepaliveInterval: 10000,
         keepaliveCountMax: 3,
@@ -134,8 +143,8 @@ async function sshStatus(
   signal?.throwIfAborted();
   const command =
     config.platform === "windows"
-      ? `[pscustomobject]@{hostname=$env:COMPUTERNAME;platform='win32';arch=$env:PROCESSOR_ARCHITECTURE;shell='powershell.exe'} | ConvertTo-Json -Compress`
-      : `printf '%s\\n' "$(hostname)" "$(uname -s)" "$(uname -m)" '/bin/sh'`;
+      ? `[pscustomobject]@{hostname=$env:COMPUTERNAME;platform='win32';arch=$env:PROCESSOR_ARCHITECTURE;shell='powershell.exe';identity=@{username=[Security.Principal.WindowsIdentity]::GetCurrent().Name;elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator);detail='SSH 로그인 계정의 실제 권한'}} | ConvertTo-Json -Compress`
+      : `printf '%s\\n' "$(hostname)" "$(uname -s)" "$(uname -m)" '/bin/sh' "$(id -un)" "$(id -u)"`;
   return new Promise<unknown>((resolve, reject) => {
     let output = "",
       control: Awaited<ReturnType<JobDriver>> | undefined,
@@ -168,7 +177,7 @@ async function sshStatus(
           const status =
             config.platform === "windows"
               ? JSON.parse(output)
-              : { hostname: values[0], platform: values[1], arch: values[2], shell: values[3] };
+              : { hostname: values[0], platform: values[1], arch: values[2], shell: values[3], identity: { username: values[4] ?? "unknown", elevated: values[5] === "0", detail: values[5] === "0" ? "root 관리자 권한" : "일반 사용자 권한 · 관리자 명령은 sudo 권한이 필요합니다" } };
           resolve({
             ...status,
             capabilities: { shell: true, browser: false, pty: true, desktop: false },
@@ -283,6 +292,7 @@ export function remoteHostAdapter(): ConnectorAdapter {
         { name: "host", label: "SSH 호스트", required: false },
         { name: "port", label: "SSH 포트", required: false, description: "기본값 22" },
         { name: "username", label: "SSH 사용자", required: false },
+        { name: "authMethod", label: "SSH 인증 방식", enum: ["key", "password"], required: false },
         {
           name: "hostFingerprint",
           label: "SSH 호스트 지문",
@@ -299,6 +309,7 @@ export function remoteHostAdapter(): ConnectorAdapter {
           type: "password",
         },
         { name: "passphrase", label: "SSH 개인 키 암호", required: false, type: "password" },
+        { name: "password", label: "SSH 비밀번호", required: false, type: "password" },
       ],
       operations: operations(),
     },

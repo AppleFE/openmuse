@@ -98,11 +98,11 @@ export const connectorCreateSchema = z.discriminatedUnion("provider", [
           path: ["secrets", "token"],
           message: "Host Agent 토큰이 필요합니다",
         });
-      if (value.config.mode === "ssh" && !value.secrets.privateKey)
+      if (value.config.mode === "ssh" && !(value.config.authMethod === "password" ? value.secrets.password : value.secrets.privateKey))
         ctx.addIssue({
           code: "custom",
-          path: ["secrets", "privateKey"],
-          message: "SSH 개인 키가 필요합니다",
+          path: ["secrets", value.config.authMethod === "password" ? "password" : "privateKey"],
+          message: "선택한 SSH 인증 정보가 필요합니다",
         });
     }),
   z.object({
