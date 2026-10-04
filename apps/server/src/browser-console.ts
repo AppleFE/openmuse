@@ -9,7 +9,7 @@ button,input{font:inherit;border:1px solid #e9edef;border-radius:24px;padding:10
 button{cursor:pointer}button:hover{background:#edf7fd}button:disabled{opacity:.45;cursor:default}button:focus-visible,input:focus-visible{outline:2px solid #1473c8;outline-offset:2px}
 form{padding:0 12px 10px;display:flex;gap:8px}input{flex:1;min-width:0;background:#f1f3f4;border-color:transparent}#type{background:#c8e7ff}
 nav{display:flex;gap:6px;padding:0 12px 12px;flex-wrap:wrap}nav button{font-size:12px;min-height:36px;padding:7px 12px}
-#stage{overflow:hidden;background:#eef1f3;border-radius:18px;min-height:160px;margin:0 8px}img{display:block;width:100%;height:auto;cursor:crosshair;touch-action:pan-y}img.stale{opacity:.45;pointer-events:none}
+#stage{overflow:hidden;background:#eef1f3;border-radius:18px;min-height:160px;margin:0 8px}img{display:block;width:100%;height:auto;aspect-ratio:8/5;cursor:crosshair;touch-action:pan-y}img.stale{opacity:.45;pointer-events:none}
 #error{margin:0 12px 12px;color:#984a41;background:#fbefed;padding:12px;border-radius:14px}#error:empty{display:none}footer{padding:12px;color:#697176;font-size:12px;line-height:1.5}
 </style><header><strong>브라우저</strong><span id="status" role="status">연결 중…</span><button id="refresh" aria-label="브라우저 미리 보기 새로고침">↻</button></header>
 <form><input id="text" aria-label="브라우저에 입력할 텍스트" placeholder="페이지의 입력란을 클릭한 뒤 여기에 입력하세요" autocomplete="off"><button id="type" type="submit">텍스트 전송</button></form>
@@ -23,7 +23,7 @@ async function refresh(){if(refreshing||sending||document.hidden)return;refreshi
 const r=await fetch(${preview},{cache:'no-store',signal:AbortSignal.timeout(20000)});
 if(!r.ok)throw new Error(r.status===401?'접근 시간이 만료됐습니다. 이 화면을 닫고 브라우저를 다시 여세요.':'브라우저 연결이 끊겼습니다. OpenMuse에서 세션을 다시 여세요.');
 const blob=await r.blob();const next=URL.createObjectURL(blob);await new Promise((resolve,reject)=>{const probe=new Image();probe.onload=resolve;probe.onerror=()=>{URL.revokeObjectURL(next);reject(new Error('브라우저 미리 보기를 표시하지 못했습니다.'));};probe.src=next;});
-if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=next;image.src=next;live=true;status.textContent='연결됨';status.className='live';if(previewError){error.textContent='';previewError=false;}
+if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=next;image.src=next;await image.decode();live=true;status.textContent='연결됨';status.className='live';if(previewError){error.textContent='';previewError=false;}
 }catch(e){live=false;previewError=true;status.textContent='연결 끊김';status.className='';error.textContent=e.message;}finally{refreshing=false;controls();}}
 async function input(body){if(sending||!live)return false;sending=true;controls();error.textContent='';status.textContent='반영 중…';let ok=false;try{
 const r=await fetch(location.href,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
