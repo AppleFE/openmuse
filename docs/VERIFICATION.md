@@ -37,6 +37,9 @@
   `a5f6ec551077803f280d5dba600d7728ddd0a49fb0f043a011f6258e3b7aba49`입니다.
   묶음에는 컴파일된 호스트/워커 코드, 잠금 파일과 설치기만 포함하며 DB·토큰·node_modules는 제외합니다.
   비공개 운영 증거는 P41의 `verification/workspace-expansion-20261005`에 보관했습니다.
+- 이 묶음을 Windows x64의 별도 디렉터리에 풀고 `npm ci`로 설치해 401 인증 차단,
+  실제 한글 PowerShell 명령과 종료 코드 0, example.com 본문·스크롤·PNG 화면을 확인했습니다.
+  이 검사는 임시 일반 사용자 프로세스이며 SYSTEM 서비스 등록·재부팅 검증과 구분합니다.
 
 ## 원격 호스트 커넥터 — 2026년 10월 5일
 
