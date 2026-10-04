@@ -91,7 +91,6 @@ function startRfb(
     phase = "version",
     frameRequested = false,
     rendering = false,
-    inputChain = Promise.resolve(),
     queuedInputs = 0;
   let format = { bigEndian: false, r: 16, g: 8, b: 0 };
   const send = (buffer: Buffer) => {
@@ -104,8 +103,10 @@ function startRfb(
       fail();
       return;
     }
-    inputChain = inputChain
-      .then(() => browser.streamInput(owner, id, value))
+    // Reserve each event in the shared session queue immediately, so HTTP IME/paste
+    // input cannot overtake RFB keys still waiting for their worker response.
+    void browser
+      .streamInput(owner, id, value)
       .then(() => {}, fail)
       .finally(() => {
         queuedInputs--;

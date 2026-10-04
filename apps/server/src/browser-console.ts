@@ -15,9 +15,10 @@ control.onclick=async()=>{try{await api({op:'control',control:rfb.viewOnly?'user
 rfb.addEventListener('connect',()=>{error.style.display='none';state();});rfb.addEventListener('disconnect',()=>fail('연결이 종료됐습니다. OpenMuse에서 브라우저를 다시 여세요.'));
 document.querySelector('#full').onclick=()=>document.documentElement.requestFullscreen?.();
 document.querySelector('#keyboard').onclick=()=>{ime.focus();};
-let composing=false;ime.addEventListener('compositionstart',()=>composing=true);ime.addEventListener('compositionend',async()=>{composing=false;const text=ime.value;ime.value='';if(text&&!rfb.viewOnly)try{await api({type:'text',text});}catch(e){fail(e.message);}});
-ime.addEventListener('input',async()=>{if(composing||rfb.viewOnly)return;const text=ime.value;ime.value='';if(text)try{await api({type:'text',text});}catch(e){fail(e.message);}});
-ime.addEventListener('keydown',e=>{if(composing||e.isComposing||e.keyCode===229)return;if(['Enter','Backspace','Tab','Escape'].includes(e.key)&&!rfb.viewOnly){e.preventDefault();api({type:'key',key:e.key}).catch(e=>fail(e.message));}});
+function imeText(text){if(rfb.viewOnly||!text)return;if([...text].length>64){api({type:'text',text:text.slice(0,10000)}).catch(e=>fail(e.message));return;}for(const char of text){const code=char.codePointAt(0);rfb.sendKey(code>255?0x01000000|code:code,null);}}
+let composing=false;ime.addEventListener('compositionstart',()=>composing=true);ime.addEventListener('compositionend',()=>{composing=false;const text=ime.value;ime.value='';imeText(text);});
+ime.addEventListener('input',()=>{if(composing||rfb.viewOnly)return;const text=ime.value;ime.value='';imeText(text);});
+ime.addEventListener('keydown',e=>{if(composing||e.isComposing||e.keyCode===229)return;const keys={Enter:0xff0d,Backspace:0xff08,Tab:0xff09,Escape:0xff1b};if(keys[e.key]&&!rfb.viewOnly){e.preventDefault();rfb.sendKey(keys[e.key],null);}});
 screen.addEventListener('compositionstart',()=>{composing=true;ime.focus();});
 screen.addEventListener('keydown',e=>{if(!rfb.viewOnly&&(e.keyCode===229||e.key==='Process'))ime.focus();},true);
 document.addEventListener('paste',e=>{if(rfb.viewOnly)return;const text=e.clipboardData?.getData('text/plain');if(text){e.preventDefault();api({type:'text',text:text.slice(0,10000)}).catch(e=>fail(e.message));}},true);

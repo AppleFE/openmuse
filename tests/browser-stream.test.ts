@@ -12,7 +12,8 @@ import { browserFixture } from "./helpers/browser.ts";
 
 test("actual noVNC client receives framebuffer and sends direct mouse and keyboard input through owner controls", async (t) => {
   const inputs: Record<string, unknown>[] = [];
-  const fixture = await browserFixture(t, (_path, body) => {
+  const fixture = await browserFixture(t, async (_path, body) => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
     inputs.push(body);
     return { data: { ok: true } };
   });
@@ -88,10 +89,28 @@ test("actual noVNC client receives framebuffer and sends direct mouse and keyboa
   await page.getByRole("button", { name: "직접 제어", exact: true }).click();
   await page.locator("canvas").click({ position: { x: 100, y: 100 } });
   await page.keyboard.type("Hello");
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(350);
+  await page.getByRole("button", { name: "키보드", exact: true }).click();
+  await page.locator("#ime").evaluate((el) => {
+    el.dispatchEvent(new CompositionEvent("compositionstart"));
+    (el as HTMLTextAreaElement).value = "한글";
+    el.dispatchEvent(new CompositionEvent("compositionend", { data: "한글" }));
+  });
+  await page.locator("#ime").press("Enter");
+  for (
+    let i = 0;
+    i < 50 && !inputs.some((v) => v.type === "vnc_key" && v.key === "Enter" && v.down === false);
+    i++
+  )
+    await page.waitForTimeout(50);
   assert.ok(inputs.some((v) => v.type === "vnc_mouse" && (v.buttons as number) & 1));
   assert.ok(inputs.some((v) => v.type === "vnc_key" && v.key === "Enter"));
+  assert.equal(
+    inputs
+      .filter((v) => v.type === "vnc_key" && v.down && v.key !== "Shift")
+      .map((v) => v.key)
+      .join(""),
+    "Hello한글Enter",
+  );
   assert.deepEqual(errors, []);
   await page.getByRole("button", { name: "에이전트에게 반환", exact: true }).click();
   await page.getByRole("button", { name: "직접 제어", exact: true }).waitFor();
