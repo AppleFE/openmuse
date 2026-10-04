@@ -175,6 +175,7 @@ test("OpenCodex profiles use its native Responses endpoint, data key, and select
 
     requests.length = 0;
     const service = {
+      db,
       models: registry,
       computer: {},
       files: {},

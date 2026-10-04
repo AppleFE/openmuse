@@ -37,7 +37,7 @@ test("owner permission persists, dispatch recovery is idempotent and a changed t
   const host = await service.create("owner", {
     provider: "remote_host",
     name: "Host",
-    config: { baseUrl },
+    config: { baseUrl, allowAgentShell: false },
     secrets: { token },
   });
   const operationId = randomUUID();
