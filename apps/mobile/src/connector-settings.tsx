@@ -15,6 +15,7 @@ import { RemoteHostManager } from "./remote-host-manager";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
+import { HostInstaller } from "./host-installer";
 
 const providerIcons = {
   github: Github,
@@ -39,7 +40,9 @@ function defaultConfig(provider: ConnectorProviderInfo) {
           ? "agent"
           : field.name === "platform"
             ? "linux"
-            : field.name === "authMethod" ? "key" : "",
+            : field.name === "authMethod"
+              ? "key"
+              : "",
     ]),
   );
 }
@@ -82,7 +85,8 @@ function ConnectorField({
                   linux: "Linux",
                   windows: "Windows",
                   macos: "macOS",
-                  key: "개인 키 파일", password: "비밀번호",
+                  key: "개인 키 파일",
+                  password: "비밀번호",
                 } as Record<string, string>
               )[option] ?? option}
             </Button>
@@ -175,22 +179,35 @@ function ConnectorEditor({
         !remote ||
         (ssh
           ? field.name !== "baseUrl"
-          : !["host", "port", "username", "hostFingerprint", "platform", "authMethod"].includes(field.name)),
+          : !["host", "port", "username", "hostFingerprint", "platform", "authMethod"].includes(
+              field.name,
+            )),
     )
     .map((field) =>
-      remote &&
-      (ssh
-        ? ["host", "username"].includes(field.name)
-        : field.name === "baseUrl")
+      remote && (ssh ? ["host", "username"].includes(field.name) : field.name === "baseUrl")
         ? { ...field, required: true }
         : field,
     );
   const secretFields = provider.secretFields
-    .filter((field) => !remote || (ssh ? (config.authMethod === "password" ? field.name === "password" : ["privateKey", "passphrase"].includes(field.name)) : field.name === "token"))
+    .filter(
+      (field) =>
+        !remote ||
+        (ssh
+          ? config.authMethod === "password"
+            ? field.name === "password"
+            : ["privateKey", "passphrase"].includes(field.name)
+          : field.name === "token"),
+    )
     .map((field) =>
-      remote && ["privateKey", "password", "token"].includes(field.name) ? { ...field, required: true } : field,
+      remote && ["privateKey", "password", "token"].includes(field.name)
+        ? { ...field, required: true }
+        : field,
     );
-  const keepSecret = !!connector?.hasSecret && (!remote || (connector.config.mode === config.mode && (connector.config.authMethod ?? "key") === config.authMethod));
+  const keepSecret =
+    !!connector?.hasSecret &&
+    (!remote ||
+      (connector.config.mode === config.mode &&
+        (connector.config.authMethod ?? "key") === config.authMethod));
 
   async function save() {
     setBusy(true);
@@ -198,7 +215,10 @@ function ConnectorEditor({
     try {
       const cleanConfig = compactSettings(config);
       if (remote && ssh && !cleanConfig.hostFingerprint) {
-        const probe = await api.request<{ fingerprint: string }>("/api/connectors/ssh-fingerprint", { host: config.host, port: Number(config.port || 22) });
+        const probe = await api.request<{ fingerprint: string }>(
+          "/api/connectors/ssh-fingerprint",
+          { host: config.host, port: Number(config.port || 22) },
+        );
         cleanConfig.hostFingerprint = probe.fingerprint;
         setConfig((current) => ({ ...current, hostFingerprint: probe.fingerprint }));
       }
@@ -272,10 +292,42 @@ function ConnectorEditor({
                 secret
               />
             ))}
-            {remote && ssh && config.authMethod !== "password" && <Button small onPress={() => void (async () => { try { const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true }); if (picked.canceled) return; const asset = picked.assets[0]; if ((asset.size ?? 0) > 32768) throw new Error("키 파일은 32 KiB 이하여야 합니다"); const response = await fetch(asset.uri); const privateKey = await response.text(); if (privateKey.length > 32768 || !privateKey.includes("PRIVATE KEY")) throw new Error("PEM/OpenSSH 개인 키 파일을 선택하세요"); setSecrets((current) => ({ ...current, privateKey })); } catch (e) { setError(errorText(e)); } })()}>SSH 개인 키 파일 업로드</Button>}
+            {remote && ssh && config.authMethod !== "password" && (
+              <Button
+                small
+                onPress={() =>
+                  void (async () => {
+                    try {
+                      const picked = await DocumentPicker.getDocumentAsync({
+                        type: "*/*",
+                        copyToCacheDirectory: true,
+                      });
+                      if (picked.canceled) return;
+                      const asset = picked.assets[0];
+                      if ((asset.size ?? 0) > 32768)
+                        throw new Error("키 파일은 32 KiB 이하여야 합니다");
+                      const response = await fetch(asset.uri);
+                      const privateKey = await response.text();
+                      if (privateKey.length > 32768 || !privateKey.includes("PRIVATE KEY"))
+                        throw new Error("PEM/OpenSSH 개인 키 파일을 선택하세요");
+                      setSecrets((current) => ({ ...current, privateKey }));
+                    } catch (e) {
+                      setError(errorText(e));
+                    }
+                  })()
+                }
+              >
+                SSH 개인 키 파일 업로드
+              </Button>
+            )}
           </Card>
         )}
-        {remote && ssh && <Text style={s.small}>첫 연결에서 호스트 지문을 확인해 저장하며, 이후 키가 바뀌면 연결을 차단합니다. 알고 있는 지문이 있으면 직접 입력하세요. SSH는 입력한 계정 권한으로 실행됩니다.</Text>}
+        {remote && ssh && (
+          <Text style={s.small}>
+            첫 연결에서 호스트 지문을 확인해 저장하며, 이후 키가 바뀌면 연결을 차단합니다. 알고 있는
+            지문이 있으면 직접 입력하세요. SSH는 입력한 계정 권한으로 실행됩니다.
+          </Text>
+        )}
         <ErrorNotice error={error} />
         <Button
           primary
@@ -377,6 +429,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
   return (
     <View style={{ gap: 14 }}>
       <SectionHeading title="인프라 연결" />
+      <HostInstaller onRegistered={refresh} />
       <Text style={s.muted}>
         서버의 연결을 관리합니다. 인증 정보는 입력만 가능하며 표시되지 않습니다.
       </Text>

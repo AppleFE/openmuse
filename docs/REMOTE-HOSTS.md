@@ -9,19 +9,20 @@ OpenMuse에 관리할 Linux(Ubuntu/Debian 등), Windows, macOS(Apple Silicon 포
 
 | 방식 | 대상에 필요한 것 | 셸 | 브라우저 | 대화형 터미널 |
 | --- | --- | --- | --- | --- |
-| `ssh` | SSH 서버와 등록한 사용자의 공개 키 | SSH 명령·출력·입력·중지 | Host Agent 연결을 추가해야 함 | SSH PTY 지원 |
+| `ssh` | SSH 서버와 키 또는 비밀번호 | SSH 명령·출력·입력·중지 | Host Agent 연결을 추가해야 함 | SSH PTY 지원 |
 | `agent` | Node.js 22.19 이상과 OpenMuse Host Agent, Chromium | POSIX 셸 또는 Windows PowerShell | 앱 안에서 보기·클릭·입력·스크롤 | 파이프 입력 지원, PTY 미지원 |
 
 같은 기기에 SSH와 Host Agent 연결을 각각 등록할 수 있습니다. SSH 개인 키와
 에이전트 토큰은 OpenMuse 자격 증명 저장소에서 암호화하며 클라이언트로 반환하지 않습니다.
-SSH는 등록한 `SHA256:` 호스트 키 지문을 검증합니다. 자동으로 알 수 없는 키를 신뢰하지 않습니다.
-키 암호를 입력할 수 있으며 에이전트 포워딩과 패스워드 SSH 인증은 사용하지 않습니다.
+SSH는 등록한 `SHA256:` 호스트 키 지문을 검증합니다. 처음 저장할 때 지문을 조회해 고정하거나
+직접 입력할 수 있습니다. 첫 연결 주소를 신뢰할 수 있는지 확인하세요. 인증은 개인 키 파일
+업로드(선택적으로 키 암호) 또는 비밀번호 중 하나입니다. 에이전트 포워딩은 사용하지 않습니다.
 
 앱의 **앱 → 인프라 연결 → 추가 원격 호스트**에서 연결 방식을 Host Agent 또는 SSH로,
-SSH 대상 OS를 Linux·Windows·macOS로 지정합니다. SSH는 호스트·포트·사용자·지문·개인 키,
+SSH 대상 OS를 Linux·Windows·macOS로 지정합니다. SSH는 호스트·포트·사용자·인증 방식,
 Host Agent는 `baseUrl`과 토큰이 필요합니다. **관리**에서 실제 환경, 명령과 작업 기록,
 공유 브라우저를 엽니다. 기본적으로 명령·입력·중지는 기존의 네이티브 작업 검토를 통해 실행합니다.
-연결 설정의 **에이전트 셸 명령 실행 허용**을 켜면, 해당 호스트에서는 Pi가
+연결 설정의 **에이전트 셸 명령 실행 허용** 스위치를 켜면, 해당 호스트에서는 Pi가
 `run_host_command`로 명령을 직접 실행합니다. 이 권한은 대화마다 다시 묻지 않고 유지됩니다.
 호스트별로 설정하며, 끄면 직접 실행이 차단됩니다. 새 명령에는 새로운 `operationId` UUID를
 사용하고, 같은 명령의 응답 복구에는 같은 ID를 사용합니다. 재시도 시 동일한 프로세스를
@@ -30,8 +31,30 @@ Host Agent는 `baseUrl`과 토큰이 필요합니다. **관리**에서 실제 �
 
 ## Host Agent 설치
 
-[Host Agent 0.1.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.1.0)에서
-`openmuse-host-agent-0.1.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
+앱의 **인프라 연결 → 원격 호스트 자동 설치**에서 설치 명령을 생성하고 대상 PC 터미널에서
+한 줄을 실행합니다. Windows는 PowerShell, macOS·Linux는 POSIX 셸 명령을 복사합니다.
+명령은 한 시간 동안 유효하며 등록이 완료되면 다시 사용할 수 없습니다. Node.js와 Chromium을
+설치하고 호스트에서 토큰을 생성해 OpenMuse에 암호화 저장합니다. 설치에는 공식 Node 배포 서버,
+npm 및 Playwright 다운로드 서버 접근이 필요합니다. 운영 중 클라우드 프로젝트 키는 필요하지 않습니다.
+
+관리자 인증은 운영체제에서 수행합니다. Linux는 root systemd 서비스, macOS는 root LaunchDaemon,
+Windows는 SYSTEM 작업 스케줄러로 등록합니다. 재부팅 후 자동 시작하며 실패하면 다시 시작합니다.
+기존 일반 사용자 설치는 자동 승격하지 않습니다. **관리** 화면과 연결 테스트는 실제 실행 사용자와
+관리자 여부를 표시합니다. 관리자 서비스에서 CLI를 사용하려면 그 서비스 계정에서도 CLI 설치·인증이
+필요합니다. 로그인 사용자의 Codex·Herdr 로그인 상태를 자동으로 공유하지 않습니다.
+
+Tailscale 주소를 우선 선택하고 없으면 LAN 주소를 사용합니다. OpenMuse 서버가 대상의 8791 포트에
+접근할 수 있어야 합니다. Windows 방화벽에는 OpenMuse 서버 주소만 허용하는 규칙을 등록합니다.
+Linux·macOS의 별도 방화벽은 관리자가 해당 경로를 허용해야 합니다. NAT를 넘어 자동 접속하는
+터널 서비스는 아니므로 서로 접근 가능한 Tailscale/LAN이 필요합니다.
+
+설치 경로는 Windows `%ProgramData%/OpenMuseHostAgent`, macOS
+`/Library/Application Support/OpenMuse/HostAgent`, Linux `/opt/openmuse-host-agent`입니다.
+Windows 설치 로그는 해당 폴더의 `install.log`, macOS 서비스 로그는 `service.log`,
+Linux 로그는 `journalctl -u openmuse-host-agent`에서 확인합니다.
+
+수동 설치는 [Host Agent 0.2.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.2.0)에서
+`openmuse-host-agent-0.2.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
 설치할 수 있습니다. 배포 묶음은 `package-lock.json`을 포함하므로 `npm ci`를 사용합니다.
 
 빌드 환경에서 `pnpm build:host-agent`를 실행하면 `dist/host-agent`에 독립 실행 묶음을
@@ -39,7 +62,7 @@ Host Agent는 `baseUrl`과 토큰이 필요합니다. **관리**에서 실제 �
 대상 기기의 해당 디렉터리에서 다음을 실행합니다.
 
 ```sh
-npm install
+npm ci
 npx playwright install chromium
 node setup.mjs
 node run.mjs
@@ -53,7 +76,7 @@ Ubuntu/Debian에 Chromium 시스템 라이브러리가 없으면
 `setup.mjs`는 `.host-agent/config.json`을 생성하고 경로만 출력합니다.
 기존 파일이나 토큰은 덮어쓰지 않습니다. 설정의 `token` 값을 앱 연결에 입력합니다.
 Unix 권한은 디렉터리 700, 설정 파일 600입니다. Windows에서는 해당 사용자만 읽도록
-디렉터리 ACL을 설정해야 합니다. 서비스는 로그인 사용자 권한으로 명령을 실행합니다.
+디렉터리 ACL을 설정해야 합니다. 수동 실행은 실제 실행한 사용자 권한으로 명령을 실행합니다.
 
 기본 바인딩은 `127.0.0.1:8791`입니다. OpenMuse가 다른 기기에 있으면 관리자가 설정의
 `host`를 해당 기기의 Tailscale IP로 바꾸고 그 주소를 `baseUrl`에 사용합니다.
@@ -112,11 +135,19 @@ Pi는 `open_host_browser`(`url`, 선택 `connectorId`)로 실제 Chromium 세션
 기존 워커와 같은 **공개 HTTP(S) 페이지 제한**을 유지하므로 내부 IP 페이지·임의 포트는
 열 수 없습니다. WebSocket이 필요한 웹앱, 팝업, 복잡한 드래그 등은 현재 제한됩니다.
 
-noVNC는 추후 데스크톱 확장에 사용할 수 있는 VNC 클라이언트입니다. 사용하려면 대상의
-VNC 서버와 WebSocket 프록시가 추가로 필요합니다. 이 구현은 noVNC 의존성이 없으며,
-기존 Playwright 워커의 스크린샷·입력 중계를 재사용합니다. 데스크톱 전체 제어를 추가할 때는
+앱에 내장한 실제 noVNC 클라이언트가 인증된 WebSocket/RFB 스트림으로 화면을 표시합니다.
+**브라우저 제어 가져오기** 후 화면에서 직접 클릭·키 입력·붙여넣기·스크롤하며 전체 화면과
+모바일 키보드를 지원합니다. 별도 텍스트 입력 상자는 필요 없습니다. Playwright 브라우저의
+화면을 RFB 프레임으로 중계하는 방식이며 전체 OS 데스크톱을 공유하는 VNC 서버는 아닙니다.
+현재 화면 갱신은 최대 초당 4회입니다. 스트림은 소유자 서명·연결 버전·제어 권한을 검증합니다.
+외부 noVNC 서비스나 공개 VNC 포트는 필요하지 않습니다. 데스크톱 전체 제어를 추가할 때는
 Windows 세션·macOS 화면 기록/접근성 권한·Linux 디스플레이 별도 처리가 필요합니다.
 [noVNC 문서](https://novnc.com/info.html)
+
+**에이전트 컴퓨터**의 각 브라우저에서 **삭제**, 전체 종료 기록에서 **기록 정리**를 사용할 수
+있습니다. 삭제는 대상 프로필·쿠키·임시 다운로드도 지웁니다(이미 OpenMuse에 가져온 파일은 유지).
+새 세션을 열 때 종료 기록을 호스트별 최근 12개·30일 범위로 정리합니다. 실행 중 세션은 자동 삭제하지
+않으며, 호스트가 끊긴 경우 삭제 오류를 표시합니다. 새 기록은 호스트별 50개 한도로 증가를 막습니다.
 
 ## 호스트 API
 

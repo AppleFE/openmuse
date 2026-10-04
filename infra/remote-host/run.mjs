@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const directory = fileURLToPath(new URL(".", import.meta.url));
@@ -22,10 +22,12 @@ const child = spawn(process.execPath, [entry], {
   windowsHide: true,
   env: {
     ...process.env,
+    PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
     HOST_AGENT_TOKEN: config.token,
     HOST_AGENT_HOST: config.host,
     HOST_AGENT_PORT: String(config.port),
     HOST_AGENT_DATA_DIR: resolve(config.dataDir),
+    ...(config.browserPath ? { PLAYWRIGHT_BROWSERS_PATH: resolve(config.browserPath) } : {}),
   },
 });
 process.on("SIGINT", () => child.kill("SIGINT"));

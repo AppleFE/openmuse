@@ -24,9 +24,24 @@ export function probeSshFingerprint(host: string, port: number): Promise<string>
   return new Promise((resolve, reject) => {
     const client = new Client();
     let observed = false;
-    client.on("error", () => { if (!observed) reject(new ConnectorError("SSH 호스트 키를 확인할 수 없습니다", undefined, "unreachable")); });
-    client.on("close", () => { if (!observed) reject(new ConnectorError("SSH 호스트 키 응답이 없습니다")); });
-    client.connect({ host, port, username: "openmuse-host-key-probe", readyTimeout: 10000, hostVerifier: (key: Buffer) => { observed = true; resolve(`SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`); return false; } });
+    client.on("error", () => {
+      if (!observed)
+        reject(new ConnectorError("SSH 호스트 키를 확인할 수 없습니다", undefined, "unreachable"));
+    });
+    client.on("close", () => {
+      if (!observed) reject(new ConnectorError("SSH 호스트 키 응답이 없습니다"));
+    });
+    client.connect({
+      host,
+      port,
+      username: "openmuse-host-key-probe",
+      readyTimeout: 10000,
+      hostVerifier: (key: Buffer) => {
+        observed = true;
+        resolve(`SHA256:${createHash("sha256").update(key).digest("base64").replace(/=+$/, "")}`);
+        return false;
+      },
+    });
   });
 }
 const secretsOf = (s: RemoteHostSecrets) => [s.token, s.privateKey, s.passphrase, s.password];
@@ -35,7 +50,10 @@ function context(ctx: ConnectorContext) {
     secrets = remoteHostSecretsSchema.parse(ctx.secrets);
   if (config.mode === "agent" && !secrets.token)
     throw new ConnectorError("Host Agent 토큰이 필요합니다", undefined, "auth");
-  if (config.mode === "ssh" && !(config.authMethod === "password" ? secrets.password : secrets.privateKey))
+  if (
+    config.mode === "ssh" &&
+    !(config.authMethod === "password" ? secrets.password : secrets.privateKey)
+  )
     throw new ConnectorError("선택한 SSH 키·비밀번호가 필요합니다", undefined, "auth");
   return { config, secrets };
 }
@@ -120,7 +138,9 @@ export function sshJobDriver(config: RemoteHostConfig, secrets: RemoteHostSecret
         host: config.host,
         port: config.port,
         username: config.username,
-        ...(config.authMethod === "password" ? { password: secrets.password } : { privateKey: secrets.privateKey, passphrase: secrets.passphrase }),
+        ...(config.authMethod === "password"
+          ? { password: secrets.password }
+          : { privateKey: secrets.privateKey, passphrase: secrets.passphrase }),
         readyTimeout: 15000,
         keepaliveInterval: 10000,
         keepaliveCountMax: 3,
@@ -177,7 +197,20 @@ async function sshStatus(
           const status =
             config.platform === "windows"
               ? JSON.parse(output)
-              : { hostname: values[0], platform: values[1], arch: values[2], shell: values[3], identity: { username: values[4] ?? "unknown", elevated: values[5] === "0", detail: values[5] === "0" ? "root 관리자 권한" : "일반 사용자 권한 · 관리자 명령은 sudo 권한이 필요합니다" } };
+              : {
+                  hostname: values[0],
+                  platform: values[1],
+                  arch: values[2],
+                  shell: values[3],
+                  identity: {
+                    username: values[4] ?? "unknown",
+                    elevated: values[5] === "0",
+                    detail:
+                      values[5] === "0"
+                        ? "root 관리자 권한"
+                        : "일반 사용자 권한 · 관리자 명령은 sudo 권한이 필요합니다",
+                  },
+                };
           resolve({
             ...status,
             capabilities: { shell: true, browser: false, pty: true, desktop: false },
@@ -319,8 +352,12 @@ export function remoteHostAdapter(): ConnectorAdapter {
           hostname: string;
           platform: string;
           arch: string;
+          identity?: { elevated: boolean; detail: string };
         };
-        return { ok: true, detail: `${result.hostname} · ${result.platform} · ${result.arch}` };
+        return {
+          ok: true,
+          detail: `${result.hostname} · ${result.platform} · ${result.arch} · ${result.identity?.detail ?? "권한 정보가 없는 구버전 Host Agent"}`,
+        };
       } catch (error) {
         return {
           ok: false,

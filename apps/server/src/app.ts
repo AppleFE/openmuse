@@ -30,6 +30,7 @@ import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
 import { WorkspaceService } from "./workspace.ts";
 import { UsageService } from "./usage.ts";
+import { hostInstallerRoutes } from "./host-installer.ts";
 
 export async function createApp(
   db: Store,
@@ -155,6 +156,12 @@ export async function createApp(
     );
   });
   app.use("/api/*", async (c, next) => {
+    if (
+      /^\/api\/host-agent\/install\/[a-f0-9]{64}\/(install\.sh|install\.ps1|bundle\.tar\.gz|manifest|enroll)$/.test(
+        c.req.path,
+      )
+    )
+      return next();
     if (c.req.path.startsWith("/api/novnc/")) return next();
     const signedRoute =
       /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
@@ -202,6 +209,7 @@ export async function createApp(
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
   app.route("/api/connectors", connectorRoutes(connectors));
+  app.route("/api/host-agent", hostInstallerRoutes(db, config, connectors));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));
   app.get("/api/calendar/events", async (c) => {
     const query = z

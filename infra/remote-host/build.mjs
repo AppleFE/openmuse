@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 
 const build = spawnSync(
   process.execPath,
@@ -16,7 +16,7 @@ await writeFile(
   JSON.stringify(
     {
       name: "@openmuse/host-agent",
-      version: "0.1.0",
+      version: "0.2.0",
       private: true,
       type: "module",
       scripts: { start: "node run.mjs", setup: "node setup.mjs" },
@@ -29,6 +29,42 @@ await writeFile(
 );
 await copyFile("infra/remote-host/setup.mjs", `${directory}/setup.mjs`);
 await copyFile("infra/remote-host/run.mjs", `${directory}/run.mjs`);
+await copyFile("infra/remote-host/install.mjs", `${directory}/install.mjs`);
+await copyFile("docs/REMOTE-HOSTS.md", `${directory}/README.md`);
+const npmCli = resolve(
+  dirname(process.execPath),
+  process.platform === "win32"
+    ? "node_modules/npm/bin/npm-cli.js"
+    : "../lib/node_modules/npm/bin/npm-cli.js",
+);
+const lock = spawnSync(
+  process.execPath,
+  [npmCli, "install", "--package-lock-only", "--ignore-scripts", "--omit=dev"],
+  { cwd: directory, stdio: "inherit" },
+);
+if (lock.status !== 0) process.exit(lock.status ?? 1);
+const archive = resolve("dist/openmuse-host-agent-0.2.0.tar.gz");
+const tar = spawnSync(
+  "tar",
+  [
+    "-czf",
+    archive,
+    "-C",
+    resolve("dist"),
+    ...[
+      "apps",
+      "packages",
+      "package.json",
+      "package-lock.json",
+      "setup.mjs",
+      "run.mjs",
+      "install.mjs",
+      "README.md",
+    ].map((file) => `host-agent/${file}`),
+  ],
+  { stdio: "inherit" },
+);
+if (tar.status !== 0) process.exit(tar.status ?? 1);
 await copyFile("docs/REMOTE-HOSTS.md", `${directory}/README.md`);
 console.log(
   "Portable Host Agent built at dist/host-agent (npm install; npx playwright install chromium; npm run setup; npm start)",
