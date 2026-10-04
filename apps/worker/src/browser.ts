@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserContext, Page } from "playwright";
 import {
@@ -166,7 +167,7 @@ export async function createBrowserManager(options: {
       );
     const previous = sessions.get(id);
     const profileDir = join(directory(id), "profile");
-    const tempDirectory = join("/tmp", `openmuse-downloads-${id}`);
+    const tempDirectory = join(tmpdir(), `openmuse-downloads-${id}`);
     await mkdir(profileDir, { recursive: true, mode: 0o700 });
     await mkdir(tempDirectory, { recursive: true, mode: 0o700 });
     let context: BrowserContext;
@@ -175,9 +176,22 @@ export async function createBrowserManager(options: {
       context = await chromium.launchPersistentContext(profileDir, {
         // Chromium does not need the worker API credential in its environment.
         env: {
-          HOME: process.env.HOME ?? "/tmp",
+          HOME: process.env.HOME ?? homedir(),
           PATH: process.env.PATH ?? "/usr/bin:/bin",
           LANG: "C.UTF-8",
+          ...(process.platform === "win32"
+            ? Object.fromEntries(
+                [
+                  "SystemRoot",
+                  "WINDIR",
+                  "USERPROFILE",
+                  "LOCALAPPDATA",
+                  "APPDATA",
+                  "TEMP",
+                  "TMP",
+                ].flatMap((key) => (process.env[key] ? [[key, process.env[key]]] : [])),
+              )
+            : {}),
         },
         headless: true,
         viewport: { width: 1280, height: 800 },
