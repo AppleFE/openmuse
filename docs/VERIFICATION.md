@@ -14,6 +14,29 @@
 - 경계: Host Agent 셸은 파이프 입출력이며 PTY는 SSH 방식에서 제공합니다. 브라우저는
   기존 공개 HTTP(S) 페이지 제한을 유지합니다. 전체 데스크톱 제어·기존 사용자의 Chrome
   창 공유는 구현하지 않았습니다. Linux 실제 호스트 설치는 이 Windows 검증에 포함되지 않습니다.
+- P41의 서버·기존 브라우저 워커·Host Agent는 소스 `4d5a3cd508664bba960d55e0729cdda9b6db4d8a`로
+  빌드·재시작했습니다. Pi 응답 봉투를 처리하는 최종 웹 빌드는
+  `621a500c2a7dc35a84f3daa17571f129ebb53a8b`입니다. 뒤따르는 문서 커밋은 앱 코드를 바꾸지 않습니다.
+  새 `맥미니` 연결은 macOS/darwin·arm64·`/bin/sh`와 실제 셸·브라우저 지원을 반환합니다.
+  기존 `.env`·커넥터 설정·자격 증명 존재 여부와 기본 모델 `oc-gpt-6-luna`를 보존했습니다.
+- 실제 맥미니 명령에서 한글 출력·P41 작업 경로·Darwin·arm64·종료 코드 0과 같은 요청의
+  중복 실행 방지를 확인했습니다. 사용자 화면에서 example.com의 링크를 클릭해 IANA로
+  이동하고 제어권을 반환했습니다. 실서비스 OpenCodex 모델과 내장 Pi의 대화
+  `2389bb0b-ae24-4e69-9ad8-338874572a4b`가 `run_host_command`, `host_job` 조회,
+  `open_host_browser`, `read_browser`를 호출했습니다. 작업
+  `c311c3f7-af16-4e51-9edd-f8046a0b20ce`의 출력은 `PI-HOST-391`, P41 경로,
+  Darwin, arm64이며 종료 코드는 0입니다.
+- 저장된 Pi 대화의 브라우저 카드·실제 미리 보기·오른쪽 패널·패널 옆 초안 입력을
+  검증했습니다. 사용자 제어권은 웹 새로고침 후에도 유지됐고 반환 버튼으로 해제했습니다.
+  390×844 웹 화면도 캡처했으며 페이지 오류와 앱의 외부 호스트 요청은 없었습니다.
+  마지막 결과 해석 수정의 모바일 타입 검사와 관련 3/3 테스트도 통과했습니다.
+- 독립 배포 압축을 Windows x64에서 풀고 `npm ci`로 설치해 실제 Host Agent 인증,
+  한글 셸 명령·종료 코드 0, Chromium 본문·요소 조회·스크롤·PNG를 확인했습니다.
+  실제 Chromium의 실패 프로필 정리·재시작 후 상태 복원 테스트도 1/1 통과했습니다.
+  [Host Agent 0.1.0](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.1.0)를
+  비공개 저장소에 게시했으며, 릴리스에서 다시 내려받은 파일의 SHA256은
+  `06b3dd5ce72c3eec42af82b06ea787ac5d2e6e31a164f475fd818296e5cf6237`로 로컬 패키지와 같습니다.
+  증빙은 P41의 `verification/remote-host-20261005`에 보관합니다.
 
 September 16, 2026 · Capybara and distinct mobile/web demos, following the agent browser release · local fictional workspace. This records exercised behavior and its limits; it does not establish that every planned capability is complete.
 

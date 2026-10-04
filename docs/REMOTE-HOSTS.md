@@ -17,8 +17,8 @@ OpenMuse에 관리할 Linux(Ubuntu/Debian 등), Windows, macOS(Apple Silicon 포
 SSH는 등록한 `SHA256:` 호스트 키 지문을 검증합니다. 자동으로 알 수 없는 키를 신뢰하지 않습니다.
 키 암호를 입력할 수 있으며 에이전트 포워딩과 패스워드 SSH 인증은 사용하지 않습니다.
 
-앱의 **연결 → 원격 호스트 추가**에서 `mode`를 `agent` 또는 `ssh`, 대상 OS를
-`linux`, `windows`, `macos`로 지정합니다. SSH는 호스트·포트·사용자·지문·개인 키,
+앱의 **앱 → 인프라 연결 → 추가 원격 호스트**에서 연결 방식을 Host Agent 또는 SSH로,
+SSH 대상 OS를 Linux·Windows·macOS로 지정합니다. SSH는 호스트·포트·사용자·지문·개인 키,
 Host Agent는 `baseUrl`과 토큰이 필요합니다. **관리**에서 실제 환경, 명령과 작업 기록,
 공유 브라우저를 엽니다. 기본적으로 명령·입력·중지는 기존의 네이티브 작업 검토를 통해 실행합니다.
 연결 설정의 **에이전트 셸 명령 실행 허용**을 켜면, 해당 호스트에서는 Pi가
@@ -29,6 +29,10 @@ Host Agent는 `baseUrl`과 토큰이 필요합니다. **관리**에서 실제 �
 연결 정보가 변경되면 이전 검토는 실행되지 않습니다.
 
 ## Host Agent 설치
+
+[Host Agent 0.1.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.1.0)에서
+`openmuse-host-agent-0.1.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
+설치할 수 있습니다. 배포 묶음은 `package-lock.json`을 포함하므로 `npm ci`를 사용합니다.
 
 빌드 환경에서 `pnpm build:host-agent`를 실행하면 `dist/host-agent`에 독립 실행 묶음을
 만듭니다. 이 디렉터리를 대상 기기로 복사합니다. OpenMuse DB나 모델 키는 필요하지 않습니다.
