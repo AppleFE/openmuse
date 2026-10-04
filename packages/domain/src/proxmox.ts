@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { githubWriteOperations, parseGithubWrite } from "./github.ts";
 import { parseRemoteOperation, remoteWriteOperations } from "./remote-host.ts";
 
 const node = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/, "Use a Proxmox node name");
@@ -381,13 +382,20 @@ export const proxmoxWriteSchema = z.discriminatedUnion("operation", [
 export const connectorWriteSchema = z
   .strictObject({
     connectorId: z.string().min(1).max(120),
-    operation: z.enum([...proxmoxWriteOperations, ...remoteWriteOperations] as [
+    operation: z.enum([...proxmoxWriteOperations, ...remoteWriteOperations, ...githubWriteOperations] as [
       string,
       ...string[],
     ]),
     params: z.record(z.string(), z.unknown()),
   })
   .superRefine((v, ctx) => {
+    if (githubWriteOperations.includes(v.operation as (typeof githubWriteOperations)[number])) {
+      try { parseGithubWrite(v.operation, v.params); } catch (error) {
+        if (error instanceof z.ZodError) for (const issue of error.issues) ctx.addIssue({ code: "custom", path: ["params", ...issue.path], message: issue.message });
+        else ctx.addIssue({ code: "custom", message: "Invalid GitHub operation" });
+      }
+      return;
+    }
     if (remoteWriteOperations.includes(v.operation as (typeof remoteWriteOperations)[number])) {
       try {
         parseRemoteOperation(v.operation, v.params, true);

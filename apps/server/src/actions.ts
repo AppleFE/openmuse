@@ -7,6 +7,7 @@ import {
 } from "../../../packages/domain/src/index.ts";
 import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox.ts";
 import { remoteOperationLabels } from "../../../packages/domain/src/remote-host.ts";
+import { githubOperationLabels } from "../../../packages/domain/src/github.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 
@@ -73,7 +74,7 @@ export class ActionService {
     const input = proposalSchema.parse(prepared?.input ?? parsed);
     const title =
       input.kind === "connector.write"
-        ? `${remoteOperationLabels[input.data.operation] ?? proxmoxOperationLabels[input.data.operation]} · ${connection?.account ?? input.data.connectorId}`
+        ? `${remoteOperationLabels[input.data.operation] ?? proxmoxOperationLabels[input.data.operation] ?? githubOperationLabels[input.data.operation]} · ${connection?.account ?? input.data.connectorId}`
         : input.kind === "email.send"
           ? `Send “${input.data.subject}”`
           : input.kind === "calendar.delete"

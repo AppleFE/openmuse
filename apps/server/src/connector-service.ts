@@ -28,6 +28,7 @@ import {
   proxmoxWriteSchema,
 } from "../../../packages/domain/src/proxmox.ts";
 import { parseRemoteOperation } from "../../../packages/domain/src/remote-host.ts";
+import { parseGithubWrite } from "../../../packages/domain/src/github.ts";
 import {
   type ConnectorDeps,
   ConnectorError,
@@ -107,11 +108,11 @@ export class ConnectorService {
 
   async actionConnection(owner: string, input: ConnectorWriteInput) {
     const stored = await this.record(owner, input.connectorId);
-    if (!["proxmox", "remote_host"].includes(stored.provider) || !stored.secret)
-      throw new AppError("인증 정보가 있는 Proxmox 또는 원격 호스트를 연결하세요", 409);
+    if (!["proxmox", "remote_host", "github"].includes(stored.provider) || !stored.secret)
+      throw new AppError("인증 정보가 있는 GitHub·Proxmox·원격 호스트를 연결하세요", 409);
     return {
       id: stored.id,
-      account: `${stored.provider === "remote_host" ? "원격 호스트" : "Proxmox VE"} · ${stored.name} · ${stored.config.baseUrl ?? stored.config.host}`,
+      account: `${stored.provider} · ${stored.name} · ${stored.config.baseUrl ?? stored.config.host ?? "https://api.github.com"}`,
     };
   }
 
@@ -133,6 +134,10 @@ export class ConnectorService {
     await this.actionConnection(owner, parsed);
     const stored = await this.record(owner, parsed.connectorId);
     const adapter = connectorAdapter(stored.provider, this.deps);
+    if (stored.provider === "github") {
+      const params = parseGithubWrite(parsed.operation, parsed.params);
+      return { input: { kind: "connector.write" as const, data: connectorWriteSchema.parse({ ...parsed, params }) }, targetVersion: JSON.stringify({ connection: this.connectionVersion(stored) }) };
+    }
     if (stored.provider === "remote_host") {
       const params = parseRemoteOperation(parsed.operation, parsed.params, true);
       if (parsed.operation === "host_command") params.jobId ??= randomUUID();
@@ -192,7 +197,7 @@ export class ConnectorService {
   async executeWrite(owner: string, raw: unknown, targetVersion?: string) {
     const input = connectorWriteSchema.parse(raw);
     const stored = await this.record(owner, input.connectorId);
-    if (!["proxmox", "remote_host"].includes(stored.provider) || !targetVersion)
+    if (!["proxmox", "remote_host", "github"].includes(stored.provider) || !targetVersion)
       throw new AppError("Prepare a fresh connector action before execution", 409);
     const expected = JSON.parse(targetVersion) as {
       connection: string;

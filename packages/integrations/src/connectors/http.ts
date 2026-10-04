@@ -52,7 +52,7 @@ export function redact(text: string, secrets: (string | undefined)[]): string {
 }
 
 export interface ConnectorHttpOptions {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   form?: Record<string, string | number | boolean | undefined>;
   json?: unknown;
   headers?: Record<string, string>;
