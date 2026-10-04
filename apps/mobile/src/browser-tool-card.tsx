@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { ActivityIndicator, AppState, Image, Text, View } from "react-native";
 import { z } from "zod";
 import type { BrowserSession } from "../../../packages/domain/src";
+import { toolResultValue } from "./tool-result";
 import { Button, Card, colors, ErrorNotice, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -13,15 +14,6 @@ const observationSchema = z.object({
   title: z.string(),
   url: z.url(),
 });
-
-function resultValue(result: unknown) {
-  if (typeof result !== "string") return result;
-  try {
-    return JSON.parse(result);
-  } catch {
-    return undefined;
-  }
-}
 
 function siteLabel(url: unknown) {
   if (typeof url !== "string") return "페이지를 여는 중";
@@ -45,7 +37,7 @@ export function BrowserToolCard({
   const { api, workspace, open } = useWorkspace();
   const { running, active } = useContext(BrowserRunContext);
   const working = loading && active;
-  const value = resultValue(result);
+  const value = toolResultValue(result);
   const observation = observationSchema.safeParse(value);
   const toolError = z.object({ error: z.string() }).safeParse(value);
   const sessionId = observation.success ? observation.data.sessionId : undefined;
