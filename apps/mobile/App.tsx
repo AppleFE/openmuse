@@ -333,7 +333,20 @@ function WorkspaceShell({
     <>
       <WorkspaceTools />
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }} edges={["top", "bottom"]}>
-        <View style={{ flex: 1, width: "100%", maxWidth: 760, alignSelf: "center" }}>
+        <View
+          style={{
+            flex: 1,
+            width:
+              Platform.OS === "web" && width >= 1100 && detail?.type === "browser"
+                ? Math.round(width * 0.42)
+                : "100%",
+            maxWidth: 760,
+            alignSelf:
+              Platform.OS === "web" && width >= 1100 && detail?.type === "browser"
+                ? "flex-start"
+                : "center",
+          }}
+        >
           <View
             style={{
               height: desktop ? 146 : 122,

@@ -33,6 +33,7 @@ import {
   type ProposalInput,
 } from "../../../packages/domain/src";
 import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox";
+import { remoteOperationLabels } from "../../../packages/domain/src/remote-host";
 import { DelegateSheet, NotificationsSheet, TaskDetail } from "./agent-ui";
 import BrowserConsole from "./BrowserConsole";
 import { browserAddress, browserSite } from "./browser-address";
@@ -43,6 +44,7 @@ import { UI_LOCALE, uiLabel } from "./locale";
 import PdfReader from "./PdfReader";
 import { proxmoxParamLabel } from "./proxmox-core";
 import { ProxmoxActionReceipt } from "./proxmox-receipt";
+import { RemoteJobReceipt } from "./remote-job-receipt";
 import {
   Button,
   Card,
@@ -626,7 +628,11 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
           <>
             <ReviewLine
               label="작업"
-              value={proxmoxOperationLabels[String(d.operation)] ?? String(d.operation)}
+              value={
+                remoteOperationLabels[String(d.operation)] ??
+                proxmoxOperationLabels[String(d.operation)] ??
+                String(d.operation)
+              }
             />
             {Object.entries((d.params ?? {}) as Record<string, unknown>)
               .filter(([key]) => key !== "digest")
@@ -708,7 +714,13 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
           </Text>
         </Card>
       )}
-      {connector && action.result && <ProxmoxActionReceipt action={action} />}
+      {connector &&
+        action.result &&
+        (String(d.operation).startsWith("host_") ? (
+          <RemoteJobReceipt action={action} />
+        ) : (
+          <ProxmoxActionReceipt action={action} />
+        ))}
       {pending ? (
         <>
           <Text style={[s.small, { marginVertical: 17 }]}>
@@ -952,6 +964,7 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
       subtitle={`${uiLabel(browser.status)} · 업데이트: ${timeLabel(browser.updatedAt)}`}
       onClose={close}
       wide
+      dock
     >
       <View style={[s.row, { gap: 10, marginBottom: 16 }]}>
         <View style={{ flex: 1 }}>
@@ -973,6 +986,32 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
         </Button>
       </View>
       <ErrorNotice error={error} />
+      <View style={[s.row, { gap: 8, marginVertical: 12, flexWrap: "wrap" }]}>
+        <Text style={s.small}>
+          {browser.control === "user" ? "사용자가 직접 제어 중" : "에이전트 제어 가능"}
+          {browser.connectorId ? " · 원격 호스트" : " · OpenMuse 서버"}
+        </Text>
+        <Button
+          small
+          busy={busy}
+          onPress={() => {
+            setBusy(true);
+            setError("");
+            void api
+              .request<BrowserSession>(`/api/browsers/${browser.id}/control`, {
+                control: browser.control === "user" ? "agent" : "user",
+              })
+              .then(async (value) => {
+                setLocal(value);
+                await refresh();
+              })
+              .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {browser.control === "user" ? "에이전트에게 제어 반환" : "브라우저 제어 가져오기"}
+        </Button>
+      </View>
       {loading ? (
         <View style={[s.row, { gap: 10, paddingVertical: 24 }]}>
           {error ? (

@@ -2,6 +2,9 @@ import type { ToolDefinition as CopilotToolDefinition } from "@copilotkit/runtim
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
+import { remoteCommandSchema } from "../../../../packages/domain/src/remote-host.ts";
+import type { BrowserService } from "../browser.ts";
+import { browserTools } from "../browser-tools.ts";
 import type { ComputerService } from "../computer.ts";
 import type { ConnectorService } from "../connector-service.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
@@ -21,10 +24,11 @@ export const piTextResult = (value: unknown, details?: unknown) => {
 export interface PiToolDependencies {
   computer: ComputerService;
   connectors?: ConnectorService;
+  browser?: BrowserService;
   jev: JevRuntime;
 }
 
-/** Native pi tools backed by OpenMuse services; no host filesystem or shell is exposed. */
+/** Native Pi tools; host access is scoped to an explicitly configured connector. */
 export function createPiTools(
   dependencies: PiToolDependencies,
   request: RoleRuntimeRequest,
@@ -214,9 +218,49 @@ export function createPiTools(
             ),
           ),
       }),
+      defineTool({
+        name: "run_host_command",
+        label: "Run allowed host command",
+        description:
+          "Run a remote command only on an owner-enabled remote_host with allowAgentShell true. Use a fresh UUID operationId for a new command; same ID is reserved for recovering the same dispatch. Poll host_job for completion and output. The host OS differs from the isolated computer.",
+        parameters: Type.Unsafe<z.infer<ReturnType<typeof hostCommandToolSchema>>>(
+          z.toJSONSchema(hostCommandToolSchema(), { io: "input" }),
+        ),
+        execute: async (_id, params, signal) =>
+          piTextResult(
+            await guarded("run_host_command", params, signal, async () => {
+              const { connectorId, operationId, ...command } =
+                hostCommandToolSchema().parse(params);
+              return dependencies.connectors!.executeHostCommand(
+                request.owner,
+                connectorId,
+                command,
+                operationId,
+              );
+            }),
+          ),
+      }),
     );
   }
+  if (dependencies.browser)
+    tools.push(
+      ...adaptCopilotTools(
+        browserTools(dependencies.browser, request.owner, request.task.id, request.signal),
+        dependencies,
+        request,
+        onCall,
+        maxToolCalls,
+        undefined,
+        onPolicyFallback,
+      ),
+    );
   return tools;
+}
+function hostCommandToolSchema() {
+  return remoteCommandSchema.extend({
+    connectorId: z.string().min(1).max(120),
+    operationId: z.uuid(),
+  });
 }
 
 /** Convert the existing reviewed OpenMuse tool definitions into native pi tools. */

@@ -79,7 +79,7 @@ export class AgentService {
       runtimeHooks ??
       new RuntimeHookPipeline([
         new JevGuardRuntimeHook(jev),
-        new PiRuntimeHook(db, config, computer, connectors, jev),
+        new PiRuntimeHook(db, config, computer, connectors, jev, undefined, browser),
       ]);
     const teamModels = new TeamModelExecutor(this.models, hooks);
     this.teams = new TeamEngine(db, (input) => teamModels.execute(input));

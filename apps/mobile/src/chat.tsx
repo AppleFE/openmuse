@@ -76,6 +76,14 @@ export function WorkspaceTools() {
     ),
   });
   useRenderTool({
+    name: "open_host_browser",
+    description: "호스트 브라우저 미리 보기",
+    parameters: displayParameters,
+    render: ({ args, result, status }) => (
+      <BrowserToolCard url={args.url} result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
     name: "delegate_task",
     description: "위임한 작업 표시",
     parameters: displayParameters,

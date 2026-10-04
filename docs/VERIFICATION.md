@@ -1,5 +1,20 @@
 # Release verification
 
+## 원격 호스트 커넥터 — 2026년 10월 5일
+
+- `remote_host`에 SSH와 독립 Host Agent 방식을 추가했습니다. Linux·Windows·macOS 설정,
+  실제 OS 조회, 비동기 셸 작업·출력·입력·중지, SSH 호스트 키 고정과 PTY, 연결별 Pi 명령
+  권한, 기존 네이티브 작업 검토, 공유 Chromium 세션과 사용자 제어권을 지원합니다.
+- Windows에서 전체 테스트 318개 중 317개가 통과하고 POSIX 전용 1개를 건너뛰었습니다.
+  최종 변경 후 호스트·권한·브라우저 회귀 28/28, macOS 런처 4/4가 통과했습니다.
+  Windows PowerShell의 한글 명령과 표준 입력, 실제 SSH 서버 픽스처의 호스트 지문·PTY,
+  재시작 시 명령 재실행 방지, 중복 요청·연결 변경·소유자 경계·사용자 제어를 검사했습니다.
+- 서버·모바일·브라우저 워커 타입 검사, 서버 빌드와 독립 Host Agent 빌드가 통과했습니다.
+  설치 방법과 권한·프로토콜은 [원격 호스트 문서](REMOTE-HOSTS.md)에 기록했습니다.
+- 경계: Host Agent 셸은 파이프 입출력이며 PTY는 SSH 방식에서 제공합니다. 브라우저는
+  기존 공개 HTTP(S) 페이지 제한을 유지합니다. 전체 데스크톱 제어·기존 사용자의 Chrome
+  창 공유는 구현하지 않았습니다. Linux 실제 호스트 설치는 이 Windows 검증에 포함되지 않습니다.
+
 September 16, 2026 · Capybara and distinct mobile/web demos, following the agent browser release · local fictional workspace. This records exercised behavior and its limits; it does not establish that every planned capability is complete.
 
 ## Integration review — September 29, 2026

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -260,63 +261,88 @@ export function Sheet({
   children,
   onClose,
   wide,
+  dock,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  dock?: boolean;
 }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 600;
+  const docked = dock && Platform.OS === "web" && width >= 1100;
+  const content = (
+    <View
+      accessibilityViewIsModal={!docked}
+      style={[
+        s.sheet,
+        wide && { maxWidth: 1050 },
+        compact && {
+          borderBottomLeftRadius: 0,
+          borderBottomRightRadius: 0,
+          paddingBottom: Math.max(insets.bottom, 12),
+          maxHeight: "94%",
+        },
+        docked && { maxWidth: "100%", maxHeight: "100%", height: "100%", borderRadius: 0 },
+      ]}
+    >
+      {compact && (
+        <View
+          style={{
+            alignSelf: "center",
+            width: 34,
+            height: 4,
+            borderRadius: 3,
+            backgroundColor: colors.lineStrong,
+            marginTop: 10,
+          }}
+        />
+      )}
+      <View
+        style={[
+          s.between,
+          { padding: compact ? 20 : 24, borderBottomWidth: 1, borderBottomColor: colors.line },
+        ]}
+      >
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={s.title}>{title}</Text>
+          {!!subtitle && <Text style={s.muted}>{subtitle}</Text>}
+        </View>
+        <IconButton icon={X} label="상세 화면 닫기" onPress={onClose} />
+      </View>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: compact ? 20 : 24 }}
+      >
+        {children}
+      </ScrollView>
+    </View>
+  );
+  if (docked)
+    return (
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: "58%",
+          zIndex: 50,
+          borderLeftWidth: 1,
+          borderLeftColor: colors.line,
+          backgroundColor: colors.canvas,
+        }}
+      >
+        {content}
+      </View>
+    );
   return (
     <Modal transparent animationType={compact ? "slide" : "fade"} visible onRequestClose={onClose}>
       <View style={[s.modalShade, compact && { padding: 0, justifyContent: "flex-end" }]}>
-        <View
-          accessibilityViewIsModal
-          style={[
-            s.sheet,
-            wide && { maxWidth: 1050 },
-            compact && {
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              paddingBottom: Math.max(insets.bottom, 12),
-              maxHeight: "94%",
-            },
-          ]}
-        >
-          {compact && (
-            <View
-              style={{
-                alignSelf: "center",
-                width: 34,
-                height: 4,
-                borderRadius: 3,
-                backgroundColor: colors.lineStrong,
-                marginTop: 10,
-              }}
-            />
-          )}
-          <View
-            style={[
-              s.between,
-              { padding: compact ? 20 : 24, borderBottomWidth: 1, borderBottomColor: colors.line },
-            ]}
-          >
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={s.title}>{title}</Text>
-              {!!subtitle && <Text style={s.muted}>{subtitle}</Text>}
-            </View>
-            <IconButton icon={X} label="상세 화면 닫기" onPress={onClose} />
-          </View>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: compact ? 20 : 24 }}
-          >
-            {children}
-          </ScrollView>
-        </View>
+        {content}
       </View>
     </Modal>
   );

@@ -10,6 +10,7 @@ import type {
 } from "../../../packages/domain/src/connectors";
 import { connectorCheckLabel, uiLabel } from "./locale";
 import { ProxmoxManager } from "./proxmox-manager";
+import { RemoteHostManager } from "./remote-host-manager";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -20,6 +21,7 @@ const providerIcons = {
   headscale: Server,
   wireguard: Shield,
   proxmox: Server,
+  remote_host: Server,
 } satisfies Record<ConnectorProvider, typeof Github>;
 
 function errorText(error: unknown) {
@@ -28,7 +30,16 @@ function errorText(error: unknown) {
 
 function defaultConfig(provider: ConnectorProviderInfo) {
   return Object.fromEntries(
-    provider.configFields.map((field) => [field.name, field.name === "verifyTls" ? true : ""]),
+    provider.configFields.map((field) => [
+      field.name,
+      field.type === "boolean"
+        ? field.name === "verifyTls"
+        : field.name === "mode"
+          ? "agent"
+          : field.name === "platform"
+            ? "linux"
+            : "",
+    ]),
   );
 }
 
@@ -56,6 +67,27 @@ function ConnectorField({
   onChange: (value: string | boolean) => void;
   secret?: boolean;
 }) {
+  if (field.enum)
+    return (
+      <View style={{ gap: 8, marginBottom: 16 }}>
+        <Text style={s.label}>{uiLabel(field.label)}</Text>
+        <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+          {field.enum.map((option) => (
+            <Button key={option} small primary={value === option} onPress={() => onChange(option)}>
+              {(
+                {
+                  agent: "Host Agent",
+                  ssh: "SSH",
+                  linux: "Linux",
+                  windows: "Windows",
+                  macos: "macOS",
+                } as Record<string, string>
+              )[option] ?? option}
+            </Button>
+          ))}
+        </View>
+      </View>
+    );
   if (field.name === "verifyTls") {
     const checked = value !== false;
     return (
@@ -92,10 +124,10 @@ function ConnectorField({
         label={`${uiLabel(field.label)}${field.required ? "" : " (선택)"}`}
         value={displayValue(value)}
         onChangeText={onChange}
-        secureTextEntry={secret}
+        secureTextEntry={secret && field.name !== "privateKey"}
         autoCapitalize="none"
         autoCorrect={false}
-        multiline={field.name === "ca"}
+        multiline={field.name === "ca" || field.name === "privateKey"}
         placeholder={
           secret
             ? "서버에 안전하게 저장됩니다"
@@ -133,13 +165,39 @@ function ConnectorEditor({
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const remote = provider.provider === "remote_host";
+  const ssh = config.mode === "ssh";
+  const configFields = provider.configFields
+    .filter(
+      (field) =>
+        !remote ||
+        (ssh
+          ? field.name !== "baseUrl"
+          : !["host", "port", "username", "hostFingerprint", "platform"].includes(field.name)),
+    )
+    .map((field) =>
+      remote &&
+      (ssh
+        ? ["host", "username", "hostFingerprint"].includes(field.name)
+        : field.name === "baseUrl")
+        ? { ...field, required: true }
+        : field,
+    );
+  const secretFields = provider.secretFields
+    .filter((field) => !remote || (ssh ? field.name !== "token" : field.name === "token"))
+    .map((field) =>
+      remote && ["privateKey", "token"].includes(field.name) ? { ...field, required: true } : field,
+    );
+  const keepSecret = !!connector?.hasSecret && (!remote || connector.config.mode === config.mode);
 
   async function save() {
     setBusy(true);
     setError("");
     try {
       const cleanConfig = compactSettings(config);
-      const cleanSecrets = compactSettings(secrets);
+      const cleanSecrets = compactSettings(
+        Object.fromEntries(secretFields.map((field) => [field.name, secrets[field.name]])),
+      );
       if (connector) {
         await api.request(
           `/api/connectors/${connector.id}`,
@@ -168,12 +226,9 @@ function ConnectorEditor({
     }
   }
 
-  const configReady = provider.configFields.every(
-    (field) => !field.required || config[field.name] !== "",
-  );
+  const configReady = configFields.every((field) => !field.required || config[field.name] !== "");
   const secretsReady =
-    !!connector?.hasSecret ||
-    provider.secretFields.every((field) => !field.required || !!secrets[field.name]?.trim());
+    keepSecret || secretFields.every((field) => !field.required || !!secrets[field.name]?.trim());
 
   return (
     <Sheet
@@ -183,7 +238,7 @@ function ConnectorEditor({
     >
       <View style={{ gap: 4 }}>
         <Field label="연결 이름" value={name} onChangeText={setName} />
-        {provider.configFields.map((field) => (
+        {configFields.map((field) => (
           <ConnectorField
             key={field.name}
             field={field}
@@ -195,11 +250,11 @@ function ConnectorEditor({
           <Card style={{ gap: 4, backgroundColor: colors.surfaceMuted }}>
             <Text style={s.heading}>인증 정보</Text>
             <Text style={s.small}>
-              {connector?.hasSecret
+              {keepSecret
                 ? "인증 정보가 설정되어 있습니다. 기존 값을 유지하려면 비워 두세요."
                 : "인증 정보는 서버로만 전송되며 앱에 다시 반환되지 않습니다."}
             </Text>
-            {provider.secretFields.map((field) => (
+            {secretFields.map((field) => (
               <ConnectorField
                 key={field.name}
                 field={field}
@@ -348,7 +403,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
                   수정
                 </Button>
               )}
-              {connector.provider === "proxmox" && (
+              {["proxmox", "remote_host"].includes(connector.provider) && (
                 <Button small onPress={() => setManaging(connector)}>
                   관리
                 </Button>
@@ -386,7 +441,12 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
       </View>
       {!providers.length && !error && <Text style={s.muted}>커넥터 옵션을 불러오는 중…</Text>}
       <ErrorNotice error={error} />
-      {managing && <ProxmoxManager connector={managing} onClose={() => setManaging(undefined)} />}
+      {managing?.provider === "proxmox" && (
+        <ProxmoxManager connector={managing} onClose={() => setManaging(undefined)} />
+      )}
+      {managing?.provider === "remote_host" && (
+        <RemoteHostManager connector={managing} onClose={() => setManaging(undefined)} />
+      )}
       {!!error && <Button onPress={() => void refresh()}>연결 다시 시도</Button>}
       {editing && (
         <ConnectorEditor

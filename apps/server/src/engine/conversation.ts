@@ -11,6 +11,7 @@ import {
   type ModelProfile,
   monitorInputSchema,
 } from "../../../../packages/domain/src/agent.ts";
+import { browserTools } from "../browser-tools.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import type { Config } from "../config.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
@@ -248,6 +249,7 @@ export class ConversationAgent extends AbstractAgent {
           }
         },
       }),
+      ...browserTools(this.service.browser, this.owner, input.threadId, browserAbort.signal),
       defineTool({
         name: "browse_web",
         description:

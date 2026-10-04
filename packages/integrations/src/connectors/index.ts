@@ -6,6 +6,7 @@ import {
 import { githubAdapter } from "./github.ts";
 import { headscaleAdapter } from "./headscale.ts";
 import { proxmoxAdapter } from "./proxmox.ts";
+import { remoteHostAdapter } from "./remote-host.ts";
 import { tailscaleAdapter } from "./tailscale.ts";
 import type { ConnectorAdapter, ConnectorDeps } from "./types.ts";
 import { wireguardAdapter } from "./wireguard.ts";
@@ -16,6 +17,7 @@ const factories: Record<ConnectorProvider, (deps: ConnectorDeps) => ConnectorAda
   headscale: () => headscaleAdapter(),
   wireguard: (deps) => wireguardAdapter(deps.exec),
   proxmox: () => proxmoxAdapter(),
+  remote_host: () => remoteHostAdapter(),
 };
 
 /** Build the adapter for one provider; `deps.exec` overrides the local binary runner (tests). */

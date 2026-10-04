@@ -55,7 +55,7 @@ export async function createApp(
         ? connectors.actionConnection(owner, input.data)
         : workspace.connection(owner),
   });
-  const browser = new BrowserService(db, config, auth, files);
+  const browser = new BrowserService(db, config, auth, files, Date.now, connectors);
   const computer = new ComputerService(db, config, options.docker);
   const agent = new AgentService(
     db,
@@ -386,8 +386,10 @@ export async function createApp(
     return c.json({ ok: true });
   });
   app.post("/api/browsers", async (c) => {
-    const body = z.object({ url: z.url().max(4096) }).parse(await c.req.json());
-    return c.json(await browser.create(c.get("owner"), body.url), 201);
+    const body = z
+      .object({ url: z.url().max(4096), connectorId: z.string().min(1).max(120).optional() })
+      .parse(await c.req.json());
+    return c.json(await browser.create(c.get("owner"), body.url, body.connectorId), 201);
   });
   app.get("/api/browsers/:id", async (c) => {
     const owner = c.get("owner");
@@ -403,6 +405,10 @@ export async function createApp(
   app.get("/api/browsers/:id/read", async (c) =>
     c.json(await browser.read(c.get("owner"), c.req.param("id"))),
   );
+  app.post("/api/browsers/:id/control", async (c) => {
+    const body = z.strictObject({ control: z.enum(["agent", "user"]) }).parse(await c.req.json());
+    return c.json(await browser.setControl(c.get("owner"), c.req.param("id"), body.control));
+  });
   app.post("/api/browsers/:id/reopen", async (c) => {
     const raw = await c.req.text();
     const body = z.object({ url: z.url().max(4096).optional() }).parse(raw ? JSON.parse(raw) : {});

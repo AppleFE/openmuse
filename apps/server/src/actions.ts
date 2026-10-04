@@ -6,6 +6,7 @@ import {
   proposalSchema,
 } from "../../../packages/domain/src/index.ts";
 import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox.ts";
+import { remoteOperationLabels } from "../../../packages/domain/src/remote-host.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 
@@ -64,7 +65,7 @@ export class ActionService {
     if (this.options.connection && !connection)
       throw new AppError(
         parsed.kind === "connector.write"
-          ? "Connect Proxmox before preparing an action"
+          ? "Connect the target connector before preparing an action"
           : "Connect Google before preparing an action",
         409,
       );
@@ -72,7 +73,7 @@ export class ActionService {
     const input = proposalSchema.parse(prepared?.input ?? parsed);
     const title =
       input.kind === "connector.write"
-        ? `${proxmoxOperationLabels[input.data.operation]} · ${connection?.account ?? input.data.connectorId}`
+        ? `${remoteOperationLabels[input.data.operation] ?? proxmoxOperationLabels[input.data.operation]} · ${connection?.account ?? input.data.connectorId}`
         : input.kind === "email.send"
           ? `Send “${input.data.subject}”`
           : input.kind === "calendar.delete"
@@ -153,7 +154,7 @@ export class ActionService {
     if (decision === "approve" && !(await this.options.connected(owner, reviewedInput)))
       throw new AppError(
         proposal.kind === "connector.write"
-          ? "Proxmox is disconnected. Reconnect before approving this action."
+          ? "The connector is disconnected. Reconnect before approving this action."
           : "Google is disconnected. Reconnect before approving this action.",
         409,
       );
@@ -166,7 +167,7 @@ export class ActionService {
       )
         throw new AppError(
           proposal.kind === "connector.write"
-            ? "Proxmox connection changed. Prepare a fresh action."
+            ? "Connector connection changed. Prepare a fresh action."
             : "Google account or connection changed. Prepare a new action for the connected account.",
           409,
         );

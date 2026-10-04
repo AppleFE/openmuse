@@ -1,5 +1,7 @@
 # Connectors
 
+원격 PC·서버의 SSH/셸·공유 브라우저는 [원격 호스트 커넥터](REMOTE-HOSTS.md)를 참고하세요.
+
 Connectors are owner-scoped integrations with external
 infrastructure providers: GitHub, Tailscale, Headscale, WireGuard and Proxmox
 VE. They are managed through a small JSON API, store credentials encrypted at

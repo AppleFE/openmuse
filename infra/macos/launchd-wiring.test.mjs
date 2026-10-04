@@ -13,10 +13,7 @@ const ollamaInstaller = await readFile(
   fileURLToPath(new URL("install-ollama-launch-agent.sh", directory)),
   "utf8",
 );
-const serviceRunner = await readFile(
-  fileURLToPath(new URL("run-service.sh", directory)),
-  "utf8",
-);
+const serviceRunner = await readFile(fileURLToPath(new URL("run-service.sh", directory)), "utf8");
 
 test("restricted launcher permits only exact start and stop service commands", () => {
   assert.match(dispatcher, /server\|browser-worker\|web\|ollama\) action=start/);
@@ -24,6 +21,8 @@ test("restricted launcher permits only exact start and stop service commands", (
   assert.match(dispatcher, /stop-browser-worker\) action=stop; service=browser-worker/);
   assert.match(dispatcher, /stop-web\) action=stop; service=web/);
   assert.match(dispatcher, /stop-ollama\) action=stop; service=ollama/);
+  assert.match(dispatcher, /host-agent\) action=start; service=host-agent/);
+  assert.match(dispatcher, /stop-host-agent\) action=stop; service=host-agent/);
   assert.match(dispatcher, /\*\) echo "OpenMuse launch command denied"/);
 });
 
@@ -33,6 +32,7 @@ test("stop handshake verifies owner and exact command before its only signal", (
     "dist/apps/server/src/index.js",
     "--experimental-strip-types apps/worker/src/index.ts",
     "infra/macos/serve-web.mjs",
+    "dist/host-agent/run.mjs",
     "/runtime/ollama/Ollama.app/Contents/Resources/ollama serve",
   ]) {
     assert.ok(dispatcher.includes(command));

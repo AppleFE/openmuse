@@ -21,6 +21,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import type { BrowserService } from "../browser.ts";
 import type { ComputerService } from "../computer.ts";
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { ConnectorService } from "../connector-service.ts";
@@ -492,6 +493,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     private readonly connectors: ConnectorService | undefined,
     private readonly jev: JevRuntime,
     sessionFactory?: PiSessionFactory,
+    private readonly browser?: BrowserService,
   ) {
     this.sessionFactory = sessionFactory ?? ((input) => this.createSession(input));
   }
@@ -695,7 +697,12 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       thinkingLevel: "medium",
       noTools: "builtin",
       customTools: createPiTools(
-        { computer: this.computer, connectors: this.connectors, jev: this.jev },
+        {
+          computer: this.computer,
+          connectors: this.connectors,
+          browser: this.browser,
+          jev: this.jev,
+        },
         input.request,
         input.onToolCall,
         input.maxToolCalls,

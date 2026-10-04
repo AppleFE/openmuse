@@ -59,6 +59,10 @@ export interface BrowserSession {
   updatedAt: string;
   previewUrl?: string;
   consoleUrl?: string;
+  /** Absent means the deployment's original browser worker. */
+  connectorId?: string;
+  connectorRevision?: string;
+  control?: "agent" | "user";
 }
 export const emailDraftSchema = z.object({
   to: z.array(z.email()).min(1).max(50),

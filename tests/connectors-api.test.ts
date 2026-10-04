@@ -230,6 +230,7 @@ test("providers metadata, query validation and read operations work end to end",
     "github",
     "headscale",
     "proxmox",
+    "remote_host",
     "tailscale",
     "wireguard",
   ]);
@@ -627,6 +628,7 @@ test("connector agent tools list, test and query without leaking secrets", async
     "test_connector",
     "query_connector",
     "connector_operations",
+    "run_host_command",
   ]);
   const list = tools[0].execute as (args: unknown) => Promise<unknown>;
   const listed = (await list({})) as { id: string }[];

@@ -308,6 +308,42 @@ export async function createBrowserManager(options: {
             title: document.title.slice(0, 300),
             text: text.slice(0, 100_000),
             truncated: text.length > 100_000,
+            elements: Array.from(
+              document.querySelectorAll(
+                "a,button,input,textarea,select,[role=button],[contenteditable=true]",
+              ),
+            )
+              .filter((element) => {
+                const r = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return (
+                  style.visibility !== "hidden" &&
+                  style.display !== "none" &&
+                  Number(style.opacity) !== 0 &&
+                  r.width > 0 &&
+                  r.height > 0 &&
+                  r.right > 0 &&
+                  r.bottom > 0 &&
+                  r.left < 1280 &&
+                  r.top < 800
+                );
+              })
+              .slice(0, 100)
+              .map((element) => {
+                const r = element.getBoundingClientRect();
+                return {
+                  label: (
+                    element.getAttribute("aria-label") ||
+                    element.getAttribute("placeholder") ||
+                    (element as HTMLElement).innerText ||
+                    element.getAttribute("title") ||
+                    element.tagName
+                  ).slice(0, 200),
+                  role: element.getAttribute("role") || element.tagName.toLowerCase(),
+                  x: Math.round((Math.max(0, r.left) + Math.min(1279, r.right)) / 2),
+                  y: Math.round((Math.max(0, r.top) + Math.min(799, r.bottom)) / 2),
+                };
+              }),
           };
         });
         await validatePublicUrl(result.url);

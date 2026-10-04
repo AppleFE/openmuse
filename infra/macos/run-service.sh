@@ -10,8 +10,8 @@ env_file=$repo/.env
 node=$root/runtime/node-current/bin/node
 
 case "$service" in
-  server|browser-worker|web|ollama) ;;
-  *) echo "usage: $0 server|browser-worker|web|ollama" >&2; exit 64 ;;
+  server|browser-worker|web|ollama|host-agent) ;;
+  *) echo "usage: $0 server|browser-worker|web|ollama|host-agent" >&2; exit 64 ;;
 esac
 
 attempt=0
@@ -79,5 +79,13 @@ case "$service" in
   web)
     [ -f apps/mobile/dist/web/index.html ] || { echo "Web build is missing; run infra/macos/deploy.sh" >&2; exit 78; }
     exec "$node" --env-file="$env_file" infra/macos/serve-web.mjs
+    ;;
+  host-agent)
+    [ -f dist/host-agent/run.mjs ] || { echo "Host Agent build is missing" >&2; exit 78; }
+    [ -f "$root/data/host-agent/config.json" ] || { echo "Host Agent config is missing" >&2; exit 78; }
+    PLAYWRIGHT_BROWSERS_PATH="$root/caches/playwright"
+    PATH="$root/runtime/node-current/bin:/opt/homebrew/bin:/Users/aeonge/.cargo/bin:/Users/aeonge/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    export PLAYWRIGHT_BROWSERS_PATH PATH
+    exec "$node" dist/host-agent/run.mjs "$root/data/host-agent/config.json"
     ;;
 esac

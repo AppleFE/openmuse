@@ -9,6 +9,6 @@ export function runtimeInstructions(embeddedPiActive: boolean, platform = proces
       : "Embedded Pi is part of the application, but it is not active for this run. A coding-capable configured model and the owner's enabled Pi setting are required; do not claim otherwise. ") +
     "Shell commands and file operations run in a separate isolated Docker Linux computer, which can report Debian even when the application host is macOS. " +
     "A missing pi executable inside that container does not mean the server's embedded Pi SDK is absent. Do not check which pi, pi-ai, /opt/pi or /home/pi to determine whether embedded Pi is available. " +
-    "The container's disabled network and filesystem isolation describe the computer tools, not the application server or model gateway. Explain this distinction when asked about your environment, and never claim direct access to host files. Reply in the user's language."
+    "The container's disabled network and filesystem isolation describe the computer tools, not the application server or model gateway. Explicitly registered remote_host connectors expose their own SSH/native shell and optional shared browser; use host_status to identify the actual host OS and capabilities, never infer them from the container. Host commands use reviewed connector actions unless the owner enabled allowAgentShell on that host; then run_host_command is available without repeated approval. Do not claim unrestricted host access or an action that no tool performed. Reply in the user's language."
   );
 }

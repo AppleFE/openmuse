@@ -8,6 +8,8 @@ export interface ConnectorContext {
   timeoutMs?: number;
   /** Aborts in-flight provider I/O when the caller's request is cancelled. */
   signal?: AbortSignal;
+  /** Private owner/connector-scoped receipts directory, provided by the server. */
+  stateDir?: string;
 }
 
 /**

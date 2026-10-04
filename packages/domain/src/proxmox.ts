@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseRemoteOperation, remoteWriteOperations } from "./remote-host.ts";
 
 const node = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$/, "Use a Proxmox node name");
 const storage = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/, "Use a Proxmox storage ID");
@@ -380,12 +381,28 @@ export const proxmoxWriteSchema = z.discriminatedUnion("operation", [
 export const connectorWriteSchema = z
   .strictObject({
     connectorId: z.string().min(1).max(120),
-    operation: z.enum(
-      proxmoxWriteOperations as [ProxmoxWriteOperation, ...ProxmoxWriteOperation[]],
-    ),
+    operation: z.enum([...proxmoxWriteOperations, ...remoteWriteOperations] as [
+      string,
+      ...string[],
+    ]),
     params: z.record(z.string(), z.unknown()),
   })
   .superRefine((v, ctx) => {
+    if (remoteWriteOperations.includes(v.operation as (typeof remoteWriteOperations)[number])) {
+      try {
+        parseRemoteOperation(v.operation, v.params, true);
+      } catch (error) {
+        if (error instanceof z.ZodError)
+          for (const issue of error.issues)
+            ctx.addIssue({
+              code: "custom",
+              path: ["params", ...issue.path],
+              message: issue.message,
+            });
+        else ctx.addIssue({ code: "custom", message: "Invalid remote host operation" });
+      }
+      return;
+    }
     const parsed = proxmoxWriteSchema.safeParse({ operation: v.operation, params: v.params });
     if (!parsed.success)
       for (const issue of parsed.error.issues)

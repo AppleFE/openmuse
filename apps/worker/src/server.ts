@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage } from "node:http";
 import { createBrowserManager, validateSessionId } from "./browser.ts";
 import { WorkerError } from "./errors.ts";
 
-async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+export async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   if (!request.headers["content-type"]?.startsWith("application/json"))
     throw new WorkerError("INVALID_BODY", "A JSON request body is required.");
   const chunks: Buffer[] = [];
@@ -35,6 +35,12 @@ export async function createWorkerServer(options: {
   dataDir: string;
   maxSessions?: number;
   idleTimeoutMs?: number;
+  /** Optional authenticated extension, used by the portable Host Agent. */
+  extension?: (
+    request: IncomingMessage,
+    pathname: string,
+    json: (status: number, body: unknown) => void,
+  ) => Promise<boolean>;
 }) {
   if (options.token.length < 32)
     throw new Error("WORKER_TOKEN must contain at least 32 characters.");
@@ -58,6 +64,7 @@ export async function createWorkerServer(options: {
         .digest();
       if (!timingSafeEqual(headerHash, tokenHash))
         throw new WorkerError("UNAUTHORIZED", "Worker authentication is required.", 401);
+      if (await options.extension?.(request, pathname, json)) return;
       if (pathname === "/sessions" && request.method === "GET") {
         json(200, browser.list());
         return;

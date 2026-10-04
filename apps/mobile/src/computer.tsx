@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import { AppState, Image, Pressable, Text, View } from "react-native";
 import type { BrowserSession } from "../../../packages/domain/src";
+import type { ConnectorView } from "../../../packages/domain/src/connectors";
 import { browserAddress } from "./browser-address";
 import { useComputerDraft } from "./computer-drafts";
 import { LinuxWorkspace } from "./computer-workspace";
@@ -132,10 +133,32 @@ export function ComputerSheet() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [hosts, setHosts] = useState<ConnectorView[]>([]);
+  const [hostId, setHostId] = useState("");
   const [tab, setTab] = useComputerDraft("tab");
-  const available = workspace.connections.some(
-    (c) => c.id === "browser" && c.status === "connected",
-  );
+  const available = hostId
+    ? hosts.some((host) => host.id === hostId)
+    : workspace.connections.some((c) => c.id === "browser" && c.status === "connected");
+  useEffect(() => {
+    let active = true;
+    void api
+      .request<{ connectors: ConnectorView[] }>("/api/connectors")
+      .then(({ connectors }) => {
+        if (active)
+          setHosts(
+            connectors.filter(
+              (host) =>
+                host.provider === "remote_host" && host.config.mode === "agent" && host.hasSecret,
+            ),
+          );
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
   useEffect(() => {
     let active = true;
     const timer = setInterval(() => {
@@ -156,6 +179,7 @@ export function ComputerSheet() {
     try {
       const browser = await api.request<BrowserSession>("/api/browsers", {
         url: browserAddress(url),
+        ...(hostId ? { connectorId: hostId } : {}),
       });
       await refresh();
       open({ type: "browser", browser });
@@ -205,6 +229,26 @@ export function ComputerSheet() {
         <ErrorNotice error={error} />
         {tab === "브라우저" ? (
           <>
+            {!!hosts.length && (
+              <View style={{ gap: 8 }}>
+                <Text style={s.label}>브라우저를 실행할 호스트</Text>
+                <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+                  <Button small primary={!hostId} onPress={() => setHostId("")}>
+                    OpenMuse 서버
+                  </Button>
+                  {hosts.map((host) => (
+                    <Button
+                      key={host.id}
+                      small
+                      primary={hostId === host.id}
+                      onPress={() => setHostId(host.id)}
+                    >
+                      {host.name}
+                    </Button>
+                  ))}
+                </View>
+              </View>
+            )}
             <View>
               <Field
                 label="웹사이트 주소"

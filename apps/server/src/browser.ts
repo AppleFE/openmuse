@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { BrowserSession } from "../../../packages/domain/src/index.ts";
+import { browserInputSchema } from "../../../packages/domain/src/remote-host.ts";
 import type { Auth } from "./auth.ts";
 import { browserConsole } from "./browser-console.ts";
 import type { Config } from "./config.ts";
+import type { ConnectorService } from "./connector-service.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 import type { Files } from "./files.ts";
@@ -20,6 +22,10 @@ const readSchema = z.object({
   title: z.string().max(300),
   text: z.string().max(100_000),
   truncated: z.boolean(),
+  elements: z
+    .array(z.object({ label: z.string(), role: z.string(), x: z.number(), y: z.number() }))
+    .max(100)
+    .optional(),
 });
 const failureSchema = z.object({
   id: z.string(),
@@ -39,6 +45,7 @@ export class BrowserService {
     private readonly auth: Auth,
     private readonly files: Files,
     private readonly now: () => number = Date.now,
+    private readonly connectors?: ConnectorService,
   ) {}
   /** Whether the configured worker answers its health check, cached briefly for snapshots. */
   reachable(): Promise<boolean> {
@@ -63,19 +70,27 @@ export class BrowserService {
       if (this.queues.get(id) === next) this.queues.delete(id);
     }
   }
-  private async request(path: string, body?: unknown, signal?: AbortSignal) {
+  private async request(
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+    target?: { url: string; token: string },
+  ) {
     signal?.throwIfAborted();
-    if (!this.config.workerUrl || !this.config.workerToken)
+    const workerUrl = target?.url ?? this.config.workerUrl,
+      workerToken = target?.token ?? this.config.workerToken;
+    if (!workerUrl || !workerToken)
       throw new AppError("Browser worker is not configured. Start it using the setup guide.", 503);
     let response: Response;
     try {
-      response = await fetch(`${this.config.workerUrl}${path}`, {
+      response = await fetch(`${workerUrl}${path}`, {
         method: body === undefined ? "GET" : "POST",
         headers: {
-          Authorization: `Bearer ${this.config.workerToken}`,
+          Authorization: `Bearer ${workerToken}`,
           "Content-Type": "application/json",
         },
         body: body === undefined ? undefined : JSON.stringify(body),
+        redirect: "error",
         signal: signal
           ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
           : AbortSignal.timeout(45000),
@@ -91,12 +106,47 @@ export class BrowserService {
       const payload = await response.json().catch(() => null);
       throw new AppError(
         typeof payload?.error?.message === "string"
-          ? payload.error.message
+          ? payload.error.message.split(workerToken).join("[redacted]")
           : "Browser request failed",
         502,
       );
     }
     return response;
+  }
+  private async sessionRequest(
+    owner: string,
+    id: string,
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ) {
+    const session = await this.get(owner, id);
+    const target = session.connectorId
+      ? await this.connectors?.browserTarget(owner, session.connectorId)
+      : undefined;
+    if (session.connectorId && !target)
+      throw new AppError("원격 호스트 브라우저를 사용할 수 없습니다", 503);
+    if (target && session.connectorRevision !== target.revision)
+      throw new AppError(
+        "호스트 주소 또는 인증 정보가 변경되었습니다. 새 브라우저 세션을 여세요",
+        409,
+      );
+    return this.request(path, body, signal, target);
+  }
+  async setControl(owner: string, id: string, control: "agent" | "user") {
+    return this.serial(id, async () => {
+      const session = await this.get(owner, id);
+      const saved = { ...session, control, updatedAt: new Date().toISOString() };
+      await this.db.put(owner, "browsers", saved);
+      return this.decorate(owner, saved);
+    });
+  }
+  private async agentAccess(owner: string, id: string) {
+    if ((await this.get(owner, id)).control === "user")
+      throw new AppError(
+        "사용자가 브라우저를 직접 제어 중입니다. 사용자가 에이전트 제어로 돌려줄 때까지 기다리세요",
+        409,
+      );
   }
   async get(owner: string, id: string) {
     const value = await this.db.get<BrowserSession>(owner, "browsers", id);
@@ -114,10 +164,15 @@ export class BrowserService {
     const session = sessionSchema.parse(payload);
     if (session.id !== expectedId)
       throw new AppError("Browser worker returned a different session", 502);
-    await this.db.put(owner, "browsers", session);
-    return this.decorate(owner, session);
+    const existing = await this.get(owner, expectedId);
+    const saved = { ...existing, ...session };
+    await this.db.put(owner, "browsers", saved);
+    return this.decorate(owner, saved);
   }
-  async create(owner: string, url: string) {
+  async create(owner: string, url: string, connectorId?: string) {
+    const target = connectorId
+      ? await this.connectors?.browserTarget(owner, connectorId)
+      : undefined;
     const id = randomUUID();
     // Record ownership before calling the worker, including when its response is lost.
     await this.db.put(owner, "browsers", {
@@ -125,6 +180,8 @@ export class BrowserService {
       url,
       title: "New browser session",
       status: "idle",
+      ...(connectorId ? { connectorId, connectorRevision: target?.revision } : {}),
+      control: "agent",
       updatedAt: new Date().toISOString(),
     });
     return this.reopen(owner, id, url);
@@ -133,7 +190,13 @@ export class BrowserService {
     const value = await this.get(owner, id);
     const target = url ?? value.url;
     try {
-      const response = await this.request("/sessions", { id, url: target }, signal);
+      const response = await this.sessionRequest(
+        owner,
+        id,
+        "/sessions",
+        { id, url: target },
+        signal,
+      );
       return await this.save(owner, await response.json(), id);
     } catch (error) {
       await this.save(
@@ -153,7 +216,9 @@ export class BrowserService {
   private async readOwned(owner: string, id: string, signal?: AbortSignal) {
     const session = await this.get(owner, id);
     const result = readSchema.parse(
-      await (await this.request(`/sessions/${id}/read`, undefined, signal)).json(),
+      await (
+        await this.sessionRequest(owner, id, `/sessions/${id}/read`, undefined, signal)
+      ).json(),
     );
     await this.save(
       owner,
@@ -178,17 +243,27 @@ export class BrowserService {
       return { sessionId: id, ...(await this.readOwned(owner, id)) };
     });
   }
-  async observeForThread(owner: string, threadId: string, url: string, signal?: AbortSignal) {
+  async observeForThread(
+    owner: string,
+    threadId: string,
+    url: string,
+    signal?: AbortSignal,
+    connectorId?: string,
+  ) {
     signal?.throwIfAborted();
     // Persist the association before contacting the worker so failed/lost responses
     // and later chat turns keep using the same profile instead of exhausting its limit.
+    const associationId = connectorId ? `${threadId}:${connectorId}` : threadId;
+    const target = connectorId
+      ? await this.connectors?.browserTarget(owner, connectorId)
+      : undefined;
     const association =
-      (await this.db.get<ChatBrowser>(owner, "chat-browsers", threadId)) ??
+      (await this.db.get<ChatBrowser>(owner, "chat-browsers", associationId)) ??
       (await this.db.insertIfAbsent(owner, "chat-browsers", {
-        id: threadId,
+        id: associationId,
         sessionId: randomUUID(),
       })) ??
-      (await this.db.get<ChatBrowser>(owner, "chat-browsers", threadId));
+      (await this.db.get<ChatBrowser>(owner, "chat-browsers", associationId));
     if (!association) throw new AppError("Could not reserve the chat browser session", 500);
     const id = association.sessionId;
     await this.db.insertIfAbsent(owner, "browsers", {
@@ -196,10 +271,13 @@ export class BrowserService {
       url,
       title: "New browser session",
       status: "idle",
+      ...(connectorId ? { connectorId, connectorRevision: target?.revision } : {}),
+      control: "agent",
       updatedAt: new Date().toISOString(),
     });
     return this.serial(id, async () => {
       signal?.throwIfAborted();
+      await this.agentAccess(owner, id);
       await this.openOwned(owner, id, url, signal);
       signal?.throwIfAborted();
       const page = await this.readOwned(owner, id, signal);
@@ -215,19 +293,33 @@ export class BrowserService {
   async close(owner: string, id: string) {
     return this.serial(id, async () => {
       await this.get(owner, id);
-      return this.save(owner, await (await this.request(`/sessions/${id}/close`, {})).json(), id);
+      return this.save(
+        owner,
+        await (await this.sessionRequest(owner, id, `/sessions/${id}/close`, {})).json(),
+        id,
+      );
     });
   }
   async preview(owner: string, id: string) {
     await this.get(owner, id);
-    return this.request(`/sessions/${id}/screenshot`);
+    return this.sessionRequest(owner, id, `/sessions/${id}/screenshot`);
   }
-  async input(owner: string, id: string, value: unknown) {
+  async input(owner: string, id: string, value: unknown, agent = false, signal?: AbortSignal) {
     return this.serial(id, async () => {
       await this.get(owner, id);
+      if (agent) await this.agentAccess(owner, id);
+      signal?.throwIfAborted();
       return this.save(
         owner,
-        await (await this.request(`/sessions/${id}/input`, value)).json(),
+        await (
+          await this.sessionRequest(
+            owner,
+            id,
+            `/sessions/${id}/input`,
+            browserInputSchema.parse(value),
+            signal,
+          )
+        ).json(),
         id,
       );
     });
@@ -241,7 +333,7 @@ export class BrowserService {
         ),
         failures: z.array(failureSchema),
       })
-      .parse(await (await this.request(`/sessions/${id}/downloads`)).json());
+      .parse(await (await this.sessionRequest(owner, id, `/sessions/${id}/downloads`)).json());
     const saved = [];
     for (const download of downloads) {
       const existing = await this.db.get<{ fileId: string }>(
@@ -253,7 +345,9 @@ export class BrowserService {
         saved.push(this.files.signed(owner, await this.files.get(owner, existing.fileId)));
         continue;
       }
-      const response = await this.request(
+      const response = await this.sessionRequest(
+        owner,
+        id,
         `/sessions/${id}/downloads/${encodeURIComponent(download.id)}`,
       );
       const file = await this.files.import(

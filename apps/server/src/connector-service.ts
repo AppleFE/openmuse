@@ -14,6 +14,8 @@ import {
   headscaleSecretsSchema,
   proxmoxConfigSchema,
   proxmoxSecretsSchema,
+  remoteHostConfigSchema,
+  remoteHostSecretsSchema,
   type StoredConnector,
   tailscaleConfigSchema,
   tailscaleSecretsSchema,
@@ -25,6 +27,7 @@ import {
   connectorWriteSchema,
   proxmoxWriteSchema,
 } from "../../../packages/domain/src/proxmox.ts";
+import { parseRemoteOperation } from "../../../packages/domain/src/remote-host.ts";
 import {
   type ConnectorDeps,
   ConnectorError,
@@ -46,6 +49,7 @@ const providerSchemas = {
   headscale: { config: headscaleConfigSchema, secrets: headscaleSecretsSchema },
   wireguard: { config: wireguardConfigSchema, secrets: null },
   proxmox: { config: proxmoxConfigSchema, secrets: proxmoxSecretsSchema },
+  remote_host: { config: remoteHostConfigSchema, secrets: remoteHostSecretsSchema },
 } as const;
 
 const now = () => new Date().toISOString();
@@ -103,12 +107,12 @@ export class ConnectorService {
 
   async actionConnection(owner: string, input: ConnectorWriteInput) {
     const stored = await this.record(owner, input.connectorId);
-    if (stored.provider !== "proxmox" || !stored.secret)
-      throw new AppError(
-        "Configure a Proxmox connector with credentials before preparing a write",
-        409,
-      );
-    return { id: stored.id, account: `Proxmox VE · ${stored.name} · ${stored.config.baseUrl}` };
+    if (!["proxmox", "remote_host"].includes(stored.provider) || !stored.secret)
+      throw new AppError("인증 정보가 있는 Proxmox 또는 원격 호스트를 연결하세요", 409);
+    return {
+      id: stored.id,
+      account: `${stored.provider === "remote_host" ? "원격 호스트" : "Proxmox VE"} · ${stored.name} · ${stored.config.baseUrl ?? stored.config.host}`,
+    };
   }
 
   private connectionVersion(stored: StoredConnector) {
@@ -129,6 +133,17 @@ export class ConnectorService {
     await this.actionConnection(owner, parsed);
     const stored = await this.record(owner, parsed.connectorId);
     const adapter = connectorAdapter(stored.provider, this.deps);
+    if (stored.provider === "remote_host") {
+      const params = parseRemoteOperation(parsed.operation, parsed.params, true);
+      if (parsed.operation === "host_command") params.jobId ??= randomUUID();
+      return {
+        input: {
+          kind: "connector.write" as const,
+          data: connectorWriteSchema.parse({ ...parsed, params }),
+        },
+        targetVersion: JSON.stringify({ connection: this.connectionVersion(stored) }),
+      };
+    }
     const input = proxmoxWriteSchema.parse({ operation: parsed.operation, params: parsed.params });
     const params: Record<string, unknown> = { ...input.params };
     let target:
@@ -177,8 +192,8 @@ export class ConnectorService {
   async executeWrite(owner: string, raw: unknown, targetVersion?: string) {
     const input = connectorWriteSchema.parse(raw);
     const stored = await this.record(owner, input.connectorId);
-    if (stored.provider !== "proxmox" || !targetVersion)
-      throw new AppError("Prepare a fresh Proxmox action before execution", 409);
+    if (!["proxmox", "remote_host"].includes(stored.provider) || !targetVersion)
+      throw new AppError("Prepare a fresh connector action before execution", 409);
     const expected = JSON.parse(targetVersion) as {
       connection: string;
       target?: { operation: string; params: Record<string, unknown> };
@@ -194,6 +209,7 @@ export class ConnectorService {
         config: stored.config,
         secrets: await this.secrets(stored),
         timeoutMs: this.deps.timeoutMs,
+        stateDir: this.stateDirectory(owner, stored.id),
       };
     if (expected.target) {
       const response = (await adapter.run(
@@ -400,6 +416,7 @@ export class ConnectorService {
           secrets: await this.secrets(stored),
           timeoutMs: this.deps.timeoutMs,
           signal,
+          stateDir: this.stateDirectory(owner, stored.id),
         },
         operation,
         params,
@@ -408,6 +425,92 @@ export class ConnectorService {
       if (error instanceof ConnectorError) throw new AppError(error.message, 502);
       throw error;
     }
+  }
+
+  private stateDirectory(owner: string, id: string) {
+    return join(
+      this.config.dataDir,
+      "remote-host-jobs",
+      createHash("sha256").update(`${owner}:${id}`).digest("hex"),
+    );
+  }
+
+  /** Owner-enabled host permission persists across turns; no new approval loop is imposed. */
+  async executeHostCommand(owner: string, id: string, raw: unknown, operationId: string) {
+    const stored = await this.record(owner, id);
+    if (
+      stored.provider !== "remote_host" ||
+      !remoteHostConfigSchema.parse(stored.config).allowAgentShell
+    )
+      throw new AppError(
+        "이 호스트의 에이전트 셸 실행이 허용되지 않았습니다. 연결 설정에서 허용하거나 기존 명령 검토를 사용하세요",
+        409,
+      );
+    const params = parseRemoteOperation("host_command", raw, true);
+    delete params.jobId;
+    const recordId = createHash("sha256").update(`${id}:${operationId}`).digest("hex");
+    const version = this.connectionVersion(stored);
+    type Dispatch = {
+      id: string;
+      params: Record<string, unknown>;
+      version: string;
+      jobId: string;
+      dispatched?: boolean;
+    };
+    const proposed: Dispatch = { id: recordId, params, version, jobId: randomUUID() };
+    const reserved = await this.db.insertIfAbsent(owner, "remote-host-dispatches", proposed);
+    const dispatch =
+      reserved ?? (await this.db.get<Dispatch>(owner, "remote-host-dispatches", recordId));
+    const sameParams = (value: Record<string, unknown>) =>
+      JSON.stringify(
+        Object.entries(value)
+          .filter(([, item]) => item !== undefined)
+          .sort(([a], [b]) => a.localeCompare(b)),
+      );
+    if (
+      !dispatch ||
+      dispatch.version !== version ||
+      sameParams(dispatch.params) !== sameParams(params)
+    )
+      throw new AppError("작업 ID의 대상이나 명령이 변경되었습니다. 새 작업 ID를 사용하세요", 409);
+    if (dispatch.dispatched) return this.run(owner, id, "host_job", { jobId: dispatch.jobId });
+    const adapter = connectorAdapter(stored.provider, this.deps);
+    if (!adapter.write) throw new AppError("호스트 명령 실행을 사용할 수 없습니다", 503);
+    const result = await adapter.write(
+      {
+        config: stored.config,
+        secrets: await this.secrets(stored),
+        stateDir: this.stateDirectory(owner, id),
+        timeoutMs: this.deps.timeoutMs,
+      },
+      { connectorId: id, operation: "host_command", params: { ...params, jobId: dispatch.jobId } },
+    );
+    await this.db.compareAndSwap(
+      owner,
+      "remote-host-dispatches",
+      recordId,
+      { version },
+      { dispatched: true },
+    );
+    return result;
+  }
+
+  /** Internal server use only; neither this target nor its token is sent to the app. */
+  async browserTarget(owner: string, id: string) {
+    const stored = await this.record(owner, id);
+    if (stored.provider !== "remote_host") throw new AppError("원격 호스트 연결을 선택하세요", 422);
+    const config = remoteHostConfigSchema.parse(stored.config);
+    const secrets = remoteHostSecretsSchema.parse(await this.secrets(stored));
+    if (config.mode !== "agent" || !config.baseUrl || !secrets.token)
+      throw new AppError(
+        "공유 브라우저를 사용하려면 대상에 Host Agent를 설치하고 agent 방식으로 연결하세요",
+        409,
+      );
+    return {
+      url: config.baseUrl.replace(/\/$/, ""),
+      token: secrets.token,
+      revision: this.connectionVersion(stored),
+    };
   }
 
   /** Summary for the workspace connection list; secrets never appear here. */

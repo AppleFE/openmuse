@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { githubReadOperations } from "./github.ts";
 import { proxmoxReadOperations } from "./proxmox.ts";
+import {
+  remoteHostConfigSchema,
+  remoteHostSecretsSchema,
+  remoteReadOperations,
+} from "./remote-host.ts";
+
+export { remoteHostConfigSchema, remoteHostSecretsSchema } from "./remote-host.ts";
 
 /**
  * Connector contract for third-party infrastructure providers (GitHub,
@@ -14,6 +21,7 @@ export const connectorProviderSchema = z.enum([
   "headscale",
   "wireguard",
   "proxmox",
+  "remote_host",
 ]);
 export type ConnectorProvider = z.infer<typeof connectorProviderSchema>;
 
@@ -76,6 +84,27 @@ export type ProxmoxSecrets = z.infer<typeof proxmoxSecretsSchema>;
 
 /** Create payloads are discriminated on provider so config and secrets validate together. */
 export const connectorCreateSchema = z.discriminatedUnion("provider", [
+  z
+    .object({
+      provider: z.literal("remote_host"),
+      name: nameSchema,
+      config: remoteHostConfigSchema,
+      secrets: remoteHostSecretsSchema,
+    })
+    .superRefine((value, ctx) => {
+      if (value.config.mode === "agent" && !value.secrets.token)
+        ctx.addIssue({
+          code: "custom",
+          path: ["secrets", "token"],
+          message: "Host Agent 토큰이 필요합니다",
+        });
+      if (value.config.mode === "ssh" && !value.secrets.privateKey)
+        ctx.addIssue({
+          code: "custom",
+          path: ["secrets", "privateKey"],
+          message: "SSH 개인 키가 필요합니다",
+        });
+    }),
   z.object({
     provider: z.literal("github"),
     name: nameSchema,
@@ -124,6 +153,7 @@ export const connectorOperations = {
   headscale: ["devices"],
   wireguard: ["status"],
   proxmox: proxmoxReadOperations,
+  remote_host: remoteReadOperations,
 } as const satisfies Record<ConnectorProvider, readonly string[]>;
 
 export const connectorQuerySchema = z.object({
@@ -169,6 +199,7 @@ export interface ConnectorFieldInfo {
   required: boolean;
   /** Explicit field kind so clients do not infer behavior from field names. */
   type?: "text" | "password" | "url" | "boolean";
+  enum?: string[];
   description?: string;
 }
 export interface ConnectorOperationParam {

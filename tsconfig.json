@@ -11,6 +11,11 @@
     "types": ["node"],
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["apps/server/**/*.ts", "packages/**/*.ts", "tests/**/*.ts"],
+  "include": [
+    "apps/server/**/*.ts",
+    "apps/host-agent/**/*.ts",
+    "packages/**/*.ts",
+    "tests/**/*.ts"
+  ],
   "exclude": ["node_modules", "apps/mobile", "apps/worker"]
 }

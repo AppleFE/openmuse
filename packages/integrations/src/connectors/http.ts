@@ -54,6 +54,7 @@ export function redact(text: string, secrets: (string | undefined)[]): string {
 export interface ConnectorHttpOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   form?: Record<string, string | number | boolean | undefined>;
+  json?: unknown;
   headers?: Record<string, string>;
   timeoutMs?: number;
   /** TLS overrides for providers commonly fronted by self-signed certificates. */
@@ -74,13 +75,16 @@ export interface ConnectorHttpOptions {
 export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}): Promise<unknown> {
   const method = options.method ?? "GET";
   const mutation = method !== "GET";
-  const body = options.form
-    ? new URLSearchParams(
-        Object.entries(options.form)
-          .filter(([, v]) => v !== undefined)
-          .map(([k, v]) => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)]),
-      ).toString()
-    : undefined;
+  const body =
+    options.json !== undefined
+      ? JSON.stringify(options.json)
+      : options.form
+        ? new URLSearchParams(
+            Object.entries(options.form)
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => [k, typeof v === "boolean" ? (v ? "1" : "0") : String(v)]),
+          ).toString()
+        : undefined;
   if (body && (!mutation || Buffer.byteLength(body) > 65536))
     return Promise.reject(
       new ConnectorError("Connector request body is invalid or too large", undefined, "malformed"),
@@ -133,7 +137,10 @@ export function httpJson(url: string | URL, options: ConnectorHttpOptions = {}):
           Accept: "application/json",
           ...(body !== undefined
             ? {
-                "Content-Type": "application/x-www-form-urlencoded",
+                "Content-Type":
+                  options.json !== undefined
+                    ? "application/json"
+                    : "application/x-www-form-urlencoded",
                 "Content-Length": String(Buffer.byteLength(body)),
               }
             : {}),

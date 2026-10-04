@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { connectorQuerySchema } from "../../../packages/domain/src/connectors.ts";
+import { remoteCommandSchema } from "../../../packages/domain/src/remote-host.ts";
 import type { ConnectorService } from "./connector-service.ts";
 
 /**
@@ -37,6 +39,14 @@ export function connectorRoutes(service: ConnectorService) {
         c.req.raw.signal,
       ),
     });
+  });
+  app.post("/:id/host-command", async (c) => {
+    const { operationId, ...command } = remoteCommandSchema
+      .extend({ operationId: z.uuid() })
+      .parse(await c.req.json());
+    return c.json(
+      await service.executeHostCommand(c.get("owner"), c.req.param("id"), command, operationId),
+    );
   });
   return app;
 }
