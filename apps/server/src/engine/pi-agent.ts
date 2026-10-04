@@ -12,6 +12,7 @@ import {
 import type { ModelProfile } from "../../../../packages/domain/src/agent.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
+import { UsageService, type UsageRecord } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
 import { adaptCopilotTools } from "./pi-tools.ts";
@@ -54,6 +55,7 @@ export interface PiAgentSessionInput {
 export type PiAgentSessionFactory = (input: PiAgentSessionInput) => Promise<PiAgentSession>;
 
 export interface PiAgentRunCallbacks {
+  onUsage?(usage: Omit<UsageRecord, "id">): void;
   onTextDelta?(delta: string): void;
   onToolStart?(id: string, name: string, args: unknown): void;
   onToolEnd?(id: string, name: string, result: unknown, isError: boolean): void;
@@ -185,7 +187,21 @@ export class PiAgentRunner {
         localBudget = true;
       },
     });
-    const unsubscribe = session.subscribe((event) => this.forwardEvent(event, input));
+    let usageWrites = Promise.resolve();
+    let generationStart = Date.now(), firstTokenAt = 0;
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "message_start" && event.message.role === "assistant") { generationStart = Date.now(); firstTokenAt = 0; }
+      if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta" && !firstTokenAt) firstTokenAt = Date.now();
+      if (event.type === "message_end" && event.message.role === "assistant") {
+        const message = event.message;
+        const usage = message.usage;
+        const value = { threadId: input.sessionKey.startsWith("chat:") ? input.sessionKey.slice(5) : null, modelId: input.profile.id, input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, totalTokens: usage.totalTokens, reported: usage.totalTokens > 0, durationMs: Math.max(1, Date.now() - (firstTokenAt || generationStart)), createdAt: new Date().toISOString() };
+        const messageKey = `${input.runKey}:${message.timestamp}:${createHash("sha256").update(JSON.stringify(message.content)).digest("hex")}`;
+        usageWrites = usageWrites.then(() => new UsageService(this.db).record(input.owner, messageKey, value)).then(() => {});
+        input.onUsage?.(value);
+      }
+      this.forwardEvent(event, input);
+    });
     const abort = () => {
       input.abortTools?.();
       void session.abort();
@@ -275,6 +291,7 @@ export class PiAgentRunner {
       signal.removeEventListener("abort", abort);
       unsubscribe();
       session.dispose();
+      await usageWrites;
     }
   }
 

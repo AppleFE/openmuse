@@ -26,6 +26,7 @@ import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
 import { WorkspaceService } from "./workspace.ts";
+import { UsageService } from "./usage.ts";
 
 export async function createApp(
   db: Store,
@@ -304,6 +305,7 @@ export async function createApp(
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ messages: thread.messages });
   });
+  app.get("/api/usage", async (c) => c.json(await new UsageService(db).summary(c.get("owner"), c.req.query("threadId"))));
   app.get("/api/copilotkit/threads/:id/events", async (c) => {
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ events: thread.events });
