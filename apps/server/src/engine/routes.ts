@@ -32,10 +32,21 @@ const goalPatchSchema = z.object({
 
 export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: string } }> {
   const app = new Hono<{ Variables: { owner: string } }>();
-  app.get("/models", (c) => c.json(service.models.list()));
-  app.get("/model-settings", async (c) =>
-    c.json(await service.modelSelection(c.get("owner"))),
+  app.get("/schedules", async (c) => c.json(await service.schedules.list(c.get("owner"))));
+  app.post("/schedules", async (c) =>
+    c.json(await service.schedules.create(c.get("owner"), await c.req.json()), 201),
   );
+  app.put("/schedules/:id", async (c) =>
+    c.json(await service.schedules.update(c.get("owner"), c.req.param("id"), await c.req.json())),
+  );
+  app.delete("/schedules/:id", async (c) =>
+    c.json(await service.schedules.remove(c.get("owner"), c.req.param("id"))),
+  );
+  app.get("/schedules/:id/runs", async (c) =>
+    c.json(await service.schedules.runs(c.get("owner"), c.req.param("id"))),
+  );
+  app.get("/models", (c) => c.json(service.models.list()));
+  app.get("/model-settings", async (c) => c.json(await service.modelSelection(c.get("owner"))));
   const saveModelSelection = async (c: Context<{ Variables: { owner: string } }>) => {
     const { modelId } = modelSelectionInputSchema.parse(await c.req.json());
     return c.json(await service.selectModel(c.get("owner"), modelId));

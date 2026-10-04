@@ -48,6 +48,7 @@ import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { TeamModelExecutor } from "./team-model.ts";
 import { createTeamTaskContext, TeamEngine, validateTeam } from "./teams.ts";
 import { LostLeaseError, type TaskContext, TaskWorker } from "./worker.ts";
+import { ScheduleService } from "./schedules.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const date = () => new Date().toISOString();
@@ -58,6 +59,7 @@ export class AgentService {
   readonly teams: TeamEngine;
   readonly runtimeSettings: RuntimeSettingsService;
   readonly pi: PiAgentRunner;
+  readonly schedules: ScheduleService;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -75,6 +77,14 @@ export class AgentService {
     this.runtimeSettings = new RuntimeSettingsService(db, config);
     const jev = new JevRuntime(this.runtimeSettings);
     this.pi = new PiAgentRunner(db, config, jev);
+    this.schedules = new ScheduleService(
+      db,
+      (owner, input, key) => this.createTask(owner, input, key),
+      async (owner, input) => {
+        if (input.teamId) await this.getTeam(owner, input.teamId);
+        else await this.models.resolve(owner, input.modelId);
+      },
+    );
     const hooks =
       runtimeHooks ??
       new RuntimeHookPipeline([
@@ -89,6 +99,7 @@ export class AgentService {
   }
   start() {
     this.worker.start();
+    this.schedules.start();
     // Maintenance is independent of the HTTP response and reconciles durable records.
     void this.maintain().catch((error) => backgroundFailure("initial maintenance", error));
     this.maintenance = setInterval(() => {
@@ -96,6 +107,7 @@ export class AgentService {
     }, 60000);
   }
   async stop() {
+    await this.schedules.stop();
     if (this.maintenance) clearInterval(this.maintenance);
     this.maintenance = undefined;
     await this.worker.stop();

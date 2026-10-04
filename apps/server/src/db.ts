@@ -92,6 +92,20 @@ export class Store {
     );
     return (result.rows[0]?.data as T | undefined) ?? null;
   }
+  /** Advance a due schedule and reserve its immutable occurrence in one database statement. */
+  async claimScheduleRun<T>(
+    owner: string,
+    id: string,
+    expected: Record<string, unknown>,
+    patch: Record<string, unknown>,
+    run: { id: string },
+  ) {
+    const result = await this.db.query(
+      `WITH claimed AS (UPDATE records SET data=data || $4::jsonb,updated_at=now() WHERE owner=$1 AND kind='schedules' AND id=$2 AND data @> $3::jsonb RETURNING data) INSERT INTO records(owner,kind,id,data) SELECT $1,'schedule-runs',$5,$6::jsonb FROM claimed ON CONFLICT DO NOTHING RETURNING data`,
+      [owner, id, JSON.stringify(expected), JSON.stringify(patch), run.id, JSON.stringify(run)],
+    );
+    return (result.rows[0]?.data as T | undefined) ?? null;
+  }
   async scan<T>(kind: string): Promise<{ owner: string; value: T }[]> {
     const result = await this.db.query(
       "SELECT jsonb_build_object('owner',owner,'value',data) AS data FROM records WHERE kind=$1 ORDER BY updated_at ASC",

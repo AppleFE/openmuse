@@ -39,6 +39,7 @@ import type {
   EmailDraft,
 } from "../../../packages/domain/src";
 import { API_URL } from "./api";
+import { ScheduleManager } from "./schedules";
 import { localDateTime, zonedInstant } from "./date-time";
 import { UI_LOCALE, uiLabel } from "./locale";
 import {
@@ -661,6 +662,7 @@ export function CalendarScreen() {
   }
   return (
     <View style={{ gap: 20 }}>
+      <ScheduleManager />
       <View style={[s.between, { gap: 12, flexWrap: "wrap" }]}>
         <View style={[s.row, { gap: 8 }]}>
           <Text style={s.title}>
