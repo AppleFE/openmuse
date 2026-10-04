@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { EventType, type RunAgentInput } from "@ag-ui/core";
 import type { AgentTask, AgentTeamRole } from "../../../../packages/domain/src/agent.ts";
+import type { Store } from "../db.ts";
 import type { ModelRegistry } from "./models.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
 import { tanstackAgent } from "./tanstack-agent.ts";
-import type { Store } from "../db.ts";
 
 export class TeamModelExecutor {
   constructor(

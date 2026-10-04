@@ -1,9 +1,9 @@
-import { serve } from "@hono/node-server";
 import type { Server } from "node:http";
+import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
+import { attachBrowserStreams } from "./browser-stream.ts";
 import { readConfig } from "./config.ts";
 import { createStore } from "./db.ts";
-import { attachBrowserStreams } from "./browser-stream.ts";
 
 const config = readConfig();
 const db = await createStore({

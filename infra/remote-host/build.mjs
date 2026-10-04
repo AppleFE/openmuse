@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const build = spawnSync(
   process.execPath,

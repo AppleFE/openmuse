@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { githubOperationLabels } from "../../../packages/domain/src/github.ts";
 import {
   type ActionProposal,
   type CalendarEvent,
@@ -7,7 +8,6 @@ import {
 } from "../../../packages/domain/src/index.ts";
 import { proxmoxOperationLabels } from "../../../packages/domain/src/proxmox.ts";
 import { remoteOperationLabels } from "../../../packages/domain/src/remote-host.ts";
-import { githubOperationLabels } from "../../../packages/domain/src/github.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 

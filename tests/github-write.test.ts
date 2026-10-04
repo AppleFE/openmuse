@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
-import { githubAdapter } from "../packages/integrations/src/connectors/github.ts";
 import { connectorWriteSchema } from "../packages/domain/src/proxmox.ts";
+import { githubAdapter } from "../packages/integrations/src/connectors/github.ts";
 
 test("GitHub commits multiple files atomically without force and rejects stale HEAD", async (t) => {
   const old = "a".repeat(40),

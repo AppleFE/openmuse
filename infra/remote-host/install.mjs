@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { hostname, networkInterfaces } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
 const directory = dirname(fileURLToPath(import.meta.url)),
   root = resolve(directory, ".."),
   configPath = resolve(root, "config.json"),
@@ -61,7 +62,7 @@ const isTailscale = (ip) => {
   const [a, b] = ip.split(".").map(Number);
   return a === 100 && b >= 64 && b <= 127;
 };
-let address =
+const address =
   addresses.find(isTailscale) ??
   addresses.find((ip) => ip.startsWith("192.168.") || ip.startsWith("10.")) ??
   addresses[0];

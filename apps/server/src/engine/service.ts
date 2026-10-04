@@ -45,10 +45,10 @@ import { ModelRegistry } from "./models.ts";
 import { PiAgentRunner } from "./pi-agent.ts";
 import { PiRuntimeHook } from "./pi-runtime.ts";
 import { RuntimeHookPipeline } from "./runtime-hooks.ts";
+import { ScheduleService } from "./schedules.ts";
 import { TeamModelExecutor } from "./team-model.ts";
 import { createTeamTaskContext, TeamEngine, validateTeam } from "./teams.ts";
 import { LostLeaseError, type TaskContext, TaskWorker } from "./worker.ts";
-import { ScheduleService } from "./schedules.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const date = () => new Date().toISOString();

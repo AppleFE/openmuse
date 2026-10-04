@@ -39,9 +39,9 @@ import type {
   EmailDraft,
 } from "../../../packages/domain/src";
 import { API_URL } from "./api";
-import { ScheduleManager } from "./schedules";
 import { localDateTime, zonedInstant } from "./date-time";
 import { UI_LOCALE, uiLabel } from "./locale";
+import { ScheduleManager } from "./schedules";
 import {
   Button,
   Card,

@@ -12,7 +12,7 @@ import {
 import type { ModelProfile } from "../../../../packages/domain/src/agent.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
-import { UsageService, type UsageRecord } from "../usage.ts";
+import { type UsageRecord, UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
 import { adaptCopilotTools } from "./pi-tools.ts";

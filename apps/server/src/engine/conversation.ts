@@ -15,8 +15,8 @@ import { browserTools } from "../browser-tools.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import type { Config } from "../config.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
-import { scheduleInstructions, scheduleTools } from "./schedule-tools.ts";
 import { runtimeInstructions } from "./runtime-instructions.ts";
+import { scheduleInstructions, scheduleTools } from "./schedule-tools.ts";
 import type { AgentService } from "./service.ts";
 import { tanstackAgent } from "./tanstack-agent.ts";
 

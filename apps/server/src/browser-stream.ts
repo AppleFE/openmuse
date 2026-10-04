@@ -1,34 +1,34 @@
 import type { Server } from "node:http";
 import { PNG } from "pngjs";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import type { Auth } from "./auth.ts";
 import type { BrowserService } from "./browser.ts";
 
 const names: Record<number, string> = {
-  0xff08: "Backspace",
-  0xff09: "Tab",
-  0xff0d: "Enter",
-  0xff1b: "Escape",
-  0xffff: "Delete",
-  0xff50: "Home",
-  0xff51: "ArrowLeft",
-  0xff52: "ArrowUp",
-  0xff53: "ArrowRight",
-  0xff54: "ArrowDown",
-  0xff55: "PageUp",
-  0xff56: "PageDown",
-  0xff57: "End",
-  0xff63: "Insert",
-  0xffe1: "Shift",
-  0xffe2: "Shift",
-  0xffe3: "Control",
-  0xffe4: "Control",
-  0xffe7: "Meta",
-  0xffe8: "Meta",
-  0xffeb: "Meta",
-  0xffec: "Meta",
-  0xffe9: "Alt",
-  0xffea: "Alt",
+  65288: "Backspace",
+  65289: "Tab",
+  65293: "Enter",
+  65307: "Escape",
+  65535: "Delete",
+  65360: "Home",
+  65361: "ArrowLeft",
+  65362: "ArrowUp",
+  65363: "ArrowRight",
+  65364: "ArrowDown",
+  65365: "PageUp",
+  65366: "PageDown",
+  65367: "End",
+  65379: "Insert",
+  65505: "Shift",
+  65506: "Shift",
+  65507: "Control",
+  65508: "Control",
+  65511: "Meta",
+  65512: "Meta",
+  65515: "Meta",
+  65516: "Meta",
+  65513: "Alt",
+  65514: "Alt",
 };
 function keyName(keysym: number) {
   if (names[keysym]) return names[keysym];

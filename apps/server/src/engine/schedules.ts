@@ -1,15 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { CronExpressionParser } from "cron-parser";
+import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import {
-  scheduleInputSchema,
   type AgentSchedule,
   type ScheduleInput,
   type ScheduleRun,
+  scheduleInputSchema,
 } from "../../../../packages/domain/src/schedules.ts";
-import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
 import { backgroundFailure } from "../log.ts";
+
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export function nextScheduleDate(input: ScheduleInput, after: number): string | null {
   if (input.timing.type === "once")

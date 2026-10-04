@@ -23,6 +23,7 @@ import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { BackgroundUpdates } from "./background-updates";
 import { BrowserRunContext, BrowserToolCard } from "./browser-tool-card";
+import { ChatUsage, useChatUsage } from "./chat-usage";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { MailToolCard } from "./mail-tool-card";
@@ -34,7 +35,6 @@ import { messageSpeakerLabel } from "./thread-state";
 import { type Selection, useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
 import { useWorkspace } from "./workspace";
-import { ChatUsage, useChatUsage } from "./chat-usage";
 
 const displayParameters = z.record(z.string(), z.unknown());
 export function WorkspaceTools() {

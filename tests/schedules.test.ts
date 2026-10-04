@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createStore } from "../apps/server/src/db.ts";
-import { ScheduleService, nextScheduleDate } from "../apps/server/src/engine/schedules.ts";
+import { nextScheduleDate, ScheduleService } from "../apps/server/src/engine/schedules.ts";
 import type { AgentTask } from "../packages/domain/src/agent.ts";
+
 test("schedules survive restart, claim due work once across workers and isolate owners", async () => {
   const db = await createStore();
   let clock = Date.parse("2026-10-05T00:00:00Z"),

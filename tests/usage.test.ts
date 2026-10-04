@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { createStore } from "../apps/server/src/db.ts";
-import { UsageService } from "../apps/server/src/usage.ts";
 import { tanstackAgent } from "../apps/server/src/engine/tanstack-agent.ts";
+import { UsageService } from "../apps/server/src/usage.ts";
 import { modelFixture } from "./helpers/model.ts";
-import { randomUUID } from "node:crypto";
+
 test("usage is owner-scoped, idempotent and separates chats from background tasks", async () => {
   const db = await createStore({});
   try {

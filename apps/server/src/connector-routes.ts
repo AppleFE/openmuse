@@ -2,8 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { connectorQuerySchema } from "../../../packages/domain/src/connectors.ts";
 import { remoteCommandSchema } from "../../../packages/domain/src/remote-host.ts";
-import type { ConnectorService } from "./connector-service.ts";
 import { probeSshFingerprint } from "../../../packages/integrations/src/connectors/remote-host.ts";
+import type { ConnectorService } from "./connector-service.ts";
 
 /**
  * Connector management API, mounted under /api/connectors by the core app.

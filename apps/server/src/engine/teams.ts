@@ -28,7 +28,8 @@ export function validateTeam(team: Pick<AgentTeam, "roles">): void {
   }
   for (const role of team.roles)
     for (const dependency of role.dependsOn) {
-      if (!ids.has(dependency)) throw new Error(`Role "${role.id}" has unknown dependency "${dependency}"`);
+      if (!ids.has(dependency))
+        throw new Error(`Role "${role.id}" has unknown dependency "${dependency}"`);
       if (dependency === role.id) throw new Error(`Role "${role.id}" cannot depend on itself`);
     }
   const visiting = new Set<string>();
@@ -108,9 +109,10 @@ export class TeamEngine {
         role.dependsOn.every((dependency) => status.get(dependency) === "succeeded"),
       );
       if (!ready.length) break;
-      const wave = initialTask.teamContext.roles.length && this.executionMode(initialTask) === "sequential"
-        ? ready.slice(0, 1)
-        : ready;
+      const wave =
+        initialTask.teamContext.roles.length && this.executionMode(initialTask) === "sequential"
+          ? ready.slice(0, 1)
+          : ready;
       const startedAt = new Date().toISOString();
       const waveIds = new Set(wave.map((role) => role.id));
       team = this.withRuns(

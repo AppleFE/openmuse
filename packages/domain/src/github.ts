@@ -70,7 +70,7 @@ const text = z.string().max(20000);
 const title = z.string().min(1).max(256);
 const sha = z.string().regex(/^[a-fA-F0-9]{40,64}$/);
 const branch = ref.refine(
-  (v) => !/[ ~^:?*\[]/.test(v) && !v.includes("..") && !v.endsWith("/") && !v.startsWith("/"),
+  (v) => !/[ ~^:?*[]/.test(v) && !v.includes("..") && !v.endsWith("/") && !v.startsWith("/"),
 );
 const issueFields = {
   title: title.optional(),

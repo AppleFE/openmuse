@@ -40,6 +40,10 @@
 - 이 묶음을 Windows x64의 별도 디렉터리에 풀고 `npm ci`로 설치해 401 인증 차단,
   실제 한글 PowerShell 명령과 종료 코드 0, example.com 본문·스크롤·PNG 화면을 확인했습니다.
   이 검사는 임시 일반 사용자 프로세스이며 SYSTEM 서비스 등록·재부팅 검증과 구분합니다.
+- 0.2.1에서는 새 체크아웃의 테스트가 독립 Host Agent 묶음을 먼저 준비하도록 하고,
+  noVNC 통합 검사용 Playwright를 루트 의존성에 명시해 CI에서 Chromium을 설치합니다.
+  최종 전체 검사 328개 통과·실패 0개·선택형 1개 제외, 서버/모바일/워커 타입 검사와
+  전체 Biome 검사 오류 0개를 확인했습니다. 기존 비차단 lint 경고는 남아 있습니다.
 
 ## 원격 호스트 커넥터 — 2026년 10월 5일
 
@@ -452,6 +456,7 @@ pnpm format
 pnpm lint
 pnpm typecheck
 pnpm --dir apps/worker typecheck
+pnpm exec playwright install chromium
 pnpm test
 pnpm build:server
 pnpm --dir apps/mobile exec expo export --platform all --output-dir dist/release

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { createApp } from "../apps/server/src/app.ts";
-import { createHostAgent } from "../apps/host-agent/src/server.ts";
-import { posixInstaller, windowsInstaller } from "../apps/server/src/host-installer.ts";
-import { browserFixture } from "./helpers/browser.ts";
 import { once } from "node:events";
 import { join } from "node:path";
+import test from "node:test";
+import { createHostAgent } from "../apps/host-agent/src/server.ts";
+import { createApp } from "../apps/server/src/app.ts";
+import { posixInstaller, windowsInstaller } from "../apps/server/src/host-installer.ts";
+import { browserFixture } from "./helpers/browser.ts";
+
 test("self-hosted installers issue expiring single-use enrollment without exposing host credentials", async (t) => {
   const f = await browserFixture(t, () => ({ data: {} })),
     { app, auth, agent } = await createApp(f.db, f.config);

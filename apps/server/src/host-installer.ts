@@ -3,11 +3,12 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Config } from "./config.ts";
-import type { Store } from "./db.ts";
-import type { ConnectorService } from "./connector-service.ts";
-import { AppError } from "./errors.ts";
 import { remoteHostAdapter } from "../../../packages/integrations/src/connectors/remote-host.ts";
+import type { Config } from "./config.ts";
+import type { ConnectorService } from "./connector-service.ts";
+import type { Store } from "./db.ts";
+import { AppError } from "./errors.ts";
+
 const version = "0.2.0",
   nodeVersion = "24.21.0";
 const hash = (v: string | Buffer) => createHash("sha256").update(v).digest("hex");

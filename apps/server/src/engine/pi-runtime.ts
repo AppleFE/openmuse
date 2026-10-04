@@ -26,6 +26,7 @@ import type { ComputerService } from "../computer.ts";
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { ConnectorService } from "../connector-service.ts";
 import type { Store } from "../db.ts";
+import { UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { createPiTools } from "./pi-tools.ts";
 import type {
@@ -34,7 +35,6 @@ import type {
   RoleRuntimeRequest,
 } from "./runtime-hooks.ts";
 import { runtimeInstructions } from "./runtime-instructions.ts";
-import { UsageService } from "../usage.ts";
 
 interface PiCheckpoint {
   id: string;

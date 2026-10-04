@@ -21,6 +21,7 @@ import {
   tailscaleSecretsSchema,
   wireguardConfigSchema,
 } from "../../../packages/domain/src/connectors.ts";
+import { parseGithubWrite } from "../../../packages/domain/src/github.ts";
 import type { Connection } from "../../../packages/domain/src/index.ts";
 import {
   type ConnectorWriteInput,
@@ -28,7 +29,6 @@ import {
   proxmoxWriteSchema,
 } from "../../../packages/domain/src/proxmox.ts";
 import { parseRemoteOperation } from "../../../packages/domain/src/remote-host.ts";
-import { parseGithubWrite } from "../../../packages/domain/src/github.ts";
 import {
   type ConnectorDeps,
   ConnectorError,

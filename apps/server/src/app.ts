@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, relative } from "node:path";
 import { EventType, MessageSchema } from "@ag-ui/core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -28,9 +28,9 @@ import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
-import { WorkspaceService } from "./workspace.ts";
-import { UsageService } from "./usage.ts";
 import { hostInstallerRoutes } from "./host-installer.ts";
+import { UsageService } from "./usage.ts";
+import { WorkspaceService } from "./workspace.ts";
 
 export async function createApp(
   db: Store,

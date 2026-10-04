@@ -576,28 +576,24 @@ export function githubAdapter(): ConnectorAdapter {
             .object({ tree: z.object({ sha: z.string() }) })
             .parse(await send(`/git/commits/${p.expectedHeadSha}`, "GET"));
           const files = p.files as { path: string; content?: string; delete: boolean }[];
-          const tree = z
-            .object({ sha: z.string() })
-            .parse(
-              await send("/git/trees", "POST", {
-                base_tree: parent.tree.sha,
-                tree: files.map((f) => ({
-                  path: f.path,
-                  mode: "100644",
-                  type: "blob",
-                  ...(f.delete ? { sha: null } : { content: f.content }),
-                })),
-              }),
-            );
-          const commit = z
-            .object({ sha: z.string() })
-            .parse(
-              await send("/git/commits", "POST", {
-                message: p.message,
-                tree: tree.sha,
-                parents: [p.expectedHeadSha],
-              }),
-            );
+          const tree = z.object({ sha: z.string() }).parse(
+            await send("/git/trees", "POST", {
+              base_tree: parent.tree.sha,
+              tree: files.map((f) => ({
+                path: f.path,
+                mode: "100644",
+                type: "blob",
+                ...(f.delete ? { sha: null } : { content: f.content }),
+              })),
+            }),
+          );
+          const commit = z.object({ sha: z.string() }).parse(
+            await send("/git/commits", "POST", {
+              message: p.message,
+              tree: tree.sha,
+              parents: [p.expectedHeadSha],
+            }),
+          );
           result = await send(`/git/refs/heads/${filePath(String(p.branch))}`, "PATCH", {
             sha: commit.sha,
             force: false,

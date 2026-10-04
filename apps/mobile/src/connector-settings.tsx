@@ -1,5 +1,5 @@
-import { Github, Network, Server, Shield, Trash2 } from "lucide-react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { Github, Network, Server, Shield, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Pressable, Text, View } from "react-native";
 import type {
@@ -9,13 +9,13 @@ import type {
   ConnectorProviderInfo,
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
+import { HostInstaller } from "./host-installer";
 import { connectorCheckLabel, uiLabel } from "./locale";
 import { ProxmoxManager } from "./proxmox-manager";
 import { RemoteHostManager } from "./remote-host-manager";
 import { compactSettings } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
-import { HostInstaller } from "./host-installer";
 
 const providerIcons = {
   github: Github,

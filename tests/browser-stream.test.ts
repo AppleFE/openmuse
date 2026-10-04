@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { serve } from "@hono/node-server";
 import type { Server } from "node:http";
 import test from "node:test";
+import { serve } from "@hono/node-server";
 import { chromium } from "playwright";
 import { PNG } from "pngjs";
 import { WebSocket } from "ws";
