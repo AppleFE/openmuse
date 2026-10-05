@@ -16,6 +16,7 @@ The demos follow a request from chat to the agent's inline browser, then show ho
 - [Self-hosted rich threads](RICH-THREADS.md)
 - [Models, OpenCodex, and multi-model teams](MODELS-TEAMS.md)
 - [Jev policy and embedded pi runtime](JEV-PI.md)
+- [스킬 업로드와 채팅 슬래시 명령](SKILLS.md)
 - [Infrastructure connectors](CONNECTORS.md)
 - [Interaction design and conversation behavior](EXPERIENCE.md)
 - [OpenBot integration contract](OPENBOT-INTEGRATION.md)

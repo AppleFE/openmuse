@@ -41,6 +41,7 @@ import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
 import { RuntimeSettings } from "./runtime-settings";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
+import { SkillsSettings } from "./skills";
 import { type ThemePreference, useTheme } from "./theme";
 import {
   Button,
@@ -1863,6 +1864,7 @@ export function AppsScreen() {
         </Text>
       </Card>
       <ModelTeamSettings />
+      <SkillsSettings />
       <RuntimeSettings />
       <Button onPress={() => setSettings(!settings)}>
         {settings ? "에이전트 설정 닫기" : "성격과 기억"}

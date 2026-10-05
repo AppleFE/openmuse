@@ -31,6 +31,7 @@ import { MailToolCard } from "./mail-tool-card";
 import { ConversationModelPicker } from "./model-team-settings";
 import { proxmoxToolValue } from "./proxmox-core";
 import { chooseAvailableModel } from "./settings-core";
+import { SkillSuggestions, SkillsManager, skillSuggestions, useSkills } from "./skills";
 import { TaskThreadCard } from "./thread-artifacts";
 import { messageSpeakerLabel } from "./thread-state";
 import { type Selection, useMuseThread } from "./threads";
@@ -245,6 +246,15 @@ export function ChatScreen({
   const { copilotkit } = useCopilotKit();
   const renderToolCall = useRenderToolCall();
   const [draft, setDraft] = useState("");
+  const { skills, refresh: refreshSkills } = useSkills();
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const composer = useRef<TextInput>(null);
+  function selectSkill(name: string) {
+    setDraft(`/${name} ${draft.replace(/^\/(?:skill:)?[a-z0-9-]*\s*/, "")}`);
+    setSkillsOpen(false);
+    void refreshSkills();
+    setTimeout(() => composer.current?.focus(), 0);
+  }
   const [focused, setFocused] = useState(false);
   const [inputHeight, setInputHeight] = useState(44);
   const [busy, setBusy] = useState(false);
@@ -364,6 +374,11 @@ export function ChatScreen({
   function send() {
     const text = draft.trim();
     if (!text || !isReady || !loaded) return;
+    const matches = skillSuggestions(skills, text);
+    if (matches.length && text !== `/${matches[0].name}` && text !== `/skill:${matches[0].name}`) {
+      selectSkill(matches[0].name);
+      return;
+    }
     // A new submission can continue after Stop; held follow-ups still need explicit resume.
     if (!busy && !agent.isRunning && !queue.getSnapshot().pending.length) queue.resume();
     const files = w.files.filter((f) => attachments.includes(f.id));
@@ -646,7 +661,16 @@ export function ChatScreen({
         )}
         {picking && (
           <Card style={{ marginBottom: 12, padding: 15 }}>
-            <Text style={s.heading}>문서 추가</Text>
+            <Text style={s.heading}>문서와 스킬</Text>
+            <Button
+              small
+              onPress={() => {
+                setPicking(false);
+                setSkillsOpen(true);
+              }}
+            >
+              스킬 추가·관리
+            </Button>
             <ScrollView style={{ maxHeight: 230 }} keyboardShouldPersistTaps="handled">
               {w.files.length ? (
                 w.files.map((f) => (
@@ -675,6 +699,21 @@ export function ChatScreen({
               완료
             </Button>
           </Card>
+        )}
+        <SkillSuggestions
+          skills={skills}
+          draft={draft}
+          onSelect={selectSkill}
+          onManage={() => setSkillsOpen(true)}
+        />
+        {skillsOpen && (
+          <SkillsManager
+            onClose={() => {
+              setSkillsOpen(false);
+              void refreshSkills();
+            }}
+            onUse={selectSkill}
+          />
         )}
         <ScrollView
           horizontal
@@ -743,7 +782,7 @@ export function ChatScreen({
           <View style={[s.row, { gap: 7, alignItems: "flex-end" }]}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="문서 첨부"
+              accessibilityLabel="첨부 및 스킬"
               accessibilityState={{ expanded: picking }}
               onPress={() => setPicking(!picking)}
               style={({ pressed }) => ({
@@ -760,6 +799,7 @@ export function ChatScreen({
               </Text>
             </Pressable>
             <TextInput
+              ref={composer}
               accessibilityLabel="OpenMuse에 메시지 보내기"
               value={draft}
               onChangeText={setDraft}
@@ -773,11 +813,14 @@ export function ChatScreen({
                     ? historyError
                       ? "대화를 사용할 수 없습니다"
                       : "대화를 불러오는 중…"
-                    : "메시지 입력…"
+                    : "메시지 입력… /로 스킬 선택"
               }
               placeholderTextColor={colors.subtle}
               selectionColor={colors.blueDark}
-              onFocus={() => setFocused(true)}
+              onFocus={() => {
+                setFocused(true);
+                void refreshSkills();
+              }}
               onBlur={() => setFocused(false)}
               style={{
                 flex: 1,
@@ -800,6 +843,14 @@ export function ChatScreen({
               onKeyPress={
                 Platform.OS === "web"
                   ? (event) => {
+                      if (event.nativeEvent.key === "Tab") {
+                        const first = skillSuggestions(skills, draft)[0];
+                        if (first) {
+                          event.preventDefault();
+                          selectSkill(first.name);
+                          return;
+                        }
+                      }
                       if (
                         event.nativeEvent.key === "Enter" &&
                         !("shiftKey" in event.nativeEvent && event.nativeEvent.shiftKey)
