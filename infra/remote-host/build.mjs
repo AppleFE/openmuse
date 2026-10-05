@@ -37,6 +37,7 @@ await copyFile("infra/remote-host/install.mjs", `${directory}/install.mjs`);
 await copyFile("infra/remote-host/cli.mjs", `${directory}/cli.mjs`);
 await copyFile("infra/remote-host/install-cli.mjs", `${directory}/install-cli.mjs`);
 await copyFile("docs/REMOTE-HOSTS.md", `${directory}/README.md`);
+await copyFile("docs/HOST-EVENTS.md", `${directory}/HOST-EVENTS.md`);
 const npmCli = resolve(
   dirname(process.execPath),
   process.platform === "win32"
@@ -68,6 +69,7 @@ const tar = spawnSync(
       "cli.mjs",
       "install-cli.mjs",
       "README.md",
+      "HOST-EVENTS.md",
     ].map((file) => `host-agent/${file}`),
   ],
   { stdio: "inherit" },
