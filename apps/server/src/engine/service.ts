@@ -300,7 +300,13 @@ export class AgentService {
     await this.db.remove(owner, "agent-teams", id);
     return { ok: true };
   }
-  async createTask(owner: string, raw: unknown, idempotencyKey?: string, held = false) {
+  async createTask(
+    owner: string,
+    raw: unknown,
+    idempotencyKey?: string,
+    held = false,
+    sourceThreadId?: string,
+  ) {
     const input = createTaskSchema.parse(raw);
     if (input.modelId && input.teamId)
       throw new AppError("Choose either a model or a team for this task", 422);
@@ -352,6 +358,7 @@ export class AgentService {
             : ["Understand the outcome", "Plan the work", "Use connected tools", "Return a result"];
     const task: AgentTask = {
       id,
+      sourceThreadId,
       title: input.title ?? input.prompt.slice(0, 90),
       prompt: input.prompt,
       kind: input.kind,
@@ -895,7 +902,15 @@ export class AgentService {
         "Google connection changed during this task. Start a new task using the current account.",
         409,
       );
-    const proposal = await this.actions.propose(owner, input, `${task.id}:${key}`, task.id);
+    const proposal = task.sourceThreadId
+      ? await this.actions.proposeForConversation(
+          owner,
+          task.sourceThreadId,
+          input,
+          `${task.id}:${key}`,
+          task.id,
+        )
+      : await this.actions.propose(owner, input, `${task.id}:${key}`, task.id);
     if (proposal.status === "succeeded") return proposal;
     if (proposal.status !== "awaiting_review" && proposal.status !== "executing")
       throw new AppError(
@@ -1176,6 +1191,13 @@ export class AgentService {
       },
     };
     const proposal = await this.prepare(owner, task, input, "document-reply", ctx);
+    if (proposal.status === "succeeded")
+      return {
+        status: "succeeded",
+        actionId: proposal.id,
+        result: proposal.result,
+        plan: task.plan.map((step) => ({ ...step, status: "succeeded" as const })),
+      };
     return {
       status: "waiting_approval",
       actionId: proposal.id,

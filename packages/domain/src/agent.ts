@@ -151,6 +151,8 @@ export interface TaskThreadMessage {
 }
 export interface AgentTask {
   id: string;
+  /** Server-bound origin; model tool arguments cannot set this approval scope. */
+  sourceThreadId?: string;
   title: string;
   prompt: string;
   kind: "agent" | "document" | "monitor" | "finance" | "plan";

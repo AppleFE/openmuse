@@ -52,6 +52,7 @@ export class ActionService {
     raw: unknown,
     idempotencyKey?: string,
     taskId?: string,
+    conversationId?: string,
   ): Promise<ActionProposal> {
     const id =
       idempotencyKey === undefined
@@ -84,6 +85,7 @@ export class ActionService {
     const proposal: ActionProposal = {
       id,
       taskId,
+      conversationId,
       title,
       kind: input.kind,
       data: input.data,
@@ -117,16 +119,43 @@ export class ActionService {
     await this.record(owner, saved, "Ready for your review");
     return saved;
   }
+  async approvalMode(owner: string, threadId?: string): Promise<"review" | "bypass"> {
+    if (!threadId) return "review";
+    const thread = await this.db.get<{ approvalMode?: string; archived: boolean }>(
+      owner,
+      "conversation-threads",
+      threadId,
+    );
+    return thread?.approvalMode === "bypass" && !thread.archived ? "bypass" : "review";
+  }
+  async proposeForConversation(
+    owner: string,
+    threadId: string,
+    raw: unknown,
+    key?: string,
+    taskId?: string,
+  ) {
+    const proposal = await this.propose(owner, raw, key, taskId, threadId);
+    if (
+      proposal.conversationId !== threadId ||
+      (await this.approvalMode(owner, threadId)) !== "bypass"
+    )
+      return proposal;
+    return this.decide(owner, proposal.id, proposal.hash, "approve", "session-bypass");
+  }
   async decide(
     owner: string,
     id: string,
     hash: string,
     decision: "approve" | "deny",
+    method: "user" | "session-bypass" = "user",
   ): Promise<ActionProposal> {
     const proposal = await this.db.get<ActionProposal>(owner, "actions", id);
     if (!proposal) throw new AppError("Action not found", 404);
     if (proposal.hash !== hash)
       throw new AppError("This proposal changed. Open its latest review before deciding.", 409);
+    if (method === "session-bypass" && !proposal.conversationId)
+      throw new AppError("자동 승인의 원본 대화를 확인할 수 없습니다", 409);
     if (proposal.status !== "awaiting_review") return proposal;
     if (decision === "approve" && proposal.taskId) {
       const task = await this.db.get<{ status: string }>(owner, "tasks", proposal.taskId);
@@ -178,16 +207,22 @@ export class ActionService {
       id,
       decision === "deny" ? "denied" : "executing",
       new Date(this.now()).toISOString(),
+      method === "session-bypass" ? proposal.conversationId : undefined,
     );
     if (!claimed) {
       const current = await this.db.get<ActionProposal>(owner, "actions", id);
       if (!current) throw new AppError("Action not found", 404);
       return current;
     }
+    if (decision === "approve") claimed.approvalMethod = method;
     await this.record(
       owner,
       claimed,
-      decision === "deny" ? "Declined; no changes made" : "Approved; execution started",
+      decision === "deny"
+        ? "Declined; no changes made"
+        : method === "session-bypass"
+          ? "이 대화의 자동 승인 설정으로 실행 시작"
+          : "Approved; execution started",
     );
     if (decision === "deny") return claimed;
     let finished: ActionProposal;

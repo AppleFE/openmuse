@@ -23,6 +23,7 @@ import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { BackgroundUpdates } from "./background-updates";
 import { BrowserRunContext, BrowserToolCard } from "./browser-tool-card";
+import { ChatApproval } from "./chat-approval";
 import { ChatUsage, useChatUsage } from "./chat-usage";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
@@ -665,7 +666,7 @@ export function ChatScreen({
             </Button>
           </Card>
         )}
-        <View style={[s.row, { gap: 12, marginBottom: 8 }]}>
+        <View style={[s.row, { gap: 12, marginBottom: 8, flexWrap: "wrap" }]}>
           <ConversationModelPicker
             models={models}
             value={selectedModelId}
@@ -673,6 +674,7 @@ export function ChatScreen({
             disabled={replying}
           />
           <ChatUsage usage={usage} speed={speed} />
+          <ChatApproval threadId={threadId} disabled={replying || !loaded} />
         </View>
         <View
           style={{

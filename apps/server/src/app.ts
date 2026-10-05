@@ -311,6 +311,18 @@ export async function createApp(
       ),
     );
   });
+  app.get("/api/copilotkit/threads/:id/approval", async (c) => {
+    const thread = await conversations.ensure(c.get("owner"), c.req.param("id"));
+    return c.json({ mode: thread.approvalMode ?? "review" });
+  });
+  app.put("/api/copilotkit/threads/:id/approval", async (c) => {
+    const { mode } = z
+      .object({ mode: z.enum(["review", "bypass"]) })
+      .strict()
+      .parse(await c.req.json());
+    const thread = await conversations.setApprovalMode(c.get("owner"), c.req.param("id"), mode);
+    return c.json({ mode: thread.approvalMode });
+  });
   app.delete("/api/copilotkit/threads/:id", async (c) => {
     await conversations.remove(c.get("owner"), c.req.param("id"));
     return c.json({ threadId: c.req.param("id"), deleted: true });
@@ -480,7 +492,7 @@ export async function createApp(
     await browser.get(c.get("owner"), c.req.param("id"));
     c.header(
       "Content-Security-Policy",
-      "default-src 'self'; img-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' ws: wss:",
+      "default-src 'self'; img-src 'self' blob: data:; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' ws: wss:",
     );
     return c.html(browser.console(c.get("owner"), c.req.param("id")));
   });

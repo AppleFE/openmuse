@@ -136,6 +136,8 @@ export type EmailDraft = z.infer<typeof emailDraftSchema>;
 export type EventDraft = z.infer<typeof eventDraftSchema>;
 export type ProposalInput = z.infer<typeof proposalSchema>;
 export interface ActionProposal {
+  conversationId?: string;
+  approvalMethod?: "user" | "session-bypass";
   target?: CalendarEvent;
   targetVersion?: string;
   taskId?: string;

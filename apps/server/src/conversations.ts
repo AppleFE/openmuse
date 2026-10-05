@@ -46,6 +46,7 @@ export interface ConversationThread {
   events: BaseEvent[];
   state: Record<string, unknown> | null;
   messageTimes?: Record<string, string>;
+  approvalMode?: "review" | "bypass";
 }
 
 interface ConversationRun {
@@ -428,6 +429,7 @@ export class ConversationStoreRunner extends AgentRunner {
       organizationId: "" as const,
       createdById: owner,
       archived: false,
+      approvalMode: "review" as const,
       createdAt: now,
       updatedAt: now,
       activeRunId: null,
@@ -498,6 +500,20 @@ export class ConversationStoreRunner extends AgentRunner {
     return updated;
   }
 
+  async setApprovalMode(owner: string, threadId: string, mode: "review" | "bypass") {
+    const thread = await this.get(owner, threadId);
+    if (thread.archived) throw new AppError("보관된 대화의 승인 설정은 변경할 수 없습니다", 409);
+    if (thread.activeRunId) throw new AppError("현재 응답이 끝난 뒤 승인 설정을 변경하세요", 409);
+    const saved = await this.db.compareAndSwap<ConversationThread>(
+      owner,
+      "conversation-threads",
+      threadId,
+      { activeRunId: null, archived: false },
+      { approvalMode: mode, updatedAt: new Date().toISOString() },
+    );
+    if (!saved) throw new AppError("대화 상태가 변경되었습니다. 다시 시도하세요", 409);
+    return saved;
+  }
   async setArchived(owner: string, threadId: string, archived: boolean) {
     const thread = await this.get(owner, threadId);
     if (thread.activeRunId) throw new AppError("Stop the active run before archiving", 409);
