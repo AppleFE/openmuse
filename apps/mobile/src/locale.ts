@@ -254,6 +254,8 @@ const errors: Record<string, string> = {
 
 export function errorLabel(value: string) {
   const text = value.replace(/^Error: /, "");
+  if (/Public forks can.?t be made private/i.test(text))
+    return "GitHub는 공개 포크 저장소를 비공개로 전환할 수 없습니다. 별도의 비공개 저장소로 복제하거나 GitHub의 포크 분리 기능을 이용해야 합니다. 자동 승인이나 토큰 권한 변경으로 해결되지 않습니다.";
   if (errors[text]) return errors[text];
   if (text.startsWith("Provider write outcome is unknown; do not retry automatically:"))
     return "변경 요청을 보낸 후 연결이 끊겨 실행 결과를 확인할 수 없습니다. Proxmox 작업 기록과 대상 상태를 먼저 확인하세요.";

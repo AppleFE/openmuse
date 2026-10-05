@@ -21,6 +21,8 @@ const repoSchema = z.object({
   name: z.string(),
   full_name: z.string(),
   private: z.boolean(),
+  fork: z.boolean().optional(),
+  parent: z.object({ full_name: z.string(), html_url: z.string() }).optional(),
   description: z.string().nullable(),
   html_url: z.string(),
   default_branch: z.string().nullable().optional(),
@@ -104,7 +106,7 @@ const commitSchema = z.object({
   }),
 });
 
-function request(
+async function request(
   ctx: ConnectorContext,
   path: string,
   accept = "application/vnd.github+json",
@@ -115,20 +117,34 @@ function request(
   const config = githubConfigSchema.parse(ctx.config);
   const secrets = githubSecretsSchema.parse(ctx.secrets);
   const base = (config.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
-  return httpJson(`${base}${path}`, {
-    timeoutMs: ctx.timeoutMs,
-    signal: ctx.signal,
-    secrets: [secrets.token],
-    maxBytes,
-    method,
-    json,
-    headers: {
-      Authorization: `Bearer ${secrets.token}`,
-      Accept: accept,
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "OpenMuse-Connector",
-    },
-  });
+  try {
+    return await httpJson(`${base}${path}`, {
+      timeoutMs: ctx.timeoutMs,
+      signal: ctx.signal,
+      secrets: [secrets.token],
+      maxBytes,
+      method,
+      json,
+      headers: {
+        Authorization: `Bearer ${secrets.token}`,
+        Accept: accept,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "OpenMuse-Connector",
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof ConnectorError &&
+      error.status === 422 &&
+      /Public forks can.?t be made private/i.test(error.message)
+    )
+      throw new ConnectorError(
+        "GitHub는 공개 포크 저장소를 비공개로 전환할 수 없습니다. 별도의 비공개 저장소로 복제하거나 GitHub의 포크 분리 기능을 이용해야 합니다. 자동 승인이나 토큰 권한 변경으로 해결되지 않습니다.",
+        422,
+        "provider",
+      );
+    throw error;
+  }
 }
 
 function safeData(value: unknown, ctx: ConnectorContext): unknown {
@@ -154,6 +170,8 @@ function repoView(repo: z.infer<typeof repoSchema>) {
     name: repo.name,
     fullName: repo.full_name,
     private: repo.private,
+    fork: repo.fork ?? false,
+    parent: repo.parent ? { fullName: repo.parent.full_name, url: repo.parent.html_url } : null,
     description: repo.description,
     url: repo.html_url,
     defaultBranch: repo.default_branch ?? null,

@@ -173,7 +173,9 @@ function ConnectorEditor({
   const [error, setError] = useState("");
   const remote = provider.provider === "remote_host";
   const ssh = config.mode === "ssh";
+  const [advancedSsh, setAdvancedSsh] = useState(false);
   const configFields = provider.configFields
+    .filter((field) => field.name !== "hostFingerprint" || advancedSsh)
     .filter(
       (field) =>
         !remote ||
@@ -265,12 +267,25 @@ function ConnectorEditor({
     >
       <View style={{ gap: 4 }}>
         <Field label="연결 이름" value={name} onChangeText={setName} />
+        {remote && ssh && (
+          <Button small onPress={() => setAdvancedSsh((value) => !value)}>
+            {advancedSsh ? "SSH 고급 설정 접기" : "SSH 고급 설정 (서버 지문)"}
+          </Button>
+        )}
         {configFields.map((field) => (
           <ConnectorField
             key={field.name}
             field={field}
             value={config[field.name]}
-            onChange={(value) => setConfig((current) => ({ ...current, [field.name]: value }))}
+            onChange={(value) =>
+              setConfig((current) => ({
+                ...current,
+                [field.name]: value,
+                ...(["host", "port"].includes(field.name) && current[field.name] !== value
+                  ? { hostFingerprint: "" }
+                  : {}),
+              }))
+            }
           />
         ))}
         {!!provider.secretFields.length && (
@@ -324,8 +339,10 @@ function ConnectorEditor({
         )}
         {remote && ssh && (
           <Text style={s.small}>
-            첫 연결에서 호스트 지문을 확인해 저장하며, 이후 키가 바뀌면 연결을 차단합니다. 알고 있는
-            지문이 있으면 직접 입력하세요. SSH는 입력한 계정 권한으로 실행됩니다.
+            개인 키 파일이나 비밀번호로 로그인하면 됩니다. 서버 지문은 첫 저장 시 자동으로 받아
+            고정하므로 입력하지 않아도 됩니다. 개인 키는 로그인용이고 지문은 접속 대상 서버의 신원을
+            확인하는 값입니다. 이미 확인한 지문이 있다면 고급 설정에 입력하세요. 서버 주소·포트를
+            바꾸면 새 서버의 지문을 확인하세요. SSH는 입력한 계정 권한으로 실행됩니다.
           </Text>
         )}
         <ErrorNotice error={error} />

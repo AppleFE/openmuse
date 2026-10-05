@@ -592,7 +592,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
       title={pending ? "마지막 확인" : action.title}
       subtitle={
         connector
-          ? "표시된 Proxmox 연결과 대상에 작업을 실행합니다."
+          ? "표시된 커넥터 연결과 대상에 작업을 실행합니다."
           : w.mode === "sample"
             ? "이 작업은 로컬 워크스페이스 안에서만 처리됩니다."
             : "연결된 계정을 변경하기 전에 작업 내용을 확인하세요."

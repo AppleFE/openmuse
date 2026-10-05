@@ -330,7 +330,8 @@ export function remoteHostAdapter(): ConnectorAdapter {
           name: "hostFingerprint",
           label: "SSH 호스트 지문",
           required: false,
-          description: "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub로 확인한 SHA256: 지문",
+          description:
+            "비우면 첫 저장 시 자동 고정합니다. 로그인 개인 키와는 다른 서버 식별 값입니다. 직접 확인한 SHA256: 지문만 입력하세요.",
         },
       ],
       secretFields: [

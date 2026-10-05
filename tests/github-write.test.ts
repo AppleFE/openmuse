@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import test from "node:test";
+import { errorLabel } from "../apps/mobile/src/locale.ts";
 import { connectorWriteSchema } from "../packages/domain/src/proxmox.ts";
 import { githubAdapter } from "../packages/integrations/src/connectors/github.ts";
 
@@ -78,4 +79,41 @@ test("GitHub write schemas reject traversal, force pushes and duplicate file pat
       connectorWriteSchema.safeParse({ connectorId: "x", operation: "file_put", params }).success,
       false,
     );
+});
+
+test("GitHub public fork visibility rejection explains the provider limitation in Korean without retrying", async (t) => {
+  let calls = 0;
+  const server = createServer((_req, res) => {
+    calls++;
+    res.writeHead(422, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        message: "Validation Failed",
+        errors: [{ message: "Public forks can't be made private" }],
+      }),
+    );
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const port = (server.address() as { port: number }).port;
+  await assert.rejects(
+    githubAdapter().write!(
+      { config: { baseUrl: `http://127.0.0.1:${port}` }, secrets: { token: "fixture-token" } },
+      {
+        connectorId: "fixture",
+        operation: "repo_update",
+        params: { repo: "owner/fork", settings: { private: true } },
+      },
+    ),
+    /공개 포크 저장소를 비공개로 전환할 수 없습니다/,
+  );
+  assert.equal(calls, 1);
+  assert.match(
+    errorLabel("Provider responded HTTP 422: Public forks can't be made private"),
+    /자동 승인이나 토큰 권한 변경으로 해결되지/,
+  );
 });
