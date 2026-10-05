@@ -153,8 +153,10 @@ function MetricCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card style={{ flexGrow: 1, flexBasis: 380, minWidth: 0, gap: 14 }}>
-      <View style={s.between}>
+    <Card
+      style={{ flexGrow: 1, flexShrink: 1, flexBasis: 380, minWidth: 0, maxWidth: "100%", gap: 14 }}
+    >
+      <View style={[s.between, { gap: 10, flexWrap: "wrap" }]}>
         <View style={[s.row, { gap: 8 }]}>
           <Icon size={20} color={colors.blueDark} />
           <Text style={s.heading}>{title}</Text>
