@@ -27,7 +27,7 @@ test("self-hosted installers issue expiring single-use enrollment without exposi
   const base = /curl -fsSL '([^']+)\/install.sh'/.exec(commands.posix)![1];
   const manifest = await (await app.request(base + "/manifest")).json();
   assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(manifest.version, "0.3.0");
+  assert.equal(manifest.version, "0.5.0");
   const token = "private-host-test-token-".repeat(3),
     host = await createHostAgent({ token, dataDir: join(f.config.dataDir, "native-agent") });
   host.server.listen(0, "127.0.0.1");

@@ -65,6 +65,7 @@ export const remoteCommandSchema = z.strictObject({
 const jobId = z.uuid();
 export const remoteReadSchemas = {
   host_status: z.strictObject({}),
+  host_metrics: z.strictObject({}),
   host_jobs: z.strictObject({}),
   host_job: z.strictObject({ jobId }),
 };
@@ -87,6 +88,7 @@ export const remoteWriteOperations = Object.keys(
 ) as (keyof typeof remoteWriteSchemas)[];
 export const remoteOperationLabels: Record<string, string> = {
   host_status: "호스트 상태",
+  host_metrics: "호스트 리소스 사용량",
   host_jobs: "셸 작업 목록",
   host_job: "셸 작업 출력",
   host_command: "원격 명령 실행",

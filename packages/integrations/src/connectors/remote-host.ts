@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import ssh2 from "ssh2";
 import { z } from "zod";
 import type { ConnectorOperationInfo } from "../../../domain/src/connectors.ts";
+import { hostMetricsSchema } from "../../../domain/src/host-metrics.ts";
 import {
   parseRemoteOperation,
   type RemoteHostConfig,
@@ -13,6 +14,7 @@ import {
   remoteReadSchemas,
   remoteWriteSchemas,
 } from "../../../domain/src/remote-host.ts";
+import { hostMetricsScript, parseSshMetrics } from "../host-metrics-ssh.ts";
 import { type JobDriver, RemoteJobManager } from "../remote-jobs.ts";
 import { ConnectorError, httpJson, redact } from "./http.ts";
 import type { ConnectorAdapter, ConnectorContext } from "./types.ts";
@@ -231,6 +233,60 @@ async function sshStatus(
     );
   });
 }
+async function sshMetrics(
+  config: RemoteHostConfig,
+  secrets: RemoteHostSecrets,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted();
+  return new Promise<unknown>((resolve, reject) => {
+    let output = "",
+      stopped = false,
+      control: Awaited<ReturnType<JobDriver>> | undefined;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    };
+    const fail = () => {
+      if (stopped) return;
+      stopped = true;
+      cleanup();
+      control?.stop();
+      reject(
+        new ConnectorError(
+          "SSH 사용량 조회 실패: 연결 상태와 OS 조회 도구를 확인하세요",
+          undefined,
+          "unreachable",
+        ),
+      );
+    };
+    const abort = () => fail();
+    const timer = setTimeout(fail, 15000);
+    signal?.addEventListener("abort", abort, { once: true });
+    sshJobDriver(config, secrets)(
+      { command: hostMetricsScript(config.platform), pty: false, timeoutSeconds: 15 },
+      (text) => {
+        output += text;
+        if (output.length > 256 * 1024) fail();
+      },
+      (code) => {
+        if (stopped) return;
+        if (code !== 0) return fail();
+        try {
+          const data = parseSshMetrics(config.platform, output);
+          stopped = true;
+          cleanup();
+          resolve(data);
+        } catch {
+          fail();
+        }
+      },
+    ).then((value) => {
+      control = value;
+      if (stopped || signal?.aborted) control.stop();
+    }, fail);
+  });
+}
 async function manager(
   ctx: ConnectorContext,
   config: RemoteHostConfig,
@@ -378,11 +434,14 @@ export function remoteHostAdapter(): ConnectorAdapter {
           ctx,
           operation === "host_status"
             ? "/host"
-            : operation === "host_jobs"
-              ? "/jobs"
-              : `/jobs/${parsed.jobId}`,
+            : operation === "host_metrics"
+              ? "/host/metrics"
+              : operation === "host_jobs"
+                ? "/jobs"
+                : `/jobs/${parsed.jobId}`,
         );
       else if (operation === "host_status") result = await sshStatus(config, secrets, ctx.signal);
+      else if (operation === "host_metrics") result = await sshMetrics(config, secrets, ctx.signal);
       else {
         const jobs = await manager(ctx, config, secrets);
         result =
@@ -399,6 +458,16 @@ export function remoteHostAdapter(): ConnectorAdapter {
             "malformed",
           );
         result = status.data;
+      }
+      if (operation === "host_metrics") {
+        const metrics = hostMetricsSchema.safeParse(result);
+        if (!metrics.success)
+          throw new ConnectorError(
+            "호스트 사용량 응답이 올바르지 않습니다. Host Agent를 최신 버전으로 업데이트하세요",
+            undefined,
+            "malformed",
+          );
+        result = metrics.data;
       }
       return scrub(result, secrets);
     },

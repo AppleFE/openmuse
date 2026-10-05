@@ -29,6 +29,7 @@ import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
 import { hostInstallerRoutes } from "./host-installer.ts";
+import { HostMetricsService, hostMetricsRoutes } from "./host-metrics.ts";
 import { skillRoutes } from "./skills.ts";
 import { UsageService } from "./usage.ts";
 import { WorkspaceService } from "./workspace.ts";
@@ -211,6 +212,7 @@ export async function createApp(
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
   app.route("/api/skills", skillRoutes(agent.skills));
+  app.route("/api/hosts", hostMetricsRoutes(new HostMetricsService(db, connectors), connectors));
   app.route("/api/connectors", connectorRoutes(connectors));
   app.route("/api/host-agent", hostInstallerRoutes(db, config, connectors));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));

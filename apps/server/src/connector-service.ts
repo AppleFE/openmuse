@@ -375,6 +375,7 @@ export class ConnectorService {
   async remove(owner: string, id: string): Promise<void> {
     if (!(await this.db.take<StoredConnector>(owner, "connectors", id)))
       throw new AppError("Connector not found", 404);
+    await this.db.remove(owner, "host-metrics", id);
   }
 
   async test(owner: string, id: string, signal?: AbortSignal): Promise<ConnectorCheck> {

@@ -9,8 +9,10 @@ import {
 import { WorkerError } from "../../worker/src/errors.ts";
 import { createWorkerServer, readBody } from "../../worker/src/server.ts";
 import { hostIdentity } from "./identity.ts";
+import { HostMetricsCollector } from "./metrics.ts";
 
 export async function createHostAgent(options: { token: string; dataDir: string }) {
+  const metrics = new HostMetricsCollector();
   const jobs = await new RemoteJobManager(
     join(options.dataDir, "jobs"),
     localJobDriver,
@@ -20,6 +22,10 @@ export async function createHostAgent(options: { token: string; dataDir: string 
     dataDir: join(options.dataDir, "browser-profiles"),
     maxSessions: 3,
     extension: async (request, pathname, json) => {
+      if (pathname === "/host/metrics" && request.method === "GET") {
+        json(200, await metrics.read());
+        return true;
+      }
       if (pathname === "/host" && request.method === "GET") {
         json(200, {
           hostname: hostname(),

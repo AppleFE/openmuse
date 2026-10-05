@@ -16,12 +16,16 @@ await writeFile(
   JSON.stringify(
     {
       name: "@openmuse/host-agent",
-      version: "0.3.0",
+      version: "0.5.0",
       private: true,
       type: "module",
       scripts: { start: "node run.mjs", setup: "node setup.mjs" },
       engines: { node: ">=22.19.0" },
-      dependencies: { playwright: worker.dependencies.playwright, zod: "4.6.5" },
+      dependencies: {
+        playwright: worker.dependencies.playwright,
+        zod: "4.6.5",
+        systeminformation: "5.33.15",
+      },
     },
     null,
     2,
@@ -43,7 +47,7 @@ const lock = spawnSync(
   { cwd: directory, stdio: "inherit" },
 );
 if (lock.status !== 0) process.exit(lock.status ?? 1);
-const archive = resolve("dist/openmuse-host-agent-0.3.0.tar.gz");
+const archive = resolve("dist/openmuse-host-agent-0.5.0.tar.gz");
 const tar = spawnSync(
   "tar",
   [
