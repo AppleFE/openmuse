@@ -53,8 +53,8 @@ Linux·macOS의 별도 방화벽은 관리자가 해당 경로를 허용해야 �
 Windows 설치 로그는 해당 폴더의 `install.log`, macOS 서비스 로그는 `service.log`,
 Linux 로그는 `journalctl -u openmuse-host-agent`에서 확인합니다.
 
-수동 설치는 [Host Agent 0.3.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.3.0)에서
-`openmuse-host-agent-0.3.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
+수동 설치는 [Host Agent 0.5.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.5.0)에서
+`openmuse-host-agent-0.5.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
 설치할 수 있습니다. 배포 묶음은 `package-lock.json`을 포함하므로 `npm ci`를 사용합니다.
 
 빌드 환경에서 `pnpm build:host-agent`를 실행하면 `dist/host-agent`에 독립 실행 묶음을
@@ -95,7 +95,7 @@ Linux의 systemd, macOS의 LaunchAgent, Windows의 작업 스케줄러에는 Nod
 
 ## 셸과 외부 코딩 에이전트
 
-읽기: `host_status`, `host_jobs`, `host_job`(`jobId`).
+읽기: `host_status`, `host_metrics`, `host_jobs`, `host_job`(`jobId`).
 작업 목록은 명령·출력 미리 보기만 포함합니다. 전체 명령과 보존된 출력은 `host_job`으로 조회합니다.
 검토 후 실행: `host_command`(`command`, 선택 `cwd`, `timeoutSeconds`, `pty`),
 `host_input`(`jobId`, `text`), `host_stop`(`jobId`). 정확한 스키마는

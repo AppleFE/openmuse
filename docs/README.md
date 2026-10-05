@@ -17,6 +17,7 @@ The demos follow a request from chat to the agent's inline browser, then show ho
 - [Models, OpenCodex, and multi-model teams](MODELS-TEAMS.md)
 - [Jev policy and embedded pi runtime](JEV-PI.md)
 - [스킬 업로드와 채팅 슬래시 명령](SKILLS.md)
+- [원격 호스트 사용량 대시보드](HOST-DASHBOARD.md)
 - [Infrastructure connectors](CONNECTORS.md)
 - [Interaction design and conversation behavior](EXPERIENCE.md)
 - [OpenBot integration contract](OPENBOT-INTEGRATION.md)

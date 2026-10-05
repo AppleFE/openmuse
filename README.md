@@ -61,6 +61,7 @@ The computer combines **persistent Chromium and an optional Linux workspace**. T
 | **Jev & Pi runtime** | Embedded pi executes coding-capable profiles (team coder roles, delegated tasks, chat tool work) with durable sessions, bounded budgets, and OpenMuse-only tools — no host shell or filesystem access. Optional TypeSafe.ai Jev policy gates execution with owner-configured fail modes. [Jev and pi](docs/JEV-PI.md) |
 | **Rich Threads** | OpenMuse-owned SQL persistence with a stable main conversation, side chats, renaming, archiving, restoring, pagination, and rich-message replay. No managed thread service or cloud project key is required. |
 | **Skills** | Upload Markdown, skill folders or ZIP/TAR bundles; select a workflow with `/skill-name` in chat. Supports references, scripts, templates, embedded Pi and delegated/team tasks, with activation and deletion controls. [Skills guide](docs/SKILLS.md) |
+| **Host dashboard** | Compare connected PCs/servers, live CPU/memory/disk/network graphs, storage capacity, uptime and supported energy sensors across Host Agent and SSH connections. [Host dashboard](docs/HOST-DASHBOARD.md) |
 
 The [feature inventory](docs/FEATURES.md) describes implemented capabilities and planned extensions. Health/bank/social connectors, device push, voice, generated executable tools, and automatic reservations/payments are on the [roadmap](ROADMAP.md).
 

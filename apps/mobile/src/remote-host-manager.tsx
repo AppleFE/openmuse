@@ -4,6 +4,7 @@ import type { ActionProposal, BrowserSession } from "../../../packages/domain/sr
 import type { ConnectorView } from "../../../packages/domain/src/connectors";
 import type { RemoteHostStatus, RemoteJob } from "../../../packages/domain/src/remote-host";
 import { browserAddress } from "./browser-address";
+import { HostDashboard } from "./host-dashboard";
 import { Button, Card, ErrorNotice, Field, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -26,6 +27,7 @@ export function RemoteHostManager({
 }) {
   const { api, open, refresh } = useWorkspace();
   const [status, setStatus] = useState<RemoteHostStatus>();
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const [jobs, setJobs] = useState<RemoteJob[]>([]),
     [selected, setSelected] = useState<RemoteJob>();
   const [command, setCommand] = useState(""),
@@ -156,7 +158,13 @@ export function RemoteHostManager({
           <Button small onPress={() => void load()}>
             새로고침
           </Button>
+          <Button small onPress={() => setDashboardOpen(true)}>
+            사용량·그래프
+          </Button>
         </Card>
+        {dashboardOpen && (
+          <HostDashboard initialId={connector.id} onClose={() => setDashboardOpen(false)} />
+        )}
         <ErrorNotice error={error} />
         <Card style={{ gap: 8 }}>
           <Text style={s.heading}>원격 셸</Text>

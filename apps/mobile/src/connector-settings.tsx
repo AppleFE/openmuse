@@ -9,6 +9,7 @@ import type {
   ConnectorProviderInfo,
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
+import { HostDashboard } from "./host-dashboard";
 import { HostInstaller } from "./host-installer";
 import { connectorCheckLabel, uiLabel } from "./locale";
 import { ProxmoxManager } from "./proxmox-manager";
@@ -369,6 +370,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
     connector?: ConnectorView;
   }>();
   const [confirmingDelete, setConfirmingDelete] = useState<string>();
+  const [dashboard, setDashboard] = useState<{ id?: string }>();
   const [busyId, setBusyId] = useState<string>();
   const [error, setError] = useState("");
 
@@ -446,6 +448,9 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
   return (
     <View style={{ gap: 14 }}>
       <SectionHeading title="인프라 연결" />
+      <Button icon={Server} onPress={() => setDashboard({})}>
+        원격 호스트 대시보드
+      </Button>
       <HostInstaller onRegistered={refresh} />
       <Text style={s.muted}>
         서버의 연결을 관리합니다. 인증 정보는 입력만 가능하며 표시되지 않습니다.
@@ -487,6 +492,11 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
                   관리
                 </Button>
               )}
+              {connector.provider === "remote_host" && (
+                <Button small onPress={() => setDashboard({ id: connector.id })}>
+                  사용량·그래프
+                </Button>
+              )}
               <Button
                 small
                 danger
@@ -520,6 +530,16 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
       </View>
       {!providers.length && !error && <Text style={s.muted}>커넥터 옵션을 불러오는 중…</Text>}
       <ErrorNotice error={error} />
+      {dashboard && (
+        <HostDashboard
+          initialId={dashboard.id}
+          onClose={() => setDashboard(undefined)}
+          onManage={(host) => {
+            setDashboard(undefined);
+            setManaging(host);
+          }}
+        />
+      )}
       {managing?.provider === "proxmox" && (
         <ProxmoxManager connector={managing} onClose={() => setManaging(undefined)} />
       )}
