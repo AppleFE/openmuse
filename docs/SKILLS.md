@@ -48,7 +48,7 @@ code-review/
 - 업로드 합계 10MB, 압축 해제 후 20MB, 파일당 2MB, `SKILL.md` 지침 64KB.
 - 업로드당 파일 512개·스킬 32개, 보관함 합계 스킬 128개·256MB.
 - 경로 이탈·심볼릭 링크·장치 파일·암호화 ZIP·중복 경로는 거부합니다. `.git`, `node_modules`, macOS 메타데이터는 제외합니다.
-- 파일은 `OPENMUSE_DATA_DIR/skills/<소유자 해시>/<버전 ID>`에 저장하고 목록은 기존 DB에 저장합니다. 서버 재시작 후에도 유지되며 백업할 때 DB와 데이터 디렉터리를 함께 보관하세요.
+- 파일은 `DATA_DIR/skills/<소유자 해시>/<버전 ID>`에 저장하고 목록은 기존 DB에 저장합니다. 서버 재시작 후에도 유지되며 백업할 때 DB와 데이터 디렉터리를 함께 보관하세요.
 - 진행 중인 작업의 지침은 태스크에 보관됩니다. 스킬 교체 후 이전 버전의 참고 파일을 요구하면 버전 변경을 알리고 새 스킬을 불러오도록 합니다. 삭제·비활성화한 스킬의 추가 파일 읽기는 중단됩니다.
 
 인증된 API: `GET /api/skills`, `POST /api/skills/import` (multipart `files`, 선택적인 JSON `paths`, `replace=true`), `GET/PATCH/DELETE /api/skills/:name`. PATCH는 `{ "enabled": false }`처럼 사용합니다.
