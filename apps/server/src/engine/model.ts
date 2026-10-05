@@ -97,6 +97,9 @@ export async function executeModelTask(
   const piToolAbort = new AbortController();
   const toolSignal = AbortSignal.any([ctx.signal, piToolAbort.signal]);
   const tools = [
+    ...(task.sourceThreadId && service.attachments
+      ? service.attachments.tools(owner, task.sourceThreadId)
+      : []),
     ...skillTools(service.skills, owner, task.skill),
     ...scheduleTools(
       service.schedules,

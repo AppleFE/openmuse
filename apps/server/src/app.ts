@@ -14,6 +14,7 @@ import {
 } from "../../../packages/domain/src/index.ts";
 import { ActionService } from "./actions.ts";
 import { agentConfigured, makeConversationAgent, makeRuntime } from "./agent.ts";
+import { attachmentRoutes } from "./attachments.ts";
 import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
@@ -75,7 +76,7 @@ export async function createApp(
     computer,
     connectors,
   );
-  const conversations = new ConversationStoreRunner(db, auth, config);
+  const conversations = new ConversationStoreRunner(db, auth, config, agent.attachments);
   await conversations.recoverInterrupted();
   const hostEvents = new HostEventService(db, connectors, conversations, (owner) =>
     makeConversationAgent(config, agent, owner),
@@ -101,13 +102,20 @@ export async function createApp(
       credentials: true,
     }),
   );
-  app.use(
-    "*",
+  app.use("*", (c, next) =>
     bodyLimit({
-      maxSize: 12 * 1024 * 1024,
+      maxSize: c.req.path === "/api/attachments" ? 102 * 1024 * 1024 : 12 * 1024 * 1024,
       onError: (c) =>
-        c.json({ error: "요청이 너무 큽니다. 업로드 파일은 합계 10MB 이하여야 합니다." }, 413),
-    }),
+        c.json(
+          {
+            error:
+              c.req.path === "/api/attachments"
+                ? "첨부 파일 합계는 100MB 이하여야 합니다."
+                : "요청이 너무 큽니다. 업로드 파일은 합계 10MB 이하여야 합니다.",
+          },
+          413,
+        ),
+    })(c, next),
   );
   app.onError((error, c) => {
     if (error instanceof z.ZodError)
@@ -174,7 +182,7 @@ export async function createApp(
       return next();
     if (c.req.path.startsWith("/api/novnc/")) return next();
     const signedRoute =
-      /^\/api\/files\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
+      /^\/api\/(?:files|attachments)\/[^/]+\/content$|^\/api\/browsers\/[^/]+\/(?:preview|console)$/.test(
         c.req.path,
       );
     const owner =
@@ -219,6 +227,7 @@ export async function createApp(
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
   app.route("/api/skills", skillRoutes(agent.skills));
+  app.route("/api/attachments", attachmentRoutes(agent.attachments, auth));
   app.route("/api/hosts", hostMetricsRoutes(new HostMetricsService(db, connectors), connectors));
   app.route("/api/connectors", connectorRoutes(connectors));
   app.route("/api/host-agent", hostInstallerRoutes(db, config, connectors));

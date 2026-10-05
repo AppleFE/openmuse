@@ -136,9 +136,12 @@ export class ModelRegistry {
       return model
         ? {
             ...profile,
-            capabilities: profile.capabilities.filter((capability) =>
-              discoveredCapabilities(model).includes(capability),
-            ),
+            capabilities: [
+              ...new Set([
+                ...profile.capabilities,
+                ...(discoveredCapabilities(model).includes("vision") ? ["vision" as const] : []),
+              ]),
+            ].filter((capability) => discoveredCapabilities(model).includes(capability)),
             available: true,
             unavailableReason: undefined,
           }

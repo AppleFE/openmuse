@@ -19,11 +19,18 @@ import {
 } from "react-native";
 import { z } from "zod";
 import type { ActionProposal } from "../../../packages/domain/src";
+import {
+  attachmentIds,
+  attachmentMessage,
+  type ChatAttachment,
+  messageText,
+} from "../../../packages/domain/src/attachments";
 import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { BackgroundUpdates } from "./background-updates";
 import { BrowserRunContext, BrowserToolCard } from "./browser-tool-card";
 import { ChatApproval } from "./chat-approval";
+import { AttachmentChips, AttachmentUploadButtons, useChatAttachments } from "./chat-attachments";
 import { ChatUsage, useChatUsage } from "./chat-usage";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
@@ -242,6 +249,8 @@ export function ChatScreen({
   const { mainId, claimPrompt } = useMuseThread();
   const selection = thread || { id: "local", existing: false };
   const threadId = selection.id;
+  const attachmentRoot = useRef<View>(null);
+  const uploads = useChatAttachments(threadId, active, attachmentRoot);
   const { versions: hostVersions } = useHostEvents();
   const appliedHostVersion = useRef(0);
   const agentId = `openmuse-${threadId}`;
@@ -330,7 +339,12 @@ export function ChatScreen({
       runLock.current = true;
       setBusy(true);
       setError("");
-      if (message) agent.addMessage({ id: message.id, role: "user", content: message.text });
+      if (message)
+        agent.addMessage({
+          id: message.id,
+          role: "user",
+          content: message.content ?? message.text,
+        });
       try {
         await runConversationTurn(
           agentId,
@@ -354,8 +368,12 @@ export function ChatScreen({
     void queue.flush(run).catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [agent, isReady, loaded, queue, run]);
   const enqueue = useCallback(
-    (text: string) => {
-      queue.enqueue({ id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text });
+    (text: string, files: ChatAttachment[] = []) => {
+      queue.enqueue({
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        text: text || files.map((f) => f.path).join(", "),
+        content: attachmentMessage(text, files),
+      });
       followLatest.current = true;
       setAwayFromLatest(false);
       flush();
@@ -389,7 +407,7 @@ export function ChatScreen({
   }
   function send() {
     const text = draft.trim();
-    if (!text || !isReady || !loaded) return;
+    if ((!text && !uploads.selected.length) || !isReady || !loaded || !uploads.ready()) return;
     const matches = skillSuggestions(skills, text);
     if (matches.length && text !== `/${matches[0].name}` && text !== `/skill:${matches[0].name}`) {
       selectSkill(matches[0].name);
@@ -405,7 +423,9 @@ export function ChatScreen({
 
 첨부 문서: ${files.map((f) => `${f.name} (문서 ID: ${f.id})`).join(", ")}`
           : ""),
+      uploads.selected,
     );
+    uploads.clear();
     setDraft("");
     setInputHeight(44);
     setAttachments([]);
@@ -431,7 +451,7 @@ export function ChatScreen({
     if (replying && !localTimes.current[message.id])
       localTimes.current[message.id] = new Date().toISOString();
   return (
-    <View style={{ flex: 1 }}>
+    <View ref={attachmentRoot} testID="chat-attachment-area" style={{ flex: 1 }}>
       <ScrollView
         ref={list}
         showsVerticalScrollIndicator={false}
@@ -503,7 +523,10 @@ export function ChatScreen({
         ) : (
           visible.map((message) => {
             const user = message.role === "user";
-            const text = typeof message.content === "string" ? message.content : "";
+            const text = messageText(message.content);
+            const messageFiles = attachmentIds(message.content).flatMap((id) =>
+              uploads.files.filter((f) => f.id === id),
+            );
             const toolCalls = "toolCalls" in message ? message.toolCalls || [] : [];
             const speakerLabel = messageSpeakerLabel(message);
             return (
@@ -557,6 +580,7 @@ export function ChatScreen({
                     )}
                   </View>
                 )}
+                {!!messageFiles.length && <AttachmentChips files={messageFiles} />}
                 <BrowserRunContext
                   value={{
                     running: busy || agent.isRunning,
@@ -678,7 +702,8 @@ export function ChatScreen({
         )}
         {picking && (
           <Card style={{ marginBottom: 12, padding: 15 }}>
-            <Text style={s.heading}>문서와 스킬</Text>
+            <Text style={s.heading}>첨부 파일과 스킬</Text>
+            <AttachmentUploadButtons state={uploads} />
             <Button
               small
               onPress={() => {
@@ -705,7 +730,9 @@ export function ChatScreen({
                   />
                 ))
               ) : (
-                <Text style={s.muted}>대화에 사용할 PDF를 파일에서 가져오세요.</Text>
+                <Text style={s.small}>
+                  이미지·파일·폴더를 선택하거나 채팅에 붙여넣고 끌어 놓으세요.
+                </Text>
               )}
             </ScrollView>
             <Button
@@ -716,6 +743,12 @@ export function ChatScreen({
               완료
             </Button>
           </Card>
+        )}
+        <ErrorNotice error={uploads.error} />
+        {!!uploads.notice && <Text style={s.small}>{uploads.notice}</Text>}
+        {uploads.busy && <Text style={s.small}>첨부 파일 업로드 중…</Text>}
+        {!!uploads.selected.length && (
+          <AttachmentChips files={uploads.selected} onRemove={uploads.remove} />
         )}
         <SkillSuggestions
           skills={skills}
@@ -882,13 +915,19 @@ export function ChatScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={replying ? "답변 중지" : "메시지 전송"}
-              disabled={!replying && (!draft.trim() || !loaded || !isReady)}
+              disabled={
+                !replying &&
+                ((!draft.trim() && !uploads.selected.length) || uploads.busy || !loaded || !isReady)
+              }
               onPress={replying ? () => void stop() : send}
               style={({ pressed }) => ({
                 width: 44,
                 height: 44,
                 borderRadius: 24,
-                backgroundColor: replying || draft.trim() ? colors.blue : colors.surfaceMuted,
+                backgroundColor:
+                  replying || draft.trim() || uploads.selected.length
+                    ? colors.blue
+                    : colors.surfaceMuted,
                 alignItems: "center",
                 justifyContent: "center",
                 transform: [{ scale: pressed ? 0.94 : 1 }],
@@ -900,7 +939,7 @@ export function ChatScreen({
                 <ArrowUp
                   size={25}
                   strokeWidth={1.8}
-                  color={draft.trim() ? colors.text : colors.subtle}
+                  color={draft.trim() || uploads.selected.length ? colors.text : colors.subtle}
                 />
               )}
             </Pressable>

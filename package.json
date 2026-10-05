@@ -1,6 +1,6 @@
 {
   "name": "openmuse",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -47,8 +47,10 @@
     "@typesafe-ai/sdk": "0.6.0",
     "cron-parser": "^5.10.1",
     "hono": "^4.11.4",
+    "image-size": "2.0.4",
     "parse5": "^7.3.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "6.4.299",
     "pg": "^8.16.3",
     "pngjs": "^7.0.0",
     "rxjs": "7.8.1",

@@ -122,6 +122,7 @@ export function tanstackAgent(options: {
   maxSteps: number;
   tools: ToolDefinition[];
   prompt: string;
+  prepareInput?: (input: RunAgentInput) => RunAgentInput;
   /** Said when the step limit, not the model, ends a run; otherwise the reply just stops. */
   stepLimitNote?: string;
   usage?: { db: Store; owner: string; modelId: string; threadId: string | null };
@@ -129,7 +130,7 @@ export function tanstackAgent(options: {
   const agent = new BuiltInAgent({
     type: "tanstack",
     factory: ({ input, abortController }) => {
-      const converted = convertInputToTanStackAI(input);
+      const converted = convertInputToTanStackAI(options.prepareInput?.(input) ?? input);
       // Build the system prompt like the classic mode. It does not forward system messages.
       let system = options.prompt;
       if (input.context.length) {

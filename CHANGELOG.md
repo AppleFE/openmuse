@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-10-06
+
+- Attach images, multiple files and folders to chat; preserve folder paths and support web clipboard paste and drag/drop.
+- Preview images, remove drafts and download originals; retain attachment references across reconnects and remove files with deleted conversations.
+- Send actual image input through embedded Pi and standard model transports; read text/code/CSV/JSON and paginated PDF text with conversation-scoped tools.
+- Discover image support for existing OpenCodex profiles, validate upload limits and ownership, and isolate PDF parsing in bounded workers.
+
 ## 0.6.1 — 2026-10-06
 
 - Discover OpenCodex models at startup and every minute, with manual refresh and sync status in model selection and settings.

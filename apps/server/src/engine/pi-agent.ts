@@ -10,6 +10,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { ModelProfile } from "../../../../packages/domain/src/agent.ts";
+import type { AttachmentImage } from "../attachments.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
 import { Skills } from "../skills.ts";
@@ -33,7 +34,7 @@ interface PiAgentCheckpoint {
 
 export interface PiAgentSession {
   sessionFile?: string;
-  prompt(text: string): Promise<void>;
+  prompt(text: string, options?: { images?: AttachmentImage[] }): Promise<void>;
   abort(): Promise<void>;
   dispose(): void;
   getLastAssistantText(): string | undefined;
@@ -70,6 +71,7 @@ export interface PiAgentRunInput extends PiAgentRunCallbacks {
   runKey: string;
   systemPrompt: string;
   prompt: string;
+  images?: AttachmentImage[];
   tools: readonly CopilotToolDefinition[];
   abortTools?(): void;
   completion?: {
@@ -256,6 +258,7 @@ export class PiAgentRunner {
               ? `Recover this interrupted run from its durable session without repeating completed side effects. Original bounded request:\n\n${clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)}`
               : (input.completion?.retryPrompt ??
                 "Continue from the durable session. Use the registered tools required by the request, then finish or verify the result without repeating completed side effects."),
+          iteration === 0 && input.images?.length ? { images: input.images } : undefined,
         );
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
@@ -343,7 +346,12 @@ export class PiAgentRunner {
   private async createSession(input: PiAgentSessionInput): Promise<PiAgentSession> {
     const agentDir = join(this.config.dataDir, "pi", "agent");
     await mkdir(agentDir, { recursive: true, mode: 0o700 });
-    const { runtime, model } = await configuredPiModel(this.config, agentDir, input.request.model);
+    const { runtime, model } = await configuredPiModel(
+      this.config,
+      agentDir,
+      input.request.model,
+      input.request.capabilities.includes("vision"),
+    );
     const manager =
       input.sessionFile && existsSync(input.sessionFile)
         ? SessionManager.open(input.sessionFile, input.sessionDir, input.cwd)

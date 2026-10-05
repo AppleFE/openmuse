@@ -17,6 +17,7 @@ import {
   finalizeRunEvents,
 } from "@copilotkit/runtime/v2";
 import { Observable, ReplaySubject } from "rxjs";
+import type { ChatAttachments } from "./attachments.ts";
 import type { Auth } from "./auth.ts";
 import type { Config } from "./config.ts";
 import type { Store } from "./db.ts";
@@ -348,6 +349,7 @@ export class ConversationStoreRunner extends AgentRunner {
     private readonly db: Store,
     private readonly auth: Auth,
     private readonly config: Config,
+    private readonly attachments?: ChatAttachments,
   ) {
     super();
   }
@@ -539,6 +541,8 @@ export class ConversationStoreRunner extends AgentRunner {
     await this.get(owner, threadId);
     if (!(await this.db.removeIdleConversation(owner, threadId)))
       throw new AppError("Stop the active run before deleting", 409);
+    for (const file of (await this.attachments?.list(owner, threadId)) ?? [])
+      await this.attachments?.remove(owner, file.id);
     const sessionKey = `chat:${threadId}`;
     const digest = (value: string) => createHash("sha256").update(value).digest("hex");
     await this.db.remove(owner, "pi-agent-sessions", digest(sessionKey));
@@ -589,6 +593,12 @@ export class ConversationStoreRunner extends AgentRunner {
       priorEvents = thread.events ?? [];
 
       messages = trustedInputMessages(thread.messages ?? [], request.input.messages ?? []);
+      const storedIds = new Set(thread.messages.map((message) => message.id));
+      await this.attachments?.validate(
+        owner,
+        request.threadId,
+        messages.filter((message) => !storedIds.has(message.id)),
+      );
       const messageTimes = { ...(thread.messageTimes ?? {}) };
       for (const message of messages) messageTimes[message.id] ??= new Date().toISOString();
       await this.db.compareAndSwap(

@@ -138,7 +138,14 @@ function ollamaMessages(context: TranscriptContext) {
       );
       return { role: "system", content: [textContent(message.content), ...sections].join("\n") };
     }
-    if (message.role === "user") return { role: "user", content: textContent(message.content) };
+    if (message.role === "user")
+      return {
+        role: "user",
+        content: textContent(message.content),
+        ...(Array.isArray(message.content)
+          ? { images: message.content.filter((p) => p.type === "image").map((p) => p.data) }
+          : {}),
+      };
     if (message.role === "toolResult")
       return {
         role: "tool",
@@ -359,6 +366,7 @@ export async function configuredPiModel(
   config: Config,
   agentDir: string,
   spec: string,
+  vision = false,
 ): Promise<{ runtime: ModelRuntime; model: Model<string> }> {
   const { provider, id } = modelParts(spec);
   const runtime = await ModelRuntime.create({
@@ -437,7 +445,7 @@ export async function configuredPiModel(
       api: "openai-completions",
       baseUrl,
       reasoning: builtin?.reasoning ?? true,
-      input: builtin?.input ?? ["text"],
+      input: vision ? ["text", "image"] : (builtin?.input ?? ["text"]),
       cost: builtin?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 8192,
       maxTokens: 1024,
@@ -475,7 +483,7 @@ export async function configuredPiModel(
         api,
         baseUrl,
         reasoning: builtin?.reasoning ?? true,
-        input: builtin?.input ?? ["text"],
+        input: vision ? ["text", "image"] : (builtin?.input ?? ["text"]),
         cost: builtin?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: builtin?.contextWindow ?? 128000,
         maxTokens: builtin?.maxTokens ?? 16384,

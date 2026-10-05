@@ -29,6 +29,7 @@ import type {
 } from "../../../../packages/domain/src/index.ts";
 import type { SkillActivation } from "../../../../packages/domain/src/skills.ts";
 import type { ActionService } from "../actions.ts";
+import { ChatAttachments } from "../attachments.ts";
 import type { BrowserService } from "../browser.ts";
 import { ComputerService } from "../computer.ts";
 import type { Config } from "../config.ts";
@@ -58,6 +59,7 @@ const terminal = new Set(["succeeded", "failed", "cancelled"]);
 export class AgentService {
   readonly worker: TaskWorker;
   readonly models: ModelRegistry;
+  readonly attachments: ChatAttachments;
   readonly teams: TeamEngine;
   readonly runtimeSettings: RuntimeSettingsService;
   readonly pi: PiAgentRunner;
@@ -77,6 +79,7 @@ export class AgentService {
     runtimeHooks?: RuntimeHookPipeline,
   ) {
     this.models = new ModelRegistry(db, config);
+    this.attachments = new ChatAttachments(db, config);
     this.skills = new Skills(db, config);
     this.runtimeSettings = new RuntimeSettingsService(db, config);
     const jev = new JevRuntime(this.runtimeSettings);

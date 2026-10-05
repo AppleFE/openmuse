@@ -1,4 +1,5 @@
-export type QueuedMessage = { id: string; text: string };
+import type { AttachmentContent } from "../../../packages/domain/src/attachments";
+export type QueuedMessage = { id: string; text: string; content?: string | AttachmentContent[] };
 type Snapshot = { pending: readonly QueuedMessage[]; running: boolean; paused: boolean };
 
 /** One AG-UI run at a time, while the person can keep composing. */
