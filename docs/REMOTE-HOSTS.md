@@ -59,8 +59,11 @@ Linux·macOS의 별도 방화벽은 관리자가 해당 경로를 허용해야 �
 Windows 설치 로그는 해당 폴더의 `install.log`, macOS 서비스 로그는 `service.log`,
 Linux 로그는 `journalctl -u openmuse-host-agent`에서 확인합니다.
 
-수동 설치는 [Host Agent 0.5.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.5.0)에서
-`openmuse-host-agent-0.5.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
+원격 작업의 완료·질문·문제를 대화로 직접 보내려면 [호스트 호출 CLI/API](HOST-EVENTS.md)를 사용하세요.
+Host Agent 0.6.0 자동 설치에는 `openmuse` CLI도 포함됩니다.
+
+수동 설치는 [Host Agent 0.6.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.6.0)에서
+`openmuse-host-agent-0.6.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
 설치할 수 있습니다. 배포 묶음은 `package-lock.json`을 포함하므로 `npm ci`를 사용합니다.
 
 빌드 환경에서 `pnpm build:host-agent`를 실행하면 `dist/host-agent`에 독립 실행 묶음을

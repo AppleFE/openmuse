@@ -45,6 +45,7 @@ import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
 import { Details } from "./src/details";
+import { HostEventsProvider } from "./src/host-events";
 import { UI_LOCALE, uiLabel } from "./src/locale";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThemeProvider, useTheme } from "./src/theme";
@@ -267,14 +268,16 @@ function WorkspaceApp({ token, onUnauthorized }: { token: string; onUnauthorized
       <AgentWorkspaceProvider>
         <ComputerDraftProvider key={token}>
           <ThreadsProvider>
-            <WorkspaceShell
-              detail={detail}
-              toast={toast}
-              clearToast={() => setToast("")}
-              error={error}
-              prompt={prompt}
-              onSignOut={onUnauthorized}
-            />
+            <HostEventsProvider>
+              <WorkspaceShell
+                detail={detail}
+                toast={toast}
+                clearToast={() => setToast("")}
+                error={error}
+                prompt={prompt}
+                onSignOut={onUnauthorized}
+              />
+            </HostEventsProvider>
           </ThreadsProvider>
         </ComputerDraftProvider>
       </AgentWorkspaceProvider>

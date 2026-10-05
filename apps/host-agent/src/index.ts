@@ -1,4 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { createNotificationGateway } from "./notifications.ts";
 import { createHostAgent } from "./server.ts";
 
 const port = Number(process.env.HOST_AGENT_PORT ?? 8791);
@@ -10,6 +12,17 @@ const agent = await createHostAgent({
 agent.server.listen(port, process.env.HOST_AGENT_HOST ?? "127.0.0.1", () =>
   console.log(`OpenMuse Host Agent listening on port ${port}`),
 );
+const notifyPort = Number(process.env.HOST_AGENT_NOTIFY_PORT ?? 8792);
+if (!Number.isInteger(notifyPort) || notifyPort < 1 || notifyPort > 65535)
+  throw new Error("Invalid HOST_AGENT_NOTIFY_PORT");
+const notifications = await createNotificationGateway({
+  dataDir: resolve(process.env.HOST_AGENT_DATA_DIR ?? ".openmuse/host-agent"),
+  config: async () =>
+    JSON.parse(
+      await readFile(process.env.HOST_AGENT_CONFIG_PATH ?? ".host-agent/config.json", "utf8"),
+    ),
+});
+notifications.server.listen(notifyPort, "127.0.0.1");
 let stopping = false;
 async function stop() {
   if (stopping) return;
@@ -17,6 +30,7 @@ async function stop() {
   const deadline = setTimeout(() => process.exit(1), 15000);
   deadline.unref();
   await agent.close();
+  await notifications.close();
   process.exit(0);
 }
 process.on("SIGINT", () => void stop());

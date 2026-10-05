@@ -16,7 +16,7 @@ await writeFile(
   JSON.stringify(
     {
       name: "@openmuse/host-agent",
-      version: "0.5.0",
+      version: "0.6.0",
       private: true,
       type: "module",
       scripts: { start: "node run.mjs", setup: "node setup.mjs" },
@@ -34,6 +34,8 @@ await writeFile(
 await copyFile("infra/remote-host/setup.mjs", `${directory}/setup.mjs`);
 await copyFile("infra/remote-host/run.mjs", `${directory}/run.mjs`);
 await copyFile("infra/remote-host/install.mjs", `${directory}/install.mjs`);
+await copyFile("infra/remote-host/cli.mjs", `${directory}/cli.mjs`);
+await copyFile("infra/remote-host/install-cli.mjs", `${directory}/install-cli.mjs`);
 await copyFile("docs/REMOTE-HOSTS.md", `${directory}/README.md`);
 const npmCli = resolve(
   dirname(process.execPath),
@@ -47,7 +49,7 @@ const lock = spawnSync(
   { cwd: directory, stdio: "inherit" },
 );
 if (lock.status !== 0) process.exit(lock.status ?? 1);
-const archive = resolve("dist/openmuse-host-agent-0.5.0.tar.gz");
+const archive = resolve("dist/openmuse-host-agent-0.6.0.tar.gz");
 const tar = spawnSync(
   "tar",
   [
@@ -63,6 +65,8 @@ const tar = spawnSync(
       "setup.mjs",
       "run.mjs",
       "install.mjs",
+      "cli.mjs",
+      "install-cli.mjs",
       "README.md",
     ].map((file) => `host-agent/${file}`),
   ],

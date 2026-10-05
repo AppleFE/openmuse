@@ -27,6 +27,7 @@ import { ChatApproval } from "./chat-approval";
 import { ChatUsage, useChatUsage } from "./chat-usage";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
+import { useHostEvents } from "./host-events";
 import { MailToolCard } from "./mail-tool-card";
 import { ConversationModelPicker } from "./model-team-settings";
 import { proxmoxToolValue } from "./proxmox-core";
@@ -241,6 +242,8 @@ export function ChatScreen({
   const { mainId, claimPrompt } = useMuseThread();
   const selection = thread || { id: "local", existing: false };
   const threadId = selection.id;
+  const { versions: hostVersions } = useHostEvents();
+  const appliedHostVersion = useRef(0);
   const agentId = `openmuse-${threadId}`;
   const { agent, isReady } = useAgent({ agentId, runtimeAgentId: "default", threadId });
   const { copilotkit } = useCopilotKit();
@@ -271,6 +274,19 @@ export function ChatScreen({
   const [historyError, setHistoryError] = useState("");
   const [historyAttempt, setHistoryAttempt] = useState(0);
   const [selectedModelId, setSelectedModelId] = useState<string>();
+  const hostVersion = hostVersions[threadId] ?? 0;
+  useEffect(() => {
+    if (
+      !loaded ||
+      busy ||
+      agent.isRunning ||
+      runLock.current ||
+      appliedHostVersion.current === hostVersion
+    )
+      return;
+    appliedHostVersion.current = hostVersion;
+    setHistoryAttempt((v) => v + 1);
+  }, [hostVersion, loaded, busy, agent.isRunning]);
   const models = agentWorkspace?.models ?? [];
   useEffect(() => {
     if (!models.length) return;

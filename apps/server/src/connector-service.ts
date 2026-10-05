@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -311,6 +311,32 @@ export class ConnectorService {
     return (await this.db.list<StoredConnector>(owner, "connectors")).map((record) =>
       this.view(record),
     );
+  }
+
+  /** Dedicated machine authentication; workspace sessions never authorize host callbacks. */
+  async authenticateHostAgent(id: string, authorization?: string) {
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (!/^[a-f0-9-]{36}$/.test(id) || !token || token.length > 512)
+      throw new AppError("Host Agent 인증에 실패했습니다", 401);
+    const entry = (await this.db.scan<StoredConnector>("connectors")).find(
+      (r) => r.value.id === id,
+    );
+    if (
+      !entry ||
+      entry.value.provider !== "remote_host" ||
+      (entry.value.config.mode ?? "agent") !== "agent"
+    )
+      throw new AppError("Host Agent 인증에 실패했습니다", 401);
+    const expected = (await this.secrets(entry.value)).token;
+    if (
+      typeof expected !== "string" ||
+      !timingSafeEqual(
+        createHash("sha256").update(expected).digest(),
+        createHash("sha256").update(token).digest(),
+      )
+    )
+      throw new AppError("Host Agent 인증에 실패했습니다", 401);
+    return { owner: entry.owner, connector: this.view(entry.value) };
   }
 
   async get(owner: string, id: string): Promise<ConnectorView> {

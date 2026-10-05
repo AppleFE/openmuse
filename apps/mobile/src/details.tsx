@@ -40,6 +40,7 @@ import { browserAddress, browserSite } from "./browser-address";
 import { ComputerSheet } from "./computer";
 import DateTimeEditor from "./DateTimeEditor";
 import { localDateTime, zonedInstant } from "./date-time";
+import { HostEventsSheet } from "./host-events";
 import { UI_LOCALE, uiLabel } from "./locale";
 import PdfReader from "./PdfReader";
 import { proxmoxParamLabel } from "./proxmox-core";
@@ -69,6 +70,7 @@ export function Details({ detail }: { detail: Detail }) {
   if (detail.type === "task") return <TaskDetail taskId={detail.taskId} />;
   if (detail.type === "delegate") return <DelegateSheet />;
   if (detail.type === "notifications") return <NotificationsSheet />;
+  if (detail.type === "host-events") return <HostEventsSheet />;
   if (detail.type === "mail") return <MailDetail mail={detail.mail} />;
   if (detail.type === "email") return <EmailEditor draft={detail.draft} />;
   if (detail.type === "event")

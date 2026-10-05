@@ -10,6 +10,7 @@ import type {
   ConnectorView,
 } from "../../../packages/domain/src/connectors";
 import { HostDashboard } from "./host-dashboard";
+import { HostEventsButton } from "./host-events";
 import { HostInstaller } from "./host-installer";
 import { connectorCheckLabel, uiLabel } from "./locale";
 import { ProxmoxManager } from "./proxmox-manager";
@@ -452,6 +453,7 @@ export function ConnectorSettings({ query = "" }: { query?: string }) {
         원격 호스트 대시보드
       </Button>
       <HostInstaller onRegistered={refresh} />
+      <HostEventsButton />
       <Text style={s.muted}>
         서버의 연결을 관리합니다. 인증 정보는 입력만 가능하며 표시되지 않습니다.
       </Text>

@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { hostname, networkInterfaces } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { installCli } from "./install-cli.mjs";
 
 const directory = dirname(fileURLToPath(import.meta.url)),
   root = resolve(directory, ".."),
@@ -145,4 +146,5 @@ if (!response.ok)
 const result = await response.json();
 config.connectorId = result.id;
 await writeFile(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+await installCli();
 console.log(`Host Agent 설치 완료 · ${hostname()} · 관리자 서비스 · 연결 ${result.id}`);

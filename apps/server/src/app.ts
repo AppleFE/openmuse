@@ -13,7 +13,7 @@ import {
   proposalSchema,
 } from "../../../packages/domain/src/index.ts";
 import { ActionService } from "./actions.ts";
-import { agentConfigured, makeRuntime } from "./agent.ts";
+import { agentConfigured, makeConversationAgent, makeRuntime } from "./agent.ts";
 import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
@@ -28,6 +28,7 @@ import { AgentService } from "./engine/service.ts";
 import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
+import { HostEventService, hostEventRoutes } from "./host-events.ts";
 import { hostInstallerRoutes } from "./host-installer.ts";
 import { HostMetricsService, hostMetricsRoutes } from "./host-metrics.ts";
 import { skillRoutes } from "./skills.ts";
@@ -76,6 +77,10 @@ export async function createApp(
   );
   const conversations = new ConversationStoreRunner(db, auth, config);
   await conversations.recoverInterrupted();
+  const hostEvents = new HostEventService(db, connectors, conversations, (owner) =>
+    makeConversationAgent(config, agent, owner),
+  );
+  await hostEvents.recover();
   const runtime = makeRuntime(config, agent, auth, conversations);
   const app = new Hono<{ Variables: { owner: string } }>();
   const origins = new Set([...config.allowedOrigins, new URL(config.publicUrl).origin]);
@@ -159,6 +164,8 @@ export async function createApp(
     );
   });
   app.use("/api/*", async (c, next) => {
+    if (/^\/api\/host-agent\/[a-f0-9-]{36}\/events(?:\/[a-f0-9]{64})?$/.test(c.req.path))
+      return next();
     if (
       /^\/api\/host-agent\/install\/[a-f0-9]{64}\/(install\.sh|install\.ps1|bundle\.tar\.gz|manifest|enroll)$/.test(
         c.req.path,
@@ -215,6 +222,23 @@ export async function createApp(
   app.route("/api/hosts", hostMetricsRoutes(new HostMetricsService(db, connectors), connectors));
   app.route("/api/connectors", connectorRoutes(connectors));
   app.route("/api/host-agent", hostInstallerRoutes(db, config, connectors));
+  app.route("/api/host-events", hostEventRoutes(hostEvents));
+  app.post("/api/host-agent/:connectorId/events", async (c) => {
+    const { owner, connector } = await connectors.authenticateHostAgent(
+      c.req.param("connectorId"),
+      c.req.header("authorization"),
+    );
+    const result = await hostEvents.accept(owner, connector, await c.req.json());
+    return c.json(result, result.duplicate ? 200 : 202);
+  });
+  app.get("/api/host-agent/:connectorId/events/:id", async (c) => {
+    const { owner, connector } = await connectors.authenticateHostAgent(
+      c.req.param("connectorId"),
+      c.req.header("authorization"),
+    );
+    const event = await hostEvents.get(owner, c.req.param("id"), connector.id);
+    return c.json({ event });
+  });
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));
   app.get("/api/calendar/events", async (c) => {
     const query = z
@@ -548,5 +572,6 @@ export async function createApp(
     connectors,
     conversations,
     browser,
+    hostEvents,
   };
 }

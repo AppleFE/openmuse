@@ -37,7 +37,11 @@ export function messageSpeakerLabel(message: {
   name?: unknown;
   speakerRole?: unknown;
 }) {
-  if (message.role === "user") return "";
+  if (
+    message.role === "user" &&
+    !(typeof message.name === "string" && message.name.startsWith("원격 · "))
+  )
+    return "";
   const label =
     typeof message.name === "string"
       ? message.name

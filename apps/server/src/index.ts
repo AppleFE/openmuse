@@ -11,12 +11,13 @@ const db = await createStore({
   databaseUrl: config.databaseUrl,
 });
 await db.recoverInterruptedActions();
-const { app, agent, auth, browser } = await createApp(db, config);
+const { app, agent, auth, browser, hostEvents } = await createApp(db, config);
 if (config.taskWorkerEnabled) agent.start();
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () =>
   console.log(`OpenMuse ${config.mode} API ready at ${config.publicUrl}`),
 );
 const shutdown = () => {
+  hostEvents.close();
   streams.close();
   server.close(() => {
     void agent

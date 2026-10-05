@@ -337,6 +337,12 @@ function parseCursor(cursor: string) {
 export class ConversationStoreRunner extends AgentRunner {
   readonly ɵsupportsLocalThreadEndpoints = true;
   private readonly active = new Map<string, ActiveRun>();
+  private readonly settledListeners = new Set<(owner: string, threadId: string) => void>();
+
+  onSettled(listener: (owner: string, threadId: string) => void) {
+    this.settledListeners.add(listener);
+    return () => this.settledListeners.delete(listener);
+  }
 
   constructor(
     private readonly db: Store,
@@ -778,6 +784,7 @@ export class ConversationStoreRunner extends AgentRunner {
     const key = this.key(owner, request.threadId);
     if (this.active.get(key)?.runId === request.input.runId) this.active.delete(key);
     active.subject.complete();
+    for (const listener of this.settledListeners) listener(owner, request.threadId);
   }
 
   connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {

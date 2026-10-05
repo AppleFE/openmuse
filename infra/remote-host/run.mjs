@@ -27,6 +27,8 @@ const child = spawn(process.execPath, [entry], {
     HOST_AGENT_HOST: config.host,
     HOST_AGENT_PORT: String(config.port),
     HOST_AGENT_DATA_DIR: resolve(config.dataDir),
+    HOST_AGENT_CONFIG_PATH: path,
+    HOST_AGENT_NOTIFY_PORT: String(config.notifyPort ?? 8792),
     ...(config.browserPath ? { PLAYWRIGHT_BROWSERS_PATH: resolve(config.browserPath) } : {}),
   },
 });

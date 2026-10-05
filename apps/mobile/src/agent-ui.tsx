@@ -37,6 +37,7 @@ import type {
 import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { ConnectorSettings } from "./connector-settings";
+import { HostEventsButton } from "./host-events";
 import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
 import { RuntimeSettings } from "./runtime-settings";
@@ -1713,6 +1714,7 @@ export function NotificationsSheet() {
   return (
     <Sheet title="알림" subtitle="확인이 필요한 결과와 결정을 살펴보세요." onClose={close}>
       <View style={{ gap: 14 }}>
+        <HostEventsButton />
         <ErrorNotice error={error} />
         {data?.notifications.map((item) => (
           <Card

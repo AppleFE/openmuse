@@ -48,17 +48,8 @@ export function makeRuntime(
 ) {
   const agents: AgentsFactory = async ({ request }) => {
     const owner = await auth.owner(request.headers.get("authorization") ?? undefined);
-    const selected = config.agentBackend === "model" ? await service.resolveModel(owner) : null;
     return {
-      default:
-        config.agentBackend === "sample"
-          ? new ConversationAgent(config, service, owner)
-          : config.agentBackend === "agui"
-            ? new HttpAgent({
-                url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
-                headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
-              })
-            : new ConversationAgent(config, service, owner, selected),
+      default: await makeConversationAgent(config, service, owner),
     };
   };
   const runtime = new CopilotRuntime({
@@ -66,4 +57,21 @@ export function makeRuntime(
     runner,
   });
   return createCopilotHonoHandler({ runtime, basePath: "/api/copilotkit" });
+}
+
+export async function makeConversationAgent(config: Config, service: AgentService, owner: string) {
+  if (config.agentBackend === "agui")
+    return Object.assign(
+      new HttpAgent({
+        url: config.agentUrl ?? "http://127.0.0.1:1/unconfigured",
+        headers: config.agentToken ? { Authorization: `Bearer ${config.agentToken}` } : {},
+      }),
+      { openMuseOwner: owner },
+    );
+  return new ConversationAgent(
+    config,
+    service,
+    owner,
+    config.agentBackend === "model" ? await service.resolveModel(owner) : undefined,
+  );
 }

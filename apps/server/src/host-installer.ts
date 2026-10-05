@@ -9,7 +9,7 @@ import type { ConnectorService } from "./connector-service.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 
-const version = "0.5.0",
+const version = "0.6.0",
   nodeVersion = "24.21.0";
 const hash = (v: string | Buffer) => createHash("sha256").update(v).digest("hex");
 type Invitation = { id: string; owner: string; name: string; expiresAt: number; used: boolean };
