@@ -46,14 +46,34 @@ tar -xzf "$root/bundle.tar.gz" -C "$root"
 `;
 }
 export function windowsInstaller(base: string) {
+  // Run the installer in a clean process even when users pipe it into iex from an existing
+  // terminal. Windows PowerShell 5.1 needs the BOM when it reads the downloaded .ps1 file.
+  return `& {
+$ErrorActionPreference='Stop'
+$openmuseInstallerFile=Join-Path ([IO.Path]::GetTempPath()) ('openmuse-install-'+[Guid]::NewGuid()+'.ps1')
+try {
+ $openmuseInstallerContent=(Microsoft.PowerShell.Utility\\Invoke-WebRequest -UseBasicParsing '${base}/install.ps1?worker=1').Content
+ [IO.File]::WriteAllText($openmuseInstallerFile,$openmuseInstallerContent,[Text.UTF8Encoding]::new($true))
+ $openmusePowerShell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $openmuseNativePowerShell=Join-Path $env:SystemRoot 'Sysnative/WindowsPowerShell/v1.0/powershell.exe'
+ if ([IO.File]::Exists($openmuseNativePowerShell)) { $openmusePowerShell=$openmuseNativePowerShell }
+ & $openmusePowerShell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $openmuseInstallerFile
+ if ($LASTEXITCODE -ne 0) { throw 'Host Agent 설치 실패: 위 오류와 C:\\ProgramData\\OpenMuseHostAgent\\install.log를 확인하세요.' }
+} finally {
+ if ([IO.File]::Exists($openmuseInstallerFile)) { [IO.File]::Delete($openmuseInstallerFile) }
+}
+}
+`;
+}
+export function windowsInstallerWorker(base: string) {
   return `$ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $invitation='${base}'
 $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) {
- $installerFile=Join-Path ([IO.Path]::GetTempPath()) ('openmuse-install-'+[Guid]::NewGuid()+'.ps1')
- [IO.File]::WriteAllText($installerFile,(Invoke-WebRequest -UseBasicParsing ($invitation+'/install.ps1')).Content,[Text.UTF8Encoding]::new($false))
- Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$installerFile+'"'))
- Write-Host '관리자 설치를 시작했습니다. OpenMuse 연결 목록에서 등록 결과를 확인하세요.'
+ Write-Host '관리자 인증 후 설치합니다. 완료될 때까지 기다려 주세요.'
+ $elevated=Start-Process (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$PSCommandPath+'"'))
+ if ($elevated.ExitCode -ne 0) { throw '관리자 설치 실패: C:\\ProgramData\\OpenMuseHostAgent\\install.log를 확인하세요.' }
  return
 }
 $agentRoot=Join-Path $env:ProgramData 'OpenMuseHostAgent'
@@ -61,22 +81,31 @@ New-Item -ItemType Directory -Path $agentRoot -Force | Out-Null
 & icacls.exe $agentRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw '설치 폴더 권한 설정 실패' }
 Start-Transcript -Path (Join-Path $agentRoot 'install.log') -Append | Out-Null
+try {
 $manifest=Invoke-RestMethod ($invitation+'/manifest')
 $bundle=Join-Path $agentRoot 'bundle.tar.gz'
 Invoke-WebRequest -UseBasicParsing ($invitation+'/bundle.tar.gz') -OutFile $bundle
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $bundle).Hash.ToLower() -ne $manifest.sha256) { throw 'Host Agent checksum mismatch' }
-$architecture=if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -eq 'Arm64') {'arm64'} else {'x64'}
+$bundleHash=[string](Microsoft.PowerShell.Utility\\Get-FileHash -Algorithm SHA256 -LiteralPath $bundle).Hash
+if ($bundleHash -notmatch '^[a-fA-F0-9]{64}$') { throw 'Host Agent 체크섬을 읽지 못했습니다.' }
+if ($bundleHash -ine $manifest.sha256) { throw 'Host Agent checksum mismatch' }
+$nativeArchitecture=[string][Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+if (-not $nativeArchitecture) { $nativeArchitecture=if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE } }
+$architecture=switch ($nativeArchitecture) { 'Arm64' {'arm64'} 'X64' {'x64'} 'AMD64' {'x64'} default { throw '지원하지 않는 Windows 아키텍처입니다. x64 또는 ARM64가 필요합니다.' } }
 $expected=if ($architecture -eq 'arm64') {'8779b1bde1d39f8d420e3b57aa657b39891af434d3de44a919044cec06785921'} else {'158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541'}
 $nodeArchive=Join-Path $agentRoot 'node.zip'
 Invoke-WebRequest -UseBasicParsing ('https://nodejs.org/download/release/v${nodeVersion}/node-v${nodeVersion}-win-'+$architecture+'.zip') -OutFile $nodeArchive
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $nodeArchive).Hash.ToLower() -ne $expected) { throw 'Node checksum mismatch' }
+$nodeHash=[string](Microsoft.PowerShell.Utility\\Get-FileHash -Algorithm SHA256 -LiteralPath $nodeArchive).Hash
+if ($nodeHash -notmatch '^[a-fA-F0-9]{64}$') { throw 'Node.js 체크섬을 읽지 못했습니다.' }
+if ($nodeHash -ine $expected) { throw 'Node checksum mismatch' }
 Expand-Archive -LiteralPath $nodeArchive -DestinationPath $agentRoot -Force
 & tar.exe -xzf $bundle -C $agentRoot
 if ($LASTEXITCODE -ne 0) { throw 'Host Agent archive extraction failed' }
 $node=Join-Path $agentRoot ('node-v${nodeVersion}-win-'+$architecture+'/node.exe')
 & $node (Join-Path $agentRoot 'host-agent/install.mjs') $invitation
 if ($LASTEXITCODE -ne 0) { throw 'Host Agent installation failed' }
+} finally {
 Stop-Transcript | Out-Null
+}
 `;
 }
 export function hostInstallerRoutes(db: Store, config: Config, connectors: ConnectorService) {
@@ -134,7 +163,9 @@ export function hostInstallerRoutes(db: Store, config: Config, connectors: Conne
     }
     if (file === "install.ps1") {
       c.header("Content-Type", "text/plain; charset=utf-8");
-      return c.body(windowsInstaller(base));
+      return c.body(
+        c.req.query("worker") === "1" ? windowsInstallerWorker(base) : windowsInstaller(base),
+      );
     }
     throw new AppError("Not found", 404);
   });
