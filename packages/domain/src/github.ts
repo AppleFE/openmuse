@@ -85,6 +85,7 @@ export const githubWriteParams = {
     settings: z
       .strictObject({
         private: z.boolean().optional(),
+        visibility: z.enum(["public", "private"]).optional(),
         description: text.nullable().optional(),
         homepage: z.string().max(2048).nullable().optional(),
         default_branch: branch.optional(),
@@ -96,7 +97,14 @@ export const githubWriteParams = {
         allow_rebase_merge: z.boolean().optional(),
         delete_branch_on_merge: z.boolean().optional(),
       })
-      .refine((v) => Object.keys(v).length > 0),
+      .refine((v) => Object.keys(v).length > 0)
+      .refine(
+        (v) =>
+          v.private === undefined ||
+          v.visibility === undefined ||
+          v.private === (v.visibility === "private"),
+        "private and visibility must agree",
+      ),
   }),
   branch_create: z.strictObject({ repo, branch, sha }),
   branch_delete: z.strictObject({ repo, branch }),

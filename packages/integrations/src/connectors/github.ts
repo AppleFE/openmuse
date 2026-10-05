@@ -21,7 +21,9 @@ const repoSchema = z.object({
   name: z.string(),
   full_name: z.string(),
   private: z.boolean(),
+  visibility: z.enum(["public", "private", "internal"]).optional(),
   fork: z.boolean().optional(),
+  permissions: z.object({ admin: z.boolean().optional() }).optional(),
   parent: z.object({ full_name: z.string(), html_url: z.string() }).optional(),
   description: z.string().nullable(),
   html_url: z.string(),
@@ -139,7 +141,7 @@ async function request(
       /Public forks can.?t be made private/i.test(error.message)
     )
       throw new ConnectorError(
-        "GitHub는 공개 포크 저장소를 비공개로 전환할 수 없습니다. 별도의 비공개 저장소로 복제하거나 GitHub의 포크 분리 기능을 이용해야 합니다. 자동 승인이나 토큰 권한 변경으로 해결되지 않습니다.",
+        "GitHub가 이 요청을 공개 포크의 비공개 전환으로 판정해 거부했습니다 (HTTP 422). 현재 저장소 정보(fork·private)와 연결 계정을 다시 조회하세요. 과거의 실패가 현재 저장소 상태를 뜻하지는 않습니다.",
         422,
         "provider",
       );
@@ -170,7 +172,9 @@ function repoView(repo: z.infer<typeof repoSchema>) {
     name: repo.name,
     fullName: repo.full_name,
     private: repo.private,
-    fork: repo.fork ?? false,
+    visibility: repo.visibility ?? (repo.private ? "private" : "public"),
+    fork: repo.fork ?? null,
+    canAdminister: repo.permissions?.admin ?? null,
     parent: repo.parent ? { fullName: repo.parent.full_name, url: repo.parent.html_url } : null,
     description: repo.description,
     url: repo.html_url,
@@ -199,7 +203,9 @@ const descriptions: Record<string, string> = {
   issues: "List repository issues, excluding pull requests. Supports state, page and limit.",
   pulls:
     "List repository pull requests with head and base branches. Supports state, page and limit.",
-  repo: "Read repository details including private status and defaultBranch. Repository Metadata read permission is required.",
+  repo: "Read current repository details including private, visibility, fork, parent, canAdminister and defaultBranch. Unknown fork/admin status is null. Refresh this operation when old visibility failures conflict with newer user evidence. Repository Metadata read permission is required.",
+  repo_update:
+    "Update repository settings. Use settings.visibility=private or public, matching gh repo edit. Legacy settings.private is also accepted and converted to visibility. Read fresh repo metadata first and verify it after execution. Writes require a prepared connector action and token Administration write permission.",
   branches:
     "List branches and immutable commit SHAs. Requires repository Contents read access; pass a returned commitSha to ref when inspecting code consistently.",
   contents:
@@ -556,9 +562,15 @@ export function githubAdapter(): ConnectorAdapter {
       ) => request(ctx, base + path, undefined, undefined, method, json);
       let result: unknown;
       switch (input.operation) {
-        case "repo_update":
-          result = await send("", "PATCH", p.settings);
+        case "repo_update": {
+          const { private: legacyPrivate, ...settings } = githubWriteParams.repo_update.parse(
+            input.params,
+          ).settings;
+          if (legacyPrivate !== undefined)
+            settings.visibility = legacyPrivate ? "private" : "public";
+          result = await send("", "PATCH", settings);
           break;
+        }
         case "branch_create":
           result = await send("/git/refs", "POST", { ref: `refs/heads/${p.branch}`, sha: p.sha });
           break;

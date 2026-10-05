@@ -148,6 +148,13 @@ PAT에도 대상 저장소와 쓰기 권한이 있어야 합니다. 공개 여�
 코드·브랜치는 Contents write, 이슈·PR은 Issues/Pull requests write, 워크플로 호출은 Actions
 write가 필요합니다. 커넥터 업데이트로 읽기 전용 PAT의 권한이 늘어나지는 않습니다.
 GitHub 계정·조직 정책도 그대로 적용됩니다.
+
+공개 여부는 `settings.visibility: "private" | "public"`로 지정하며 `gh repo edit`와 같은
+REST 필드를 보냅니다. 기존 `settings.private`도 이 필드로 변환합니다. 둘을 같이 보내면
+의미가 일치해야 합니다. `repo` 조회는 현재 `private`, `visibility`, `fork`, `parent`,
+`canAdminister`를 반환하며 확인되지 않은 포크·관리 권한은 `null`입니다.
+과거의 422 영수증은 당시 요청의 결과일 뿐입니다. 외부에서 설정이 바뀌었거나 사용자가
+다른 성공 결과를 제시하면 저장소 정보와 연결 계정을 다시 조회한 뒤 현재 상태를 안내합니다.
 [공식 저장소 API](https://docs.github.com/en/rest/repos/repos),
 [Git refs API](https://docs.github.com/en/rest/git/refs),
 [이슈 API](https://docs.github.com/en/rest/issues/issues)

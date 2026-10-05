@@ -42,6 +42,34 @@ const entry = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
+test("GitHub exposes fresh visibility, fork parent and token administration access", async (t) => {
+  const mock = await provider(t, () => ({
+    id: 2,
+    name: "fork",
+    full_name: "owner/fork",
+    private: false,
+    visibility: "public",
+    fork: true,
+    parent: { full_name: "upstream/source", html_url: "https://github.example/upstream/source" },
+    permissions: { admin: false },
+    description: null,
+    html_url: "https://github.example/owner/fork",
+    language: null,
+  }));
+  const result = (await github.run(mock.ctx, "repo", { repo: "owner/fork" })) as {
+    repo: {
+      visibility: string;
+      fork: boolean;
+      parent: { fullName: string };
+      canAdminister: boolean;
+    };
+  };
+  assert.equal(result.repo.visibility, "public");
+  assert.equal(result.repo.fork, true);
+  assert.equal(result.repo.parent.fullName, "upstream/source");
+  assert.equal(result.repo.canAdminister, false);
+});
+
 test("GitHub reads private repository metadata, branches and commit history with pagination", async (t) => {
   const mock = await provider(t, (p) => {
     if (p.includes("/branches"))
@@ -70,10 +98,19 @@ test("GitHub reads private repository metadata, branches and commit history with
     };
   });
   const repo = (await github.run(mock.ctx, "repo", { repo: "owner/private" })) as {
-    repo: { private: boolean; defaultBranch: string };
+    repo: {
+      private: boolean;
+      visibility: string;
+      fork: boolean | null;
+      canAdminister: boolean | null;
+      defaultBranch: string;
+    };
   };
   assert.equal(repo.repo.private, true);
   assert.equal(repo.repo.defaultBranch, "main");
+  assert.equal(repo.repo.visibility, "private");
+  assert.equal(repo.repo.fork, null);
+  assert.equal(repo.repo.canAdminister, null);
   const branches = (await github.run(mock.ctx, "branches", {
     repo: "owner/private",
     limit: 1,

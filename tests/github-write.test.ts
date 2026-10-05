@@ -68,7 +68,34 @@ test("GitHub commits multiple files atomically without force and rejects stale H
     params: { repo: "owner/repo", settings: { private: true } },
   });
   assert.equal(requests[0].method, "PATCH");
-  assert.deepEqual(requests[0].body, { private: true });
+  assert.deepEqual(requests[0].body, { visibility: "private" });
+  for (const settings of [
+    { visibility: "public", description: "keep other fields" },
+    { private: false, description: "keep other fields" },
+    { private: false, visibility: "public", description: "keep other fields" },
+  ]) {
+    requests.length = 0;
+    await adapter.write!(ctx, {
+      connectorId: "fixture",
+      operation: "repo_update",
+      params: { repo: "owner/repo", settings },
+    });
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0].body, {
+      visibility: "public",
+      description: "keep other fields",
+    });
+  }
+  requests.length = 0;
+  await assert.rejects(
+    adapter.write!(ctx, {
+      connectorId: "fixture",
+      operation: "repo_update",
+      params: { repo: "owner/repo", settings: { private: true, visibility: "public" } },
+    }),
+    /private and visibility must agree/,
+  );
+  assert.equal(requests.length, 0);
 });
 test("GitHub write schemas reject traversal, force pushes and duplicate file paths", () => {
   for (const params of [
@@ -81,7 +108,7 @@ test("GitHub write schemas reject traversal, force pushes and duplicate file pat
     );
 });
 
-test("GitHub public fork visibility rejection explains the provider limitation in Korean without retrying", async (t) => {
+test("GitHub public fork rejection describes the failed request and asks for fresh evidence without retrying", async (t) => {
   let calls = 0;
   const server = createServer((_req, res) => {
     calls++;
@@ -109,11 +136,11 @@ test("GitHub public fork visibility rejection explains the provider limitation i
         params: { repo: "owner/fork", settings: { private: true } },
       },
     ),
-    /공개 포크 저장소를 비공개로 전환할 수 없습니다/,
+    /현재 저장소 정보/,
   );
   assert.equal(calls, 1);
   assert.match(
     errorLabel("Provider responded HTTP 422: Public forks can't be made private"),
-    /자동 승인이나 토큰 권한 변경으로 해결되지/,
+    /과거의 실패가 현재 저장소 상태를 뜻하지는 않습니다/,
   );
 });
