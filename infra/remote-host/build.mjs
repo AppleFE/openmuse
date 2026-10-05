@@ -16,7 +16,7 @@ await writeFile(
   JSON.stringify(
     {
       name: "@openmuse/host-agent",
-      version: "0.2.0",
+      version: "0.3.0",
       private: true,
       type: "module",
       scripts: { start: "node run.mjs", setup: "node setup.mjs" },
@@ -43,7 +43,7 @@ const lock = spawnSync(
   { cwd: directory, stdio: "inherit" },
 );
 if (lock.status !== 0) process.exit(lock.status ?? 1);
-const archive = resolve("dist/openmuse-host-agent-0.2.0.tar.gz");
+const archive = resolve("dist/openmuse-host-agent-0.3.0.tar.gz");
 const tar = spawnSync(
   "tar",
   [

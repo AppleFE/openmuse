@@ -1,6 +1,6 @@
 {
   "name": "openmuse",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "dev:mobile": "pnpm --dir apps/mobile start",
     "dev:web": "pnpm --dir apps/mobile web",
     "test": "node infra/remote-host/build.mjs && tsx --test tests/*.test.ts apps/mobile/test/*.test.ts",
-    "test:browser": "node --experimental-strip-types --test apps/worker/tests/lifecycle.test.ts",
+    "test:browser": "node --experimental-strip-types --test apps/worker/tests/lifecycle.test.ts apps/worker/tests/frame-stream.test.ts",
     "test:macos-deploy": "node --test infra/macos/*.test.mjs",
     "typecheck": "tsc --noEmit && pnpm --dir apps/mobile typecheck",
     "lint": "biome check .",

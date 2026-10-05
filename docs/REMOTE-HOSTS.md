@@ -53,8 +53,8 @@ Linux·macOS의 별도 방화벽은 관리자가 해당 경로를 허용해야 �
 Windows 설치 로그는 해당 폴더의 `install.log`, macOS 서비스 로그는 `service.log`,
 Linux 로그는 `journalctl -u openmuse-host-agent`에서 확인합니다.
 
-수동 설치는 [Host Agent 0.2.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.2.0)에서
-`openmuse-host-agent-0.2.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
+수동 설치는 [Host Agent 0.3.0 릴리스](https://github.com/AppleFE/openmuse/releases/tag/host-agent-v0.3.0)에서
+`openmuse-host-agent-0.3.0.tar.gz`와 체크섬을 내려받아 압축을 풀면 별도 프로젝트 빌드 없이
 설치할 수 있습니다. 배포 묶음은 `package-lock.json`을 포함하므로 `npm ci`를 사용합니다.
 
 빌드 환경에서 `pnpm build:host-agent`를 실행하면 `dist/host-agent`에 독립 실행 묶음을
@@ -140,6 +140,9 @@ Pi는 `open_host_browser`(`url`, 선택 `connectorId`)로 실제 Chromium 세션
 모바일 키보드를 지원합니다. 별도 텍스트 입력 상자는 필요 없습니다. Playwright 브라우저의
 화면을 RFB 프레임으로 중계하는 방식이며 전체 OS 데스크톱을 공유하는 VNC 서버는 아닙니다.
 현재 화면 갱신은 최대 초당 4회입니다. 스트림은 소유자 서명·연결 버전·제어 권한을 검증합니다.
+0.3은 Chromium의 최신 JPEG 화면을 Tight/RFB로 전달해 PNG 재촬영·변환을 줄입니다.
+화면 수집이 키 입력을 막지 않으며 동일한 화면을 다시 전송하지 않습니다. 호스트도 0.3 이상으로
+업데이트해야 이 경로를 사용합니다. 구버전 호스트는 PNG 방식으로 계속 연결할 수 있습니다.
 외부 noVNC 서비스나 공개 VNC 포트는 필요하지 않습니다. 데스크톱 전체 제어를 추가할 때는
 Windows 세션·macOS 화면 기록/접근성 권한·Linux 디스플레이 별도 처리가 필요합니다.
 [noVNC 문서](https://novnc.com/info.html)
