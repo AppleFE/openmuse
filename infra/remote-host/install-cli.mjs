@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { chmod, copyFile, mkdir, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,20 @@ export async function installCli({ user = false } = {}) {
   if (process.platform === "win32") {
     const root = join(process.env.ProgramData ?? "C:\\ProgramData", "OpenMuseCLI");
     await mkdir(root, { recursive: true });
+    const acl = (args) => {
+      const result = spawnSync("icacls.exe", args, { windowsHide: true, stdio: "ignore" });
+      if (result.status !== 0) throw Error("CLI ACL installation failed");
+    };
+    // Set the directory ACL once; /inheritance:r with /T would strip each file's access.
+    acl([
+      root,
+      "/inheritance:r",
+      "/grant:r",
+      "*S-1-5-18:(OI)(CI)F",
+      "*S-1-5-32-544:(OI)(CI)F",
+      "*S-1-5-32-545:(OI)(CI)RX",
+    ]);
+    if ((await readdir(root)).length) acl([join(root, "*"), "/reset", "/T"]);
     await copyFile(source, join(root, "cli.mjs"));
     await copyFile(process.execPath, join(root, "node.exe"));
     await writeFile(
@@ -23,7 +37,7 @@ export async function installCli({ user = false } = {}) {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `$ErrorActionPreference='Stop'; & icacls.exe ${quote(root)} /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'CLI ACL failed' }; $old=[Environment]::GetEnvironmentVariable('Path','Machine'); if (($old -split ';') -notcontains ${quote(root)}) { [Environment]::SetEnvironmentVariable('Path',($old.TrimEnd(';')+';'+${quote(root)}),'Machine') }`,
+        `$ErrorActionPreference='Stop'; $old=[string][Environment]::GetEnvironmentVariable('Path','Machine'); if (($old -split ';') -notcontains ${quote(root)}) { [Environment]::SetEnvironmentVariable('Path',($old.TrimEnd(';')+';'+${quote(root)}),'Machine') }`,
       ],
       { windowsHide: true, stdio: "inherit" },
     );

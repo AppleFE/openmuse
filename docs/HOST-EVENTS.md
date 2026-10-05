@@ -12,6 +12,8 @@ OpenMuse의 **앱 → 인프라 연결 → 원격 호스트 자동 설치** 명�
 기존 호스트는 새 설치 명령으로 업데이트하며 기존 config.json의 연결 ID와 토큰을 보존합니다.
 수동 설치는 패키지의 `install-cli.mjs`를 관리자 권한으로 실행하세요. 수동 Host Agent 설정에는
 기존 토큰 외에 `connectorId`와 `enrollmentOrigin`(OpenMuse 서버 origin)이 필요합니다.
+macOS/Linux에서 현재 사용자용 CLI만 설치하려면 `node install-cli.mjs --user`를 사용하고
+`~/.local/bin`을 PATH에 추가하세요. CLI 설치 자체로 Host Agent 서비스가 등록되지는 않습니다.
 
 ```sh
 openmuse status

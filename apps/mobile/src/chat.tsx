@@ -424,6 +424,7 @@ export function ChatScreen({
     messages
       .filter((m) => m.role === "assistant")
       .reduce((n, m) => n + (typeof m.content === "string" ? m.content.length : 0), 0),
+    hostVersion,
   );
   const localTimes = useRef<Record<string, string>>({});
   for (const message of visible)

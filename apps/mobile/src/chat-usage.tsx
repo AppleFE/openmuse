@@ -20,7 +20,12 @@ type Summary = {
   latest: { tokensPerSecond: number | null } | null;
   messageTimes: Record<string, string>;
 };
-export function useChatUsage(threadId: string, running: boolean, textLength: number) {
+export function useChatUsage(
+  threadId: string,
+  running: boolean,
+  textLength: number,
+  refreshKey = 0,
+) {
   const { api } = useWorkspace();
   const [usage, setUsage] = useState<Summary>();
   const [speed, setSpeed] = useState<string>("— tok/s");
@@ -47,7 +52,7 @@ export function useChatUsage(threadId: string, running: boolean, textLength: num
       active = false;
       clearInterval(timer);
     };
-  }, [api, threadId, running]);
+  }, [api, threadId, running, refreshKey]);
   useEffect(() => {
     if (!running) {
       start.current = { time: 0, length: textLength };
