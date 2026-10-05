@@ -11,9 +11,9 @@ const linux = String.raw`export LC_ALL=C
 printf 'HOST\t%s\t%s\n' "$(hostname)" "$(uname -m)"
 awk -F= '/^PRETTY_NAME=/ {gsub(/"/,"",$2); print "OS\t" $2}' /etc/os-release 2>/dev/null
 awk '{print "UP\t" $1}' /proc/uptime
-awk '/^cpu[0-9]* / {total=0; for(i=2;i<=9;i++) total+=$i; print "CPU\t" $1 "\t" total "\t" $5+$6}' /proc/stat
+awk '/^cpu[0-9]* / {total=0; for(i=2;i<=9;i++) total+=$i; printf "CPU\t%s\t%.0f\t%.0f\n",$1,total,$5+$6}' /proc/stat
 awk -F: '/model name|Hardware/ {gsub(/^[ \t]+/,"",$2); print "MODEL\t" $2; exit}' /proc/cpuinfo
-awk '/^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree):/ {gsub(/:/,"",$1); print "MEM\t" $1 "\t" $2*1024}' /proc/meminfo
+awk '/^(MemTotal|MemAvailable|MemFree|Buffers|Cached|SwapTotal|SwapFree):/ {gsub(/:/,"",$1); printf "MEM\t%s\t%.0f\n",$1,$2*1024}' /proc/meminfo
 df -kP -l 2>/dev/null | awk 'NR>1 && $1 ~ /^\/dev\// {mount=$6; for(i=7;i<=NF;i++) mount=mount " " $i; printf "DISK\t%s\t%.0f\t%.0f\t%.0f\t%s\n",$1,$2*1024,$3*1024,$4*1024,mount}'
 for dev in /sys/block/*; do
   [ -e "$dev/device" ] || continue
