@@ -676,16 +676,22 @@ export function ChatScreen({
             </Button>
           </Card>
         )}
-        <View style={[s.row, { gap: 12, marginBottom: 8, flexWrap: "wrap" }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          testID="chat-controls"
+          style={{ marginBottom: 8, flexGrow: 0 }}
+          contentContainerStyle={{ alignItems: "center", gap: 12, paddingHorizontal: 5 }}
+        >
           <ConversationModelPicker
             models={models}
             value={selectedModelId}
             onChange={setSelectedModelId}
             disabled={replying}
           />
-          <ChatUsage usage={usage} speed={speed} />
           <ChatApproval threadId={threadId} disabled={replying || !loaded} />
-        </View>
+          <ChatUsage usage={usage} speed={speed} />
+        </ScrollView>
         <View
           style={{
             backgroundColor: colors.input,

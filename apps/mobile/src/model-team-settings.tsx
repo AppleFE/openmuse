@@ -122,6 +122,7 @@ function ModelPicker({
             gap: 8,
             paddingVertical: 9,
             paddingHorizontal: 13,
+            minHeight: 38,
             borderRadius: 18,
             backgroundColor: colors.surfaceMuted,
             opacity: disabled ? 0.5 : pressed ? 0.72 : 1,
@@ -529,7 +530,7 @@ export function ConversationModelPicker({
 }) {
   if (!models.length) return null;
   return (
-    <View style={{ paddingHorizontal: 5, paddingBottom: 8 }}>
+    <View style={{ maxWidth: 220, flexShrink: 0 }}>
       <ModelPicker
         models={models}
         value={value}

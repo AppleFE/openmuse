@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Text, View } from "react-native";
-import { Button, Card, Sheet, s } from "./ui";
+import { Pressable, Text, View } from "react-native";
+import { Card, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
 type Totals = {
@@ -86,13 +86,20 @@ export function ChatUsage({ usage, speed }: { usage?: Summary; speed: string }) 
     </Card>
   );
   return (
-    <View style={{ flex: 1, alignItems: "flex-end", gap: 4 }}>
+    <View style={[s.row, { gap: 12, flexShrink: 0 }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="AI 사용량 상세"
+        onPress={() => setOpened(true)}
+        style={{ justifyContent: "center", minHeight: 38 }}
+      >
+        <Text style={[s.small, { fontSize: 12, lineHeight: 18 }]}>
+          사용량 {usage?.thread.totalTokens.toLocaleString() ?? "—"} 토큰
+        </Text>
+      </Pressable>
       <Text accessibilityLabel="AI 생성 속도" style={s.small}>
         {speed}
       </Text>
-      <Button small onPress={() => setOpened(true)}>
-        사용량 {usage?.thread.totalTokens.toLocaleString() ?? "—"}
-      </Button>
       {opened && (
         <Sheet
           title="AI 사용량"
