@@ -61,6 +61,7 @@ export function attachBrowserStreams(server: Server, auth: Auth, browser: Browse
       const countKey = `${owner}:${match[1]}`;
       if ((counts.get(countKey) ?? 0) >= 2) throw new Error("Stream limit");
       counts.set(countKey, (counts.get(countKey) ?? 0) + 1);
+      request.socket.setNoDelay(true);
       wss.handleUpgrade(request, socket, head, (ws) => {
         ws.once("close", () => {
           const count = (counts.get(countKey) ?? 1) - 1;
@@ -90,26 +91,34 @@ function startRfb(
   let pending = Buffer.alloc(0),
     phase = "version",
     frameRequested = false,
-    rendering = false,
-    queuedInputs = 0;
+    rendering = false;
+  const queuedInputs = new Set<Promise<unknown>>();
+  let tight = false;
+  let incremental = false;
+  let lastTag: string | undefined;
   let format = { bigEndian: false, r: 16, g: 8, b: 0 };
-  const send = (buffer: Buffer) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(buffer);
+  const send = (buffer: Buffer, compressedImage = false) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(buffer, { compress: !compressedImage });
   };
   const fail = () => ws.close(1008, "브라우저 연결을 다시 여세요");
   send(Buffer.from("RFB 003.008\n"));
   const input = (value: unknown) => {
-    if (++queuedInputs > 128) {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const operation = browser.streamInput(owner, id, value);
+    if (queuedInputs.has(operation)) return;
+    queuedInputs.add(operation);
+    if (queuedInputs.size > 128) {
+      queuedInputs.delete(operation);
+      void operation.catch(() => {});
       fail();
       return;
     }
     // Reserve each event in the shared session queue immediately, so HTTP IME/paste
     // input cannot overtake RFB keys still waiting for their worker response.
-    void browser
-      .streamInput(owner, id, value)
+    void operation
       .then(() => {}, fail)
       .finally(() => {
-        queuedInputs--;
+        queuedInputs.delete(operation);
       });
   };
   ws.on("message", (data, isBinary) => {
@@ -184,10 +193,15 @@ function startRfb(
           if (pending.length < 4) return;
           length = 4 + pending.readUInt16BE(2) * 4;
           if (length > 65536) throw new Error();
+          if (pending.length < length) return;
+          tight = false;
+          for (let offset = 4; offset < length; offset += 4)
+            if (pending.readInt32BE(offset) === 7) tight = true;
         } else if (type === 3) {
           length = 10;
           if (pending.length < length) return;
           frameRequested = true;
+          incremental = !!pending[1];
         } else if (type === 4) {
           length = 8;
           if (pending.length < length) return;
@@ -227,14 +241,44 @@ function startRfb(
       !frameRequested ||
       rendering ||
       ws.readyState !== WebSocket.OPEN ||
-      ws.bufferedAmount > 5 * 1024 * 1024
+      ws.bufferedAmount > 256 * 1024
     )
       return;
     rendering = true;
     frameRequested = false;
+    const requestedIncremental = incremental;
     void (async () => {
-      const response = await browser.preview(owner, id);
-      const png = PNG.sync.read(Buffer.from(await response.arrayBuffer()));
+      const response = tight
+        ? await browser.liveFrame(owner, id, requestedIncremental ? lastTag : undefined)
+        : await browser.preview(owner, id);
+      if (response.status === 304) {
+        frameRequested = true;
+        return;
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (tight && response.headers.get("content-type")?.startsWith("image/jpeg")) {
+        if (bytes.length > 2 * 1024 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8)
+          throw new Error("Invalid JPEG framebuffer");
+        const header = Buffer.alloc(16);
+        header.writeUInt16BE(1, 2);
+        header.writeUInt16BE(1280, 8);
+        header.writeUInt16BE(800, 10);
+        header.writeInt32BE(7, 12); // RFB Tight, JPEG subencoding; no RGBA conversion.
+        const length = bytes.length;
+        const size = [length & 0x7f];
+        if (length > 0x7f) {
+          size[0] |= 0x80;
+          size.push((length >> 7) & 0x7f);
+        }
+        if (length > 0x3fff) {
+          size[1] |= 0x80;
+          size.push(length >> 14);
+        }
+        send(Buffer.concat([header, Buffer.from([0x90, ...size]), bytes]), true);
+        lastTag = response.headers.get("etag") ?? undefined;
+        return;
+      }
+      const png = PNG.sync.read(bytes);
       if (png.width !== 1280 || png.height !== 800) throw new Error("Invalid framebuffer");
       const frame = Buffer.allocUnsafe(16 + 1280 * 800 * 4);
       frame.fill(0, 0, 16);
@@ -256,7 +300,7 @@ function startRfb(
       .finally(() => {
         rendering = false;
       });
-  }, 250);
+  }, 66);
   timer.unref();
   ws.once("close", () => {
     clearInterval(timer);

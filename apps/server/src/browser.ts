@@ -38,6 +38,11 @@ type ChatBrowser = { id: string; sessionId: string };
 
 export class BrowserService {
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly pendingPointers = new Map<
+    string,
+    { owner: string; value: unknown; moving: boolean; started: boolean; promise: Promise<unknown> }
+  >();
+  private readonly pointerButtons = new Map<string, number>();
   private health?: { checkedAt: number; reachable: Promise<boolean> };
   constructor(
     private readonly db: Store,
@@ -62,6 +67,8 @@ export class BrowserService {
     return reachable;
   }
   private async serial<T>(id: string, operation: () => Promise<T>): Promise<T> {
+    // Any new HTTP/key/control operation is an ordering boundary for pointer merging.
+    this.pendingPointers.delete(id);
     const next = (this.queues.get(id) ?? Promise.resolve()).catch(() => {}).then(operation);
     this.queues.set(id, next);
     try {
@@ -75,6 +82,7 @@ export class BrowserService {
     body?: unknown,
     signal?: AbortSignal,
     target?: { url: string; token: string },
+    frameOptions?: { allowMissing?: boolean; tag?: string },
   ) {
     signal?.throwIfAborted();
     const workerUrl = target?.url ?? this.config.workerUrl,
@@ -88,6 +96,7 @@ export class BrowserService {
         headers: {
           Authorization: `Bearer ${workerToken}`,
           "Content-Type": "application/json",
+          ...(frameOptions?.tag ? { "If-None-Match": frameOptions.tag } : {}),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "error",
@@ -102,6 +111,7 @@ export class BrowserService {
         503,
       );
     }
+    if (frameOptions?.allowMissing && [304, 404].includes(response.status)) return response;
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       throw new AppError(
@@ -119,6 +129,7 @@ export class BrowserService {
     path: string,
     body?: unknown,
     signal?: AbortSignal,
+    frameOptions?: { allowMissing?: boolean; tag?: string },
   ) {
     const session = await this.get(owner, id);
     const target = session.connectorId
@@ -131,7 +142,7 @@ export class BrowserService {
         "호스트 주소 또는 인증 정보가 변경되었습니다. 새 브라우저 세션을 여세요",
         409,
       );
-    return this.request(path, body, signal, target);
+    return this.request(path, body, signal, target, frameOptions);
   }
   async setControl(owner: string, id: string, control: "agent" | "user") {
     return this.serial(id, async () => {
@@ -311,6 +322,18 @@ export class BrowserService {
     await this.get(owner, id);
     return this.sessionRequest(owner, id, `/sessions/${id}/screenshot`);
   }
+  async liveFrame(owner: string, id: string, tag?: string) {
+    const response = await this.sessionRequest(
+      owner,
+      id,
+      `/sessions/${id}/frame`,
+      undefined,
+      undefined,
+      { allowMissing: true, tag },
+    );
+    // Older Host Agents keep working until their package is updated.
+    return response.status === 404 ? this.preview(owner, id) : response;
+  }
   async input(owner: string, id: string, value: unknown, agent = false, signal?: AbortSignal) {
     return this.serial(id, async () => {
       await this.get(owner, id);
@@ -325,18 +348,45 @@ export class BrowserService {
         : this.save(owner, payload, id);
     });
   }
-  async streamInput(owner: string, id: string, value: unknown) {
-    return this.serial(id, async () => {
+  streamInput(owner: string, id: string, value: unknown): Promise<unknown> {
+    const event = browserInputSchema.parse(value);
+    const pointerKey = `${owner}:${id}`;
+    const pointer = event.type === "vnc_mouse" && event.buttons <= 7;
+    const moving = pointer && this.pointerButtons.get(pointerKey) === event.buttons;
+    if (event.type === "vnc_mouse") this.pointerButtons.set(pointerKey, event.buttons);
+    if (event.type === "vnc_reset") this.pointerButtons.delete(pointerKey);
+    const previous = this.pendingPointers.get(id);
+    if (moving && previous?.owner === owner && previous.moving && !previous.started) {
+      previous.value = event;
+      return previous.promise;
+    }
+    const slot = {
+      owner,
+      value: event as unknown,
+      moving,
+      started: false,
+      promise: undefined as unknown as Promise<unknown>,
+    };
+    const promise = this.serial(id, async () => {
+      slot.started = true;
       const session = await this.get(owner, id);
       if (session.control !== "user")
         throw new AppError("브라우저 제어를 가져온 뒤 조작하세요", 409);
-      const parsed = browserInputSchema.parse(value);
+      const parsed = browserInputSchema.parse(slot.value);
       const payload = await (
         await this.sessionRequest(owner, id, `/sessions/${id}/input`, parsed)
       ).json();
       if (!parsed.type.startsWith("vnc_")) return this.save(owner, payload, id);
       return payload;
     });
+    slot.promise = promise;
+    if (pointer) this.pendingPointers.set(id, slot);
+    void promise
+      .finally(() => {
+        if (this.pendingPointers.get(id) === slot) this.pendingPointers.delete(id);
+      })
+      .catch(() => {});
+    return promise;
   }
   async remove(owner: string, id: string) {
     return this.serial(id, async () => {

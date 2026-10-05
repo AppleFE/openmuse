@@ -9,6 +9,7 @@ import {
   readDownloadFailures,
 } from "./downloads.ts";
 import { WorkerError } from "./errors.ts";
+import { createFrameStream } from "./frame-stream.ts";
 import { validatePublicUrl } from "./network.ts";
 import { startEgressProxy } from "./proxy.ts";
 
@@ -26,6 +27,7 @@ type Running = {
   vncButtons?: number;
   pending: Set<Promise<void>>;
   downloadError?: boolean;
+  frames?: ReturnType<typeof createFrameStream>;
 };
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -141,6 +143,7 @@ export async function createBrowserManager(options: {
     const stored = sessions.get(id);
     if (!stored) throw new WorkerError("SESSION_NOT_FOUND", "Browser session not found.", 404);
     if (instance) {
+      await instance.frames?.close();
       await instance.context.storageState({ path: join(directory(id), "storage.json") });
       await instance.context.close();
       await Promise.allSettled(instance.pending);
@@ -311,6 +314,11 @@ export async function createBrowserManager(options: {
     closeSession: (id: string) => serial(id, () => closeSession(id)),
     screenshot: (id: string) =>
       serial(id, () => active(id).page.screenshot({ type: "png", timeout: 10_000 })),
+    frame: async (id: string) => {
+      const instance = active(id);
+      instance.frames ??= createFrameStream(instance.page);
+      return instance.frames.latest();
+    },
     read: (id: string) =>
       serial(id, async () => {
         const { page } = active(id);
