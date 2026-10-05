@@ -47,7 +47,7 @@ export function WorkspaceTools() {
   });
   useRenderTool({
     name: "prepare_connector_action",
-    description: "Proxmox 작업 검토 표시",
+    description: "커넥터 작업 검토와 실행 결과 표시",
     parameters: displayParameters,
     render: ({ result, status }) => (
       <ConnectorActionCard result={result} loading={status !== "complete"} />
@@ -147,14 +147,24 @@ function ConnectorActionCard({ result, loading }: { result: unknown; loading: bo
   return (
     <Card style={{ gap: 10 }}>
       <Text style={s.heading}>
-        {loading ? "Proxmox 작업 준비 중…" : (action?.title ?? "Proxmox 작업")}
+        {loading ? "커넥터 작업 준비 중…" : (action?.title ?? "커넥터 작업")}
       </Text>
       <ErrorNotice error={response.success ? response.data.error : undefined} />
       {action && (
         <>
-          <Text style={s.small}>작업 내용을 검토한 뒤 앱에서 실행할 수 있습니다.</Text>
+          <Text style={s.small}>
+            {action.status === "awaiting_review"
+              ? "실행 전에 작업 내용을 확인하세요."
+              : action.status === "succeeded"
+                ? action.approvalMethod === "session-bypass"
+                  ? "이 대화의 자동 승인 설정으로 실행했습니다."
+                  : "작업 실행이 완료되었습니다."
+                : action.status === "executing"
+                  ? "작업을 실행하고 있습니다."
+                  : "작업 상태와 실행 결과를 확인하세요."}
+          </Text>
           <Button small onPress={() => open({ type: "review", action })}>
-            Proxmox 작업 검토
+            {action.status === "awaiting_review" ? "작업 검토" : "실행 결과"}
           </Button>
         </>
       )}

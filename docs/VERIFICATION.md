@@ -18,6 +18,20 @@
 - 개선 전 Windows Chromium→Tailscale 웹 프록시→맥미니 Chromium의 키 입력 화면 반응은
   6회 측정에서 중앙값 274ms, 최대 289ms였습니다. 논리적 프레임 크기는 4,096,016바이트였습니다.
   이 값은 특정 시험 조건의 결과이며 네트워크 환경별 성능 보장은 아닙니다.
+- 동일 경로·페이지·6회 측정에서 개선 후 중앙값 39ms, 최대 104ms,
+  논리적 프레임 평균 53,923바이트를 확인했습니다. 실제 Tailscale WebSocket 프록시와
+  맥미니 Chromium을 사용했고 페이지 오류는 없었습니다.
+- 맥미니의 서버·웹·브라우저 워커·Host Agent를 재빌드·재시작하고 기존 활성 브라우저 1개를
+  복원했습니다. DB 오프라인 백업과 `.env`/Host Agent config/커넥터/기본 모델 보존을 확인했습니다.
+- 실제 UI에서 별도 채팅의 bypass 선택→새로고침→설정 유지→Pi의 `prepare_connector_action`
+  호출→GitHub의 기존 private=true를 그대로 적용한 성공 영수증(`approvalMethod=session-bypass`)
+  을 확인했습니다. 검토 방식으로 되돌리기와 다른 채팅의 기본 review도 확인했습니다.
+  시험은 AppleFE/openmuse만 사용하며 ARTEX를 삭제·분리·변경하지 않았습니다.
+- Host Agent 0.3.0 묶음을 Windows에서 별도로 풀고 npm ci로 설치해 실제 인증, 한글 셸,
+  PNG와 새 JPEG 화면, 입력 후 변경된 프레임을 확인했습니다. 묶음의 SHA-256은
+  `fee5e6358ade86fefaea12ffdf73456f137e3a6109ddd790c02cf121d1e18689`입니다.
+  실제 Chromium 복원 검사와 iOS/Android 번들 내보내기도 통과했습니다.
+  비공개 증거는 P41 `verification/browser-latency-20261005`에 저장했습니다.
 
 ## OpenMuse 0.2 — 2026년 10월 5일
 
