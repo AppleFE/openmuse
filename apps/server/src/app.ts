@@ -29,6 +29,7 @@ import { AppError } from "./errors.ts";
 import { Files } from "./files.ts";
 import { GoogleAuth } from "./google-auth.ts";
 import { hostInstallerRoutes } from "./host-installer.ts";
+import { skillRoutes } from "./skills.ts";
 import { UsageService } from "./usage.ts";
 import { WorkspaceService } from "./workspace.ts";
 
@@ -98,7 +99,8 @@ export async function createApp(
     "*",
     bodyLimit({
       maxSize: 12 * 1024 * 1024,
-      onError: (c) => c.json({ error: "Request is too large; PDFs must be 10 MB or smaller" }, 413),
+      onError: (c) =>
+        c.json({ error: "요청이 너무 큽니다. 업로드 파일은 합계 10MB 이하여야 합니다." }, 413),
     }),
   );
   app.onError((error, c) => {
@@ -208,6 +210,7 @@ export async function createApp(
   });
   app.route("/api/agent", agentRoutes(agent));
   app.route("/api/computer", computerRoutes(computer, files));
+  app.route("/api/skills", skillRoutes(agent.skills));
   app.route("/api/connectors", connectorRoutes(connectors));
   app.route("/api/host-agent", hostInstallerRoutes(db, config, connectors));
   app.get("/api/calendars", async (c) => c.json(await workspace.calendars(c.get("owner"))));

@@ -53,7 +53,10 @@
     "pngjs": "^7.0.0",
     "rxjs": "7.8.1",
     "ssh2": "1.17.0",
+    "tar": "7.5.22",
     "ws": "^8.22.0",
+    "yaml": "2.9.1",
+    "yauzl": "3.2.0",
     "zod": "^4.1.0"
   },
   "devDependencies": {
@@ -65,6 +68,7 @@
     "@types/pngjs": "^6.0.5",
     "@types/ssh2": "1.15.5",
     "@types/ws": "^8.18.2",
+    "@types/yauzl": "2.10.3",
     "playwright": "1.62.1",
     "tsx": "^4.20.0",
     "typescript": "~5.9.2"

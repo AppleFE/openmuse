@@ -12,6 +12,7 @@ import {
 import type { ModelProfile } from "../../../../packages/domain/src/agent.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
+import { Skills } from "../skills.ts";
 import { type UsageRecord, UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
@@ -363,7 +364,10 @@ export class PiAgentRunner {
         input.abortTools,
         input.onPolicyFallback,
       ),
-      resourceLoader: emptyResourceLoader(input.systemPrompt),
+      resourceLoader: emptyResourceLoader(
+        input.systemPrompt,
+        await new Skills(this.db, this.config).piResources(input.request.owner),
+      ),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: true },
         retry: { enabled: false },

@@ -13,6 +13,7 @@ import {
   type Tool,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -21,11 +22,13 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { skillPrompt } from "../../../../packages/domain/src/skills.ts";
 import type { BrowserService } from "../browser.ts";
 import type { ComputerService } from "../computer.ts";
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { ConnectorService } from "../connector-service.ts";
 import type { Store } from "../db.ts";
+import { Skills } from "../skills.ts";
 import { UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { createPiTools } from "./pi-tools.ts";
@@ -71,10 +74,10 @@ const clipped = (value: string, max: number) =>
   value.length <= max ? value : `${value.slice(0, max)}\n[truncated by context diet]`;
 const checkpointId = (request: RoleRuntimeRequest) => `${request.task.id}:${request.role.id}`;
 
-export function emptyResourceLoader(systemPrompt: string): ResourceLoader {
+export function emptyResourceLoader(systemPrompt: string, skills: Skill[] = []): ResourceLoader {
   return {
     getExtensions: () => ({ extensions: [], errors: [], runtime: createExtensionRuntime() }),
-    getSkills: () => ({ skills: [], diagnostics: [] }),
+    getSkills: () => ({ skills, diagnostics: [] }),
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
@@ -676,7 +679,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       : "[omitted by context diet]";
     return (
       `Complete the ${request.role.label} role for this durable team task.\n\n` +
-      `Task:\n${clipped(request.task.prompt, taskLimit)}\n\n` +
+      `Task:\n${skillPrompt(request.task.skill, clipped(request.task.prompt, taskLimit))}\n\n` +
       `Completed dependency outputs:\n${dependencies}\n\n` +
       "Return a concrete result describing what was actually done, verification performed, and any remaining limitation."
     );
@@ -703,13 +706,17 @@ export class PiRuntimeHook implements CodingRuntimeHook {
           connectors: this.connectors,
           browser: this.browser,
           jev: this.jev,
+          skills: new Skills(this.db, this.config),
         },
         input.request,
         input.onToolCall,
         input.maxToolCalls,
         input.onPolicyFallback,
       ),
-      resourceLoader: emptyResourceLoader(input.systemPrompt),
+      resourceLoader: emptyResourceLoader(
+        input.systemPrompt,
+        await new Skills(this.db, this.config).piResources(input.request.owner),
+      ),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: true },
         retry: { enabled: false },

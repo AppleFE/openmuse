@@ -27,6 +27,7 @@ import type {
   Mail,
   ProposalInput,
 } from "../../../../packages/domain/src/index.ts";
+import type { SkillActivation } from "../../../../packages/domain/src/skills.ts";
 import type { ActionService } from "../actions.ts";
 import type { BrowserService } from "../browser.ts";
 import { ComputerService } from "../computer.ts";
@@ -36,6 +37,7 @@ import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
 import type { Files } from "../files.ts";
 import { backgroundFailure } from "../log.ts";
+import { Skills } from "../skills.ts";
 import type { WorkspaceService } from "../workspace.ts";
 import { analyzeSpending } from "./finance.ts";
 import { JevGuardRuntimeHook, JevRuntime } from "./jev-runtime.ts";
@@ -60,6 +62,7 @@ export class AgentService {
   readonly runtimeSettings: RuntimeSettingsService;
   readonly pi: PiAgentRunner;
   readonly schedules: ScheduleService;
+  readonly skills: Skills;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -74,6 +77,7 @@ export class AgentService {
     runtimeHooks?: RuntimeHookPipeline,
   ) {
     this.models = new ModelRegistry(db, config);
+    this.skills = new Skills(db, config);
     this.runtimeSettings = new RuntimeSettingsService(db, config);
     const jev = new JevRuntime(this.runtimeSettings);
     this.pi = new PiAgentRunner(db, config, jev);
@@ -91,7 +95,7 @@ export class AgentService {
         new JevGuardRuntimeHook(jev),
         new PiRuntimeHook(db, config, computer, connectors, jev, undefined, browser),
       ]);
-    const teamModels = new TeamModelExecutor(this.models, hooks, db);
+    const teamModels = new TeamModelExecutor(this.models, hooks, db, this.skills);
     this.teams = new TeamEngine(db, (input) => teamModels.execute(input));
     this.worker = new TaskWorker(db, (owner, task, context) => this.execute(owner, task, context), {
       settled: (owner, task) => this.publishOutcome(owner, task),
@@ -306,6 +310,7 @@ export class AgentService {
     idempotencyKey?: string,
     held = false,
     sourceThreadId?: string,
+    skill?: SkillActivation,
   ) {
     const input = createTaskSchema.parse(raw);
     if (input.modelId && input.teamId)
@@ -359,6 +364,7 @@ export class AgentService {
     const task: AgentTask = {
       id,
       sourceThreadId,
+      skill: skill ?? (await this.skills.invocation(owner, input.prompt)),
       title: input.title ?? input.prompt.slice(0, 90),
       prompt: input.prompt,
       kind: input.kind,

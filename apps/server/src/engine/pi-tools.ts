@@ -7,6 +7,8 @@ import type { BrowserService } from "../browser.ts";
 import { browserTools } from "../browser-tools.ts";
 import type { ComputerService } from "../computer.ts";
 import type { ConnectorService } from "../connector-service.ts";
+import { skillTools } from "../skill-tools.ts";
+import type { Skills } from "../skills.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import type { RoleRuntimeRequest } from "./runtime-hooks.ts";
 
@@ -26,6 +28,7 @@ export interface PiToolDependencies {
   connectors?: ConnectorService;
   browser?: BrowserService;
   jev: JevRuntime;
+  skills?: Skills;
 }
 
 /** Native Pi tools; host access is scoped to an explicitly configured connector. */
@@ -246,6 +249,18 @@ export function createPiTools(
     tools.push(
       ...adaptCopilotTools(
         browserTools(dependencies.browser, request.owner, request.task.id, request.signal),
+        dependencies,
+        request,
+        onCall,
+        maxToolCalls,
+        undefined,
+        onPolicyFallback,
+      ),
+    );
+  if (dependencies.skills)
+    tools.push(
+      ...adaptCopilotTools(
+        skillTools(dependencies.skills, request.owner, request.task.skill),
         dependencies,
         request,
         onCall,
