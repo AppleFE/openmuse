@@ -63,7 +63,7 @@ export class OpenCodexCatalog {
   start() {
     if (!this.enabled || this.timer || this.closed) return;
     void this.refresh();
-    this.timer = setInterval(() => void this.refresh(), intervalMs);
+    this.timer = setInterval(() => void this.refresh(true), intervalMs);
     this.timer.unref();
   }
   async stop() {

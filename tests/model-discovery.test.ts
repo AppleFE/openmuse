@@ -161,6 +161,27 @@ test("discovery deduplicates concurrent fetches and refreshes after the 60 secon
   }
 });
 
+test("background sync still runs on its minute boundary after a manual refresh", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const f = await fixture();
+  const registry = new ModelRegistry(f.db, f.config, f.clock);
+  try {
+    registry.discovery.start();
+    await registry.discovery.refresh();
+    assert.equal(f.requests.length, 1);
+    await registry.discovery.refresh(true);
+    assert.equal(f.requests.length, 2);
+    f.response({ data: [{ id: "added-in-background" }] });
+    t.mock.timers.tick(60_000);
+    await registry.discovery.refresh();
+    assert.equal(f.requests.length, 3);
+    assert.ok(registry.list().some((m) => m.label === "added-in-background"));
+  } finally {
+    await registry.discovery.stop();
+    await f.close();
+  }
+});
+
 test("provider failures retain durable last-good catalog without leaking errors, while credential changes invalidate it", async () => {
   const f = await fixture();
   const first = new ModelRegistry(f.db, f.config);
