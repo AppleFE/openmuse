@@ -37,6 +37,8 @@ export interface Config {
   dataDir: string;
   databaseUrl?: string;
   accessKey?: string;
+  /** Explicit single-workspace access without a user-entered key. */
+  authMode?: "access-key" | "none";
   encryptionKey?: string;
   model?: string;
   /** Server allowlist exposed without credentials; clients may select only these IDs. */
@@ -96,6 +98,9 @@ export function normalizeOllamaBaseUrl(value: string | undefined): string | unde
 // reviewed, idempotency-keyed actions.
 export const MODEL_MAX_RETRIES = 2;
 export function readConfig(): Config {
+  const authMode = process.env.OPENMUSE_AUTH_MODE ?? "access-key";
+  if (authMode !== "access-key" && authMode !== "none")
+    throw new Error("OPENMUSE_AUTH_MODE must be access-key or none");
   const mode = process.env.WORKSPACE_MODE ?? "sample";
   if (mode !== "sample" && mode !== "live")
     throw new Error("WORKSPACE_MODE must be sample or live");
@@ -115,6 +120,7 @@ export function readConfig(): Config {
     dataDir: resolve(process.env.DATA_DIR ?? ".openmuse"),
     databaseUrl: process.env.DATABASE_URL,
     accessKey: process.env.OPENMUSE_ACCESS_KEY,
+    authMode,
     encryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
     model,
     models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
@@ -141,7 +147,7 @@ export function readConfig(): Config {
       process.env.ALLOWED_ORIGINS ?? "http://localhost:8081,http://127.0.0.1:8081"
     ).split(","),
   };
-  if (config.accessKey && config.accessKey.length < 24)
+  if (authMode !== "none" && config.accessKey && config.accessKey.length < 24)
     throw new Error("OPENMUSE_ACCESS_KEY must contain at least 24 characters");
   if (config.encryptionKey) {
     try {
@@ -150,9 +156,9 @@ export function readConfig(): Config {
       throw new Error("TOKEN_ENCRYPTION_KEY must encode exactly 32 bytes as base64");
     }
   }
-  if (mode === "live" && (!config.accessKey || !config.encryptionKey))
+  if (mode === "live" && ((authMode !== "none" && !config.accessKey) || !config.encryptionKey))
     throw new Error(
-      "Live mode requires OPENMUSE_ACCESS_KEY (24+ characters) and TOKEN_ENCRYPTION_KEY (32-byte base64)",
+      "Live mode requires TOKEN_ENCRYPTION_KEY (32-byte base64) and OPENMUSE_ACCESS_KEY (24+ characters) unless OPENMUSE_AUTH_MODE=none",
     );
   if (mode === "sample" && !["127.0.0.1", "localhost", "::1"].includes(config.host))
     throw new Error("Sample workspace is local-only. HOST must be a loopback address.");

@@ -41,7 +41,8 @@ placeholders. `validate-env.mjs` reports names and requirements only; it never p
 
 | Setting | Initial sample/model deployment | Live Gmail/Calendar deployment |
 | --- | --- | --- |
-| `OPENMUSE_ACCESS_KEY` | Required here because the sample workspace is proxied; 24+ random characters | Required |
+| `OPENMUSE_AUTH_MODE` | `access-key` by default; `none` opens the workspace directly | Same |
+| `OPENMUSE_ACCESS_KEY` | Required with `access-key`; 24+ random characters | Required with `access-key` |
 | `MODEL` or `OPENMUSE_MODELS` | Required with at least one enabled model | Required |
 | OpenCodex gateway | `MODEL=opencodex/gpt-6-sol`, `OPENCODEX_BASE_URL` and server-only `OPENCODEX_API_KEY` | Same |
 | Cloud model credential | Only required when a cloud provider model is selected | Same |
@@ -58,9 +59,13 @@ origin—never an owner, provider, worker, or Google credential. It must equal
 `PUBLIC_API_URL`, and that origin must appear exactly in `ALLOWED_ORIGINS`. Changing any of these
 three values requires rebuilding the web export with `deploy.sh`.
 
-The normal sample mode is unauthenticated. This deployment configures `OPENMUSE_ACCESS_KEY`, which
-now opts sample mode into the same owner-key session gate as live mode. The UI first tries the local
-session, then presents its existing key form after the protected server rejects that attempt.
+`OPENMUSE_AUTH_MODE=none` disables the user-entered workspace key. The UI opens the existing
+`local-user` workspace automatically, including from a new browser and after session expiry.
+Anyone who can reach this deployment can open that workspace; the deployment keeps its private
+Tailnet/loopback bindings. Provider credentials, Host Agent tokens, the encryption vault and signed
+browser/file links retain their separate purposes. Browser requests still use an automatically
+issued session. With the default `access-key` mode, configured sample deployments and all live
+deployments require the owner key; omitting a live key does not silently disable protection.
 
 현재 P41 설치는 맥미니의 OpenCodex 게이트웨이를 사용합니다. 로컬 Qwen3 4B·8B 모델은
 사용자 요청으로 삭제했으며 Ollama 실행과 자동 시작도 중지했습니다. 모델 파일은 남아 있지
@@ -69,6 +74,7 @@ session, then presents its existing key form after the protected server rejects 
 
 ```dotenv
 AGENT_BACKEND=model
+OPENMUSE_AUTH_MODE=none
 MODEL=opencodex/gpt-6-sol
 OPENCODEX_BASE_URL=http://100.80.94.16:20100/v1
 ```
@@ -83,8 +89,8 @@ LAN에서 게이트웨이를 이용할 때는 `http://192.168.0.206:20100/v1`도
 모델 연결은 OpenCodex 모델로 전환했으며 과거 작업·대화 기록은 보존했습니다.
 
 OpenMuse의 앱·DB·Pi 도구는 맥미니에서 실행됩니다. 모델 추론은 OpenCodex가 연결한 모델
-공급자가 처리합니다. CopilotKit 프로젝트 키는 필요하지 않으며 `OPENMUSE_ACCESS_KEY`는
-워크스페이스 로그인용으로 별도 유지합니다.
+공급자가 처리합니다. CopilotKit 프로젝트 키는 필요하지 않습니다. 현재 P41 배포는 사용자
+요청에 따라 `OPENMUSE_AUTH_MODE=none`으로 설정하고 `OPENMUSE_ACCESS_KEY`를 제거했습니다.
 
 ## Install or update
 
@@ -173,7 +179,7 @@ curl --fail http://127.0.0.1:8790/health
 curl --fail http://127.0.0.1:8081/healthz
 ```
 
-Then open `PUBLIC_API_URL`, enter the owner access key, and verify model chat plus a public-page
+Then open `PUBLIC_API_URL` (enter the owner key only in `access-key` mode), and verify model chat plus a public-page
 browser task. A browser worker `/health` response proves only the Node service is up; the real task
 also verifies Chromium, token wiring, proxy streaming, and profiles on P41.
 

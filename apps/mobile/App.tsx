@@ -12,7 +12,7 @@ import {
   SquareCheck,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -38,6 +38,7 @@ import {
   createSession,
   MuseApi,
   readStoredSessionToken,
+  SessionError,
   storeSessionToken,
 } from "./src/api";
 import { ChatScreen, WorkspaceTools } from "./src/chat";
@@ -91,25 +92,35 @@ function MuseApp() {
   }, []);
   const [token, setToken] = useState("");
   const [accessKey, setAccessKey] = useState("");
+  const [needsAccessKey, setNeedsAccessKey] = useState(false);
+  const currentToken = useRef("");
+  const connecting = useRef(false);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const connect = useCallback(async (key?: string) => {
+    if (connecting.current) return;
+    connecting.current = true;
     setBusy(true);
     setError("");
     try {
       const session = await createSession(key);
       storeSessionToken(session.token);
+      currentToken.current = session.token;
+      setNeedsAccessKey(false);
       setAccessKey("");
       setToken(session.token);
     } catch (e) {
+      if (e instanceof SessionError) setNeedsAccessKey(e.status === 401);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      connecting.current = false;
       setBusy(false);
     }
   }, []);
   useEffect(() => {
     const storedToken = readStoredSessionToken();
     if (storedToken) {
+      currentToken.current = storedToken;
       setToken(storedToken);
       setBusy(false);
       return;
@@ -117,12 +128,15 @@ function MuseApp() {
     void connect();
   }, [connect]);
   const logout = useCallback(() => {
+    // Several expired requests may settle together. Ignore callbacks from an older session.
+    if (connecting.current || currentToken.current !== token) return;
+    currentToken.current = "";
     storeSessionToken();
     setAccessKey("");
     setError("");
-    setBusy(false);
     setToken("");
-  }, []);
+    void connect();
+  }, [connect, token]);
   return (
     <SafeAreaProvider>
       <StatusBar style={resolved === "dark" ? "light" : "dark"} />
@@ -156,18 +170,21 @@ function MuseApp() {
             ) : (
               <Card style={{ width: "100%" }}>
                 <ErrorNotice error={error} />
-                <Field
-                  label="워크스페이스 접속 키"
-                  value={accessKey}
-                  onChangeText={setAccessKey}
-                  secureTextEntry
-                  placeholder="서버에 설정된 접속 키를 입력하세요"
-                />
+                {needsAccessKey && (
+                  <Field
+                    label="워크스페이스 접속 키"
+                    value={accessKey}
+                    onChangeText={setAccessKey}
+                    secureTextEntry
+                    placeholder="서버에 설정된 접속 키를 입력하세요"
+                  />
+                )}
                 <Button primary onPress={() => void connect(accessKey || undefined)}>
-                  워크스페이스 열기
+                  {needsAccessKey ? "워크스페이스 열기" : "다시 연결"}
                 </Button>
                 <Text style={[s.small, { marginTop: 15 }]}>
-                  접속 보호가 설정된 서버에는 접속 키가 필요합니다. OpenMuse 서버 주소: {API_URL}.
+                  {needsAccessKey ? "이 서버에는 접속 키가 필요합니다. " : ""}
+                  OpenMuse 서버 주소: {API_URL}.
                 </Text>
               </Card>
             )}

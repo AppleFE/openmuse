@@ -115,6 +115,30 @@ test("names missing credentials and unsafe exposure without echoing other values
   assert.doesNotMatch(`${result.stdout}${result.stderr}`, new RegExp(secret));
 });
 
+test("explicit keyless deployment skips only the workspace access key and rejects misspelled modes", async () => {
+  await writeFile(envFile, config({ OPENMUSE_AUTH_MODE: "none", OPENMUSE_ACCESS_KEY: undefined }));
+  assert.equal(validate().status, 0);
+  await writeFile(
+    envFile,
+    config({ OPENMUSE_AUTH_MODE: "none", OPENMUSE_ACCESS_KEY: undefined, WORKSPACE_MODE: "live" }),
+  );
+  const missingVault = validate();
+  assert.equal(missingVault.status, 1);
+  assert.match(missingVault.stderr, /TOKEN_ENCRYPTION_KEY/);
+  await writeFile(
+    envFile,
+    config({
+      OPENMUSE_AUTH_MODE: "none",
+      OPENMUSE_ACCESS_KEY: undefined,
+      WORKSPACE_MODE: "live",
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),
+    }),
+  );
+  assert.equal(validate().status, 0);
+  await writeFile(envFile, config({ OPENMUSE_AUTH_MODE: "typo" }));
+  assert.match(validate().stderr, /OPENMUSE_AUTH_MODE/);
+});
+
 test("rejects non-loopback Ollama endpoints even when the rest of the deployment is valid", async () => {
   await writeFile(envFile, config({ OLLAMA_BASE_URL: "http://100.80.94.16:11434" }));
   const result = validate();

@@ -49,3 +49,33 @@ test("sample-mode startup validates a configured vault key and permits its absen
     });
   }
 });
+
+test("keyless live mode requires an explicit choice and retains the credential vault requirement", () => {
+  const names = [
+    "WORKSPACE_MODE",
+    "AGENT_BACKEND",
+    "OPENMUSE_AUTH_MODE",
+    "OPENMUSE_ACCESS_KEY",
+    "TOKEN_ENCRYPTION_KEY",
+  ];
+  const previous = names.map((name) => process.env[name]);
+  try {
+    process.env.WORKSPACE_MODE = "live";
+    process.env.AGENT_BACKEND = "model";
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 1).toString("base64");
+    delete process.env.OPENMUSE_ACCESS_KEY;
+    delete process.env.OPENMUSE_AUTH_MODE;
+    assert.throws(readConfig, /OPENMUSE_ACCESS_KEY/);
+    process.env.OPENMUSE_AUTH_MODE = "none";
+    assert.equal(readConfig().authMode, "none");
+    delete process.env.TOKEN_ENCRYPTION_KEY;
+    assert.throws(readConfig, /TOKEN_ENCRYPTION_KEY/);
+    process.env.OPENMUSE_AUTH_MODE = "typo";
+    assert.throws(readConfig, /OPENMUSE_AUTH_MODE must be access-key or none/);
+  } finally {
+    names.forEach((name, index) => {
+      if (previous[index] === undefined) delete process.env[name];
+      else process.env[name] = previous[index];
+    });
+  }
+});

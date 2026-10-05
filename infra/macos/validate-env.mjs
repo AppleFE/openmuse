@@ -91,7 +91,10 @@ if (optional("TASK_WORKER_ENABLED") !== "true")
 if (optional("DATABASE_URL"))
   errors.push("DATABASE_URL must be unset for the single-process PGlite deployment");
 
-requiredCredential("OPENMUSE_ACCESS_KEY", 24);
+const authMode = optional("OPENMUSE_AUTH_MODE") || "access-key";
+if (!["access-key", "none"].includes(authMode))
+  errors.push("OPENMUSE_AUTH_MODE must be access-key or none");
+if (authMode !== "none") requiredCredential("OPENMUSE_ACCESS_KEY", 24);
 {
   const encryptionKey =
     mode === "live" ? requiredCredential("TOKEN_ENCRYPTION_KEY") : optional("TOKEN_ENCRYPTION_KEY");
@@ -207,7 +210,7 @@ if (optional("COMPUTER_ENABLED") === "true") {
 } else if (optional("COMPUTER_ENABLED") !== "false")
   errors.push("COMPUTER_ENABLED must be true or false");
 
-if (mode === "sample" && !optional("OPENMUSE_ACCESS_KEY"))
+if (authMode !== "none" && mode === "sample" && !optional("OPENMUSE_ACCESS_KEY"))
   credentialErrors.push("the proxied sample workspace must set OPENMUSE_ACCESS_KEY");
 if (mode === "sample" && webHosts.length === 1 && webHosts[0] === "127.0.0.1")
   warnings.push(

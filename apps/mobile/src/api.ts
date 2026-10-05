@@ -64,6 +64,15 @@ export class MuseApi {
   }
 }
 
+export class SessionError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function createSession(
   accessKey?: string,
 ): Promise<{ token: string; mode: "sample" | "live" }> {
@@ -73,6 +82,7 @@ export async function createSession(
     body: JSON.stringify({ accessKey }),
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || "Could not open your workspace.");
+  if (!response.ok)
+    throw new SessionError(payload.error || "워크스페이스에 연결할 수 없습니다.", response.status);
   return payload;
 }

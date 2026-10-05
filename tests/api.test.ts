@@ -76,6 +76,57 @@ test("live auth remains fail-closed when passed a config without an access key",
     /Access key is incorrect/,
   );
 });
+test("explicit keyless mode opens the existing owner without exposing API or provider credentials", async () => {
+  const openAuth = new Auth(
+    db,
+    {
+      ...config,
+      mode: "live",
+      agentBackend: "model",
+      authMode: "none",
+      accessKey: "unused-old-access-key-123456",
+      workerToken: "private-worker-token",
+    },
+    "private-signing-key",
+  );
+  for (const key of [undefined, "ignored-old-client-key"]) {
+    const session = await openAuth.session(key);
+    assert.equal(await openAuth.owner(`Bearer ${session.token}`), "local-user");
+    assert.ok(!JSON.stringify(session).includes("private-"));
+    assert.ok(!JSON.stringify(session).includes("unused-old"));
+  }
+  await assert.rejects(openAuth.owner(), /Sign in to OpenMuse/);
+  await assert.rejects(openAuth.owner("Bearer invalid-session"), /Session expired/);
+  const previous = { authMode: config.authMode, accessKey: config.accessKey };
+  try {
+    config.authMode = "none";
+    config.accessKey = "unused-old-access-key-123456";
+    const response = await app.request("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(response.status, 200);
+    const { token } = await response.json();
+    assert.equal(
+      (await app.request("/api/connectors", { headers: { Authorization: `Bearer ${token}` } }))
+        .status,
+      200,
+    );
+    assert.equal(
+      (
+        await app.request("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: "https://unrelated.example" },
+          body: "{}",
+        })
+      ).status,
+      403,
+    );
+  } finally {
+    Object.assign(config, previous);
+  }
+});
 test("sample workspace serves a real PDF and filling creates a new version", async () => {
   const response = await app.request("/api/workspace", { headers: headers() });
   assert.equal(response.status, 200);
