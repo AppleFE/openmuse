@@ -102,6 +102,7 @@ export class AgentService {
     });
   }
   start() {
+    this.models.discovery.start();
     this.worker.start();
     this.schedules.start();
     // Maintenance is independent of the HTTP response and reconciles durable records.
@@ -111,6 +112,7 @@ export class AgentService {
     }, 60000);
   }
   async stop() {
+    await this.models.discovery.stop();
     await this.schedules.stop();
     if (this.maintenance) clearInterval(this.maintenance);
     this.maintenance = undefined;
@@ -204,6 +206,7 @@ export class AgentService {
       notifications,
       identity: identity ?? { name: "OpenMuse", tone: "warm" },
       models: this.models.list(),
+      modelCatalog: this.models.discovery.status(),
       modelSelection,
       teams,
       worker: {
@@ -275,6 +278,7 @@ export class AgentService {
     }
   }
   async createTeam(owner: string, raw: unknown) {
+    await this.models.discovery.refresh();
     const input = teamInputSchema.parse(raw);
     const now = date();
     const team: AgentTeam = {
@@ -288,6 +292,7 @@ export class AgentService {
     return this.db.put(owner, "agent-teams", team);
   }
   async updateTeam(owner: string, id: string, raw: unknown) {
+    await this.models.discovery.refresh();
     const existing = await this.getTeam(owner, id);
     const input = teamInputSchema.parse(raw);
     const team: AgentTeam = {
@@ -313,6 +318,7 @@ export class AgentService {
     skill?: SkillActivation,
   ) {
     const input = createTaskSchema.parse(raw);
+    await this.models.discovery.refresh();
     if (input.modelId && input.teamId)
       throw new AppError("Choose either a model or a team for this task", 422);
     if (input.goalId && !(await this.db.get(owner, "goals", input.goalId)))

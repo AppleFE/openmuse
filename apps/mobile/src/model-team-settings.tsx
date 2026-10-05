@@ -1,9 +1,10 @@
-import { Bot, Check, ChevronDown, Plus, Trash2, Users } from "lucide-react-native";
+import { Bot, Check, ChevronDown, Plus, RefreshCw, Trash2, Users } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import type {
   AgentTeam,
   AgentTeamRole,
+  ModelCatalogStatus,
   ModelProfile,
   TeamInput,
 } from "../../../packages/domain/src/agent";
@@ -22,6 +23,46 @@ function modelDetail(model: ModelProfile) {
     ? ` · ${model.capabilities.map(uiLabel).join(", ")}`
     : "";
   return `${model.provider} · ${model.model}${capabilities}`;
+}
+
+function ModelCatalogRefresh() {
+  const { api } = useWorkspace();
+  const { data, refresh } = useAgentWorkspace();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const status = data?.modelCatalog;
+  if (!status?.enabled) return null;
+  async function sync() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.request<{ modelCatalog: ModelCatalogStatus }>("/api/agent/models/refresh", {});
+      await refresh();
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={[s.row, { flexWrap: "wrap", gap: 10 }]}>
+        <Text style={[s.small, { flex: 1, minWidth: 140 }]}>
+          {status.lastSyncedAt
+            ? `OpenCodex ${status.modelCount}개 · ${new Date(status.lastSyncedAt).toLocaleTimeString("ko-KR")} 갱신`
+            : "OpenCodex 모델 목록 확인 중"}
+          {` · ${status.refreshIntervalSeconds}초마다 자동 갱신`}
+        </Text>
+        <Button small icon={RefreshCw} busy={busy} onPress={() => void sync()}>
+          모델 목록 새로고침
+        </Button>
+      </View>
+      <ErrorNotice error={error || status.error || ""} />
+      {status.state === "error" && (
+        <Text style={s.small}>마지막으로 확인한 목록을 유지합니다.</Text>
+      )}
+    </View>
+  );
 }
 
 export function ModelChoices({
@@ -137,6 +178,7 @@ function ModelPicker({
       </Pressable>
       {open && (
         <Sheet title={title} subtitle={subtitle} onClose={() => setOpen(false)}>
+          <ModelCatalogRefresh />
           <Field
             label="모델 검색"
             value={query}
@@ -403,9 +445,12 @@ export function ModelTeamSettings() {
       <Card style={{ gap: 12 }}>
         <SectionHeading title="기본 모델" />
         <Text style={s.muted}>
-          서버에 설정된 모델 목록입니다. 비활성화됐거나 서버 인증 정보가 없는 모델은 선택할 수
-          없습니다.
+          {data?.modelCatalog?.enabled
+            ? "OpenCodex 모델은 연결된 서버에서 자동으로 가져옵니다."
+            : "서버에 설정된 모델 목록입니다."}{" "}
+          비활성화됐거나 사용할 수 없는 모델은 선택할 수 없습니다.
         </Text>
+        <ModelCatalogRefresh />
         {models.length ? (
           <ModelPicker
             models={models}

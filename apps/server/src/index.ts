@@ -12,6 +12,7 @@ const db = await createStore({
 });
 await db.recoverInterruptedActions();
 const { app, agent, auth, browser, hostEvents } = await createApp(db, config);
+agent.models.discovery.start();
 if (config.taskWorkerEnabled) agent.start();
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, () =>
   console.log(`OpenMuse ${config.mode} API ready at ${config.publicUrl}`),

@@ -9,6 +9,7 @@ import {
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
+import { discoveredCapabilities, discoveredModelId, OpenCodexCatalog } from "./model-discovery.ts";
 
 const profileInputSchema = z.object({
   id: z
@@ -92,10 +93,13 @@ function hasProviderCredential(config: Config, provider: ModelProvider) {
 
 export class ModelRegistry {
   private readonly profiles: ModelProfile[];
+  readonly discovery: OpenCodexCatalog;
   constructor(
     private readonly db: Store,
     private readonly config: Config,
+    now = Date.now,
   ) {
+    this.discovery = new OpenCodexCatalog(db, config, now);
     this.profiles = (config.models ?? parseModelCatalog(undefined, config.model)).map((profile) => {
       const available = profile.enabled && hasProviderCredential(config, profile.provider);
       return {
@@ -112,14 +116,59 @@ export class ModelRegistry {
     });
   }
   list(): ModelProfile[] {
-    return this.profiles.map((profile) => ({
+    const remote = this.discovery.catalog;
+    if (!remote)
+      return this.profiles.map((profile) => ({
+        ...profile,
+        capabilities: [...profile.capabilities],
+      }));
+    const byModel = new Map(remote.data.map((model) => [`opencodex/${model.id}`, model]));
+    const configuredModels = new Set(
+      this.profiles
+        .filter((profile) => profile.provider === "opencodex")
+        .map((profile) => profile.model.replace(/^opencodex:/, "opencodex/")),
+    );
+    const configuredIds = new Set(this.profiles.map((profile) => profile.id));
+    const configured = this.profiles.map((profile) => {
+      if (profile.provider !== "opencodex") return profile;
+      const model = byModel.get(profile.model.replace(/^opencodex:/, "opencodex/"));
+      if (!profile.enabled) return profile;
+      return model
+        ? {
+            ...profile,
+            capabilities: profile.capabilities.filter((capability) =>
+              discoveredCapabilities(model).includes(capability),
+            ),
+            available: true,
+            unavailableReason: undefined,
+          }
+        : { ...profile, available: false, unavailableReason: "provider_removed" as const };
+    });
+    const discovered: ModelProfile[] = remote.data
+      .filter((model) => !configuredModels.has(`opencodex/${model.id}`))
+      .map((model) => {
+        let id = discoveredModelId(model.id);
+        while (configuredIds.has(id)) id = discoveredModelId(id);
+        return {
+          id,
+          label: model.id,
+          model: `opencodex/${model.id}`,
+          provider: "opencodex",
+          capabilities: discoveredCapabilities(model),
+          available: true,
+          enabled: true,
+        };
+      });
+    return [...configured, ...discovered].map((profile) => ({
       ...profile,
       capabilities: [...profile.capabilities],
     }));
   }
   require(id: string): ModelProfile {
-    const profile = this.profiles.find((candidate) => candidate.id === id && candidate.enabled);
+    const profile = this.list().find((candidate) => candidate.id === id && candidate.enabled);
     if (!profile) throw new AppError("Model is not configured or enabled on this server", 422);
+    if (profile.unavailableReason === "provider_removed")
+      throw new AppError("이 모델은 현재 OpenCodex 목록에 없습니다. 다른 모델을 선택하세요.", 422);
     if (!profile.available)
       throw new AppError("The model's server-side provider credential is not configured", 422);
     return profile;
@@ -131,14 +180,15 @@ export class ModelRegistry {
     return { ...snapshot, enabled: true, available: true };
   }
   defaultProfile(): ModelProfile | null {
-    return this.profiles.find((profile) => profile.available) ?? null;
+    return this.list().find((profile) => profile.available) ?? null;
   }
   async selection(owner: string): Promise<ModelSelection> {
+    await this.discovery.refresh();
     const saved = await this.db.get<ModelSelection>(owner, "model-settings", "default");
     if (saved?.modelId === null) return saved;
     if (
       saved?.modelId &&
-      this.profiles.some((profile) => profile.id === saved.modelId && profile.available)
+      this.list().some((profile) => profile.id === saved.modelId && profile.available)
     )
       return saved;
     return {
@@ -148,6 +198,7 @@ export class ModelRegistry {
     };
   }
   async select(owner: string, modelId: string | null): Promise<ModelSelection> {
+    await this.discovery.refresh();
     if (modelId !== null) this.require(modelId);
     return this.db.put(owner, "model-settings", {
       id: "default",
@@ -156,6 +207,7 @@ export class ModelRegistry {
     });
   }
   async resolve(owner: string, requested?: string): Promise<ModelProfile | null> {
+    await this.discovery.refresh();
     if (requested) return this.require(requested);
     const selected = await this.selection(owner);
     return selected.modelId ? this.require(selected.modelId) : null;

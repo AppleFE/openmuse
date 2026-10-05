@@ -31,6 +31,9 @@ export function agentConfigured(config: Config) {
       ? Boolean(config.agentUrl)
       : Boolean(
           modelConfigured ||
+            (config.openCodexModelDiscovery !== false &&
+              config.openCodexBaseUrl &&
+              config.openCodexApiKey) ||
             (config.model &&
               (process.env.OPENAI_API_KEY ||
                 process.env.ANTHROPIC_API_KEY ||

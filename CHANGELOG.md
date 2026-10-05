@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — 2026-10-06
+
+- Discover OpenCodex models at startup and every minute, with manual refresh and sync status in model selection and settings.
+- Preserve existing profile IDs, default/team selections, disabled models and other providers; persist the last successful catalog for outage recovery.
+- Verify a real Windows Host Agent test report in the main conversation and its OpenMuse AI acknowledgement.
+
 ## Unreleased
 
 - Selectable model catalog (`OPENMUSE_MODELS`) across OpenAI, Anthropic, Google, and an OpenCodex data-plane proxy, with per-request model selection replacing the single `MODEL` setting.

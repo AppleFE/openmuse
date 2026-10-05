@@ -36,9 +36,18 @@ export interface ModelProfile {
   model: string;
   capabilities: ModelCapability[];
   enabled: boolean;
-  /** True when enabled and its server-side provider credential is configured. */
+  /** Enabled with a credential; discovered models must still appear in the provider catalog. */
   available: boolean;
-  unavailableReason?: "disabled" | "missing_credentials";
+  unavailableReason?: "disabled" | "missing_credentials" | "provider_removed";
+}
+export interface ModelCatalogStatus {
+  enabled: boolean;
+  state: "disabled" | "pending" | "ready" | "error";
+  refreshIntervalSeconds: number;
+  modelCount: number;
+  lastAttemptAt?: string;
+  lastSyncedAt?: string;
+  error?: string;
 }
 export type ModelSnapshot = Pick<
   ModelProfile,
@@ -270,6 +279,7 @@ export interface AgentWorkspace {
   identity: AgentIdentity;
   worker: { running: boolean; lastTickAt?: string };
   models?: ModelProfile[];
+  modelCatalog?: ModelCatalogStatus;
   modelSelection?: ModelSelection;
   teams?: AgentTeam[];
 }

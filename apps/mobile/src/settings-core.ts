@@ -2,12 +2,13 @@ export interface AvailableModel {
   id: string;
   enabled: boolean;
   available: boolean;
-  unavailableReason?: "disabled" | "missing_credentials";
+  unavailableReason?: "disabled" | "missing_credentials" | "provider_removed";
 }
 
 export function modelAvailabilityLabel(model: AvailableModel) {
   if (model.available) return "Available";
   if (model.unavailableReason === "missing_credentials") return "Server key required";
+  if (model.unavailableReason === "provider_removed") return "OpenCodex 목록에서 제거됨";
   return "Disabled";
 }
 

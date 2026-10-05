@@ -144,6 +144,7 @@ test("OpenCodex profiles use its native Responses endpoint, data key, and select
       models,
       openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
       openCodexApiKey: process.env.OPENCODEX_API_KEY,
+      openCodexModelDiscovery: false,
     };
     assert.equal(agentConfigured(config), true);
     const registry = new ModelRegistry(db, config);

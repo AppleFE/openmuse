@@ -45,7 +45,17 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
   app.get("/schedules/:id/runs", async (c) =>
     c.json(await service.schedules.runs(c.get("owner"), c.req.param("id"))),
   );
-  app.get("/models", (c) => c.json(service.models.list()));
+  app.get("/models", async (c) => {
+    await service.models.discovery.refresh();
+    return c.json(service.models.list());
+  });
+  app.post("/models/refresh", async (c) => {
+    await service.models.discovery.refresh(true);
+    return c.json({
+      models: service.models.list(),
+      modelCatalog: service.models.discovery.status(),
+    });
+  });
   app.get("/model-settings", async (c) => c.json(await service.modelSelection(c.get("owner"))));
   const saveModelSelection = async (c: Context<{ Variables: { owner: string } }>) => {
     const { modelId } = modelSelectionInputSchema.parse(await c.req.json());

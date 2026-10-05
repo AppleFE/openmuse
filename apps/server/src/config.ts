@@ -41,10 +41,12 @@ export interface Config {
   authMode?: "access-key" | "none";
   encryptionKey?: string;
   model?: string;
-  /** Server allowlist exposed without credentials; clients may select only these IDs. */
+  /** Static profiles; OpenCodex discovery adds server-authorized profiles without exposing keys. */
   models?: ModelProfile[];
   openCodexBaseUrl?: string;
   openCodexApiKey?: string;
+  /** Discover models from the configured OpenCodex data endpoint; defaults to true. */
+  openCodexModelDiscovery?: boolean;
   /** Explicit local Ollama origin; no API key is sent. */
   ollamaBaseUrl?: string;
   /** Server-side Jev defaults; owner settings never expose the credential. */
@@ -126,6 +128,7 @@ export function readConfig(): Config {
     models: parseModelCatalog(process.env.OPENMUSE_MODELS, model),
     openCodexBaseUrl: process.env.OPENCODEX_BASE_URL,
     openCodexApiKey: process.env.OPENCODEX_API_KEY,
+    openCodexModelDiscovery: process.env.OPENCODEX_MODEL_DISCOVERY !== "false",
     ollamaBaseUrl: normalizeOllamaBaseUrl(process.env.OLLAMA_BASE_URL),
     typesafeApiKey: process.env.TYPESAFE_API_KEY,
     typesafeBaseUrl: process.env.TYPESAFE_BASE_URL,
