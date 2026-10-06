@@ -39,6 +39,7 @@ import { AppError } from "../errors.ts";
 import type { Files } from "../files.ts";
 import { backgroundFailure } from "../log.ts";
 import { Skills } from "../skills.ts";
+import { ThreadKnowledgeService } from "../thread-knowledge.ts";
 import type { WorkspaceService } from "../workspace.ts";
 import { analyzeSpending } from "./finance.ts";
 import { JevGuardRuntimeHook, JevRuntime } from "./jev-runtime.ts";
@@ -65,6 +66,7 @@ export class AgentService {
   readonly pi: PiAgentRunner;
   readonly schedules: ScheduleService;
   readonly skills: Skills;
+  readonly knowledge: ThreadKnowledgeService;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
   constructor(
@@ -81,6 +83,7 @@ export class AgentService {
     this.models = new ModelRegistry(db, config);
     this.attachments = new ChatAttachments(db, config);
     this.skills = new Skills(db, config);
+    this.knowledge = new ThreadKnowledgeService(db);
     this.runtimeSettings = new RuntimeSettingsService(db, config);
     const jev = new JevRuntime(this.runtimeSettings);
     this.pi = new PiAgentRunner(db, config, jev);
@@ -200,7 +203,7 @@ export class AgentService {
     ]);
     const heartbeat = await this.db.get<{ lastTickAt: string }>("system", "worker-status", "tasks");
     return {
-      tasks,
+      tasks: tasks.map(({ threadKnowledge: _knowledge, ...task }) => task),
       goals,
       monitors,
       ideas,
@@ -373,6 +376,9 @@ export class AgentService {
     const task: AgentTask = {
       id,
       sourceThreadId,
+      threadKnowledge: sourceThreadId
+        ? await this.knowledge.snapshot(owner, sourceThreadId)
+        : undefined,
       skill: skill ?? (await this.skills.invocation(owner, input.prompt)),
       title: input.title ?? input.prompt.slice(0, 90),
       prompt: input.prompt,

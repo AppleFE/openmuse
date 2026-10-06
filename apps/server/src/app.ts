@@ -317,6 +317,7 @@ export async function createApp(
       await conversations.list(c.get("owner"), {
         agentId: c.req.query("agentId"),
         includeArchived: c.req.query("includeArchived") === "true",
+        query: z.string().trim().max(200).optional().parse(c.req.query("query")),
         limit:
           limit === undefined ? undefined : z.coerce.number().int().min(1).max(100).parse(limit),
         cursor: c.req.query("cursor"),
@@ -353,6 +354,12 @@ export async function createApp(
     const thread = await conversations.ensure(c.get("owner"), c.req.param("id"));
     return c.json({ mode: thread.approvalMode ?? "review" });
   });
+  app.get("/api/copilotkit/threads/:id/knowledge", async (c) =>
+    c.json(await agent.knowledge.get(c.get("owner"), c.req.param("id"))),
+  );
+  app.put("/api/copilotkit/threads/:id/knowledge", async (c) =>
+    c.json(await agent.knowledge.save(c.get("owner"), c.req.param("id"), await c.req.json())),
+  );
   app.put("/api/copilotkit/threads/:id/approval", async (c) => {
     const { mode } = z
       .object({ mode: z.enum(["review", "bypass"]) })

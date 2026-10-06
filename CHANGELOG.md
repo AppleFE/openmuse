@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 — 2026-10-06
+
+- Add separate notebooks to main and side conversations: categories, issues, persistent key notes, editable Markdown documents and pins.
+- Reapply current notes and pinned documents to every model turn; provide scoped tools for long reference documents and snapshot context into delegated/team tasks.
+- Default newly requested memories to the current conversation; retain explicitly shared workspace memory.
+- Search conversations by name/category/issue, reject conflicting edits, and preserve notebooks across archive/restore and restart.
+
 ## 0.7.0 — 2026-10-06
 
 - Attach images, multiple files and folders to chat; preserve folder paths and support web clipboard paste and drag/drop.

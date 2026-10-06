@@ -23,6 +23,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { skillPrompt } from "../../../../packages/domain/src/skills.ts";
+import { threadKnowledgePrompt } from "../../../../packages/domain/src/thread-knowledge.ts";
 import type { BrowserService } from "../browser.ts";
 import type { ComputerService } from "../computer.ts";
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
@@ -571,7 +572,9 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     let session: PiSession;
     session = await this.sessionFactory({
       request: runtimeRequest,
-      systemPrompt: request.systemPrompt ?? request.role.systemPrompt,
+      systemPrompt:
+        (request.systemPrompt ?? request.role.systemPrompt) +
+        threadKnowledgePrompt(request.task.threadKnowledge),
       sessionDir,
       cwd,
       checkpoint: existing ?? undefined,

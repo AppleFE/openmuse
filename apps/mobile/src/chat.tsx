@@ -31,6 +31,7 @@ import { BackgroundUpdates } from "./background-updates";
 import { BrowserRunContext, BrowserToolCard } from "./browser-tool-card";
 import { ChatApproval } from "./chat-approval";
 import { AttachmentChips, AttachmentUploadButtons, useChatAttachments } from "./chat-attachments";
+import { ChatNotebook } from "./chat-notebook";
 import { ChatUsage, useChatUsage } from "./chat-usage";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
@@ -452,6 +453,7 @@ export function ChatScreen({
       localTimes.current[message.id] = new Date().toISOString();
   return (
     <View ref={attachmentRoot} testID="chat-attachment-area" style={{ flex: 1 }}>
+      <ChatNotebook threadId={threadId} active={active} replying={replying} />
       <ScrollView
         ref={list}
         showsVerticalScrollIndicator={false}

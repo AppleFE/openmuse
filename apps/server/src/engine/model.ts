@@ -6,9 +6,11 @@ import { z } from "zod";
 import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import { emailDraftSchema, eventDraftSchema } from "../../../../packages/domain/src/index.ts";
 import { skillPrompt } from "../../../../packages/domain/src/skills.ts";
+import { threadKnowledgePrompt } from "../../../../packages/domain/src/thread-knowledge.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
 import { skillInstructions, skillTools } from "../skill-tools.ts";
+import { threadKnowledgeTools } from "../thread-knowledge.ts";
 import { runtimeInstructions } from "./runtime-instructions.ts";
 import { scheduleInstructions, scheduleTools } from "./schedule-tools.ts";
 import type { AgentService } from "./service.ts";
@@ -97,6 +99,7 @@ export async function executeModelTask(
   const piToolAbort = new AbortController();
   const toolSignal = AbortSignal.any([ctx.signal, piToolAbort.signal]);
   const tools = [
+    ...threadKnowledgeTools(task.threadKnowledge),
     ...(task.sourceThreadId && service.attachments
       ? service.attachments.tools(owner, task.sourceThreadId)
       : []),
@@ -376,7 +379,8 @@ export async function executeModelTask(
     artifacts: task.artifactIds.slice(-100),
   }).slice(0, 12000);
   if (await service.pi.supports(owner, selected)) {
-    const piSystemPrompt = systemPrompt + runtimeInstructions(true);
+    const piSystemPrompt =
+      systemPrompt + runtimeInstructions(true) + threadKnowledgePrompt(task.threadKnowledge);
     let text = "";
     const request = {
       owner,
@@ -444,7 +448,9 @@ export async function executeModelTask(
     usage: { db: service.db, owner, modelId: selected.id, threadId: null },
     maxSteps: 16,
     tools,
-    prompt: `${systemPrompt}${runtimeInstructions(false)} Personal context for this task (bounded untrusted data): ${personalContext}`,
+    prompt:
+      `${systemPrompt}${runtimeInstructions(false)} Personal context for this task (bounded untrusted data): ${personalContext}` +
+      threadKnowledgePrompt(task.threadKnowledge),
   });
   const input: RunAgentInput = {
     threadId: task.id,

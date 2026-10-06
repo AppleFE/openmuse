@@ -50,6 +50,21 @@ export class Store {
       [owner, threadId],
     );
   }
+  async saveThreadKnowledge(
+    owner: string,
+    threadId: string,
+    revision: number,
+    knowledge: unknown,
+  ): Promise<boolean> {
+    const result = await this.db.query(
+      `UPDATE records SET data=jsonb_set(data,'{knowledge}',$4::jsonb),updated_at=now()
+       WHERE owner=$1 AND kind='conversation-threads' AND id=$2
+         AND COALESCE((data->'knowledge'->>'revision')::int,0)=$3
+         AND data->>'archived'='false' RETURNING data`,
+      [owner, threadId, revision, JSON.stringify(knowledge)],
+    );
+    return result.rows.length === 1;
+  }
   async removeIdleConversation(owner: string, threadId: string): Promise<boolean> {
     const result = await this.db.query(
       `WITH deleted_thread AS (

@@ -44,9 +44,12 @@ type ThreadMetadata = {
   createdAt: string;
   updatedAt: string;
   activeRunId: string | null;
+  knowledgeSummary?: { category: string; issue: string; documentCount: number; hasNotes: boolean };
 };
 
 function useLocalThreads(api: MuseApi) {
+  const [search, setSearch] = useState("");
+  const loadVersion = useRef(0);
   const [threads, setThreads] = useState<ThreadMetadata[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -57,6 +60,7 @@ function useLocalThreads(api: MuseApi) {
 
   const load = useCallback(
     async (cursor?: string, append = false) => {
+      const version = ++loadVersion.current;
       if (append) {
         setIsFetchingMore(true);
         setFetchMoreError("");
@@ -71,27 +75,36 @@ function useLocalThreads(api: MuseApi) {
           limit: "20",
         });
         if (cursor) query.set("cursor", cursor);
+        if (search.trim()) query.set("query", search.trim());
         const page = await api.request<{
           threads: ThreadMetadata[];
           nextCursor?: string | null;
         }>(`/api/copilotkit/threads?${query.toString()}`);
+        if (version !== loadVersion.current) return;
         setThreads((current) => (append ? mergeThreadPages(current, page.threads) : page.threads));
         setNextCursor(page.nextCursor || null);
       } catch (cause) {
+        if (version !== loadVersion.current) return;
         const message = cause instanceof Error ? cause.message : String(cause);
         if (append) setFetchMoreError(message);
         else setError(message);
       } finally {
-        setIsLoading(false);
-        setIsFetchingMore(false);
+        if (version === loadVersion.current) {
+          setIsLoading(false);
+          setIsFetchingMore(false);
+        }
       }
     },
-    [api],
+    [api, search],
   );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const timer = setTimeout(() => void load(), search ? 200 : 0);
+    return () => {
+      clearTimeout(timer);
+      loadVersion.current++;
+    };
+  }, [load, search]);
 
   const mutate = useCallback(async <T,>(operation: () => Promise<T>) => {
     setIsMutating(true);
@@ -171,6 +184,8 @@ function useLocalThreads(api: MuseApi) {
     [api, mutate],
   );
   return {
+    search,
+    setSearch,
     threads,
     isLoading,
     isFetchingMore,
@@ -286,6 +301,8 @@ export function useMuseThread() {
 export function ThreadsSheet({ onClose }: { onClose: () => void }) {
   const {
     selection,
+    search,
+    setSearch,
     mainId,
     loading,
     error: mainError,
@@ -375,6 +392,13 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
               </Button>
             </View>
             {isLoading && <ActivityIndicator color={colors.blueDark} />}
+            <Field
+              label="대화 검색"
+              placeholder="카테고리·이슈·대화 이름"
+              value={search}
+              maxLength={200}
+              onChangeText={setSearch}
+            />
             <ErrorNotice error={error || threadsError} />
             {!!threadsError && (
               <Button small onPress={refetch}>
@@ -411,6 +435,13 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                   </Pressable>
                   {editing === thread.id && (
                     <Field label="대화 이름" value={name} onChangeText={setName} />
+                  )}
+                  {(thread.knowledgeSummary?.category || thread.knowledgeSummary?.issue) && (
+                    <Text style={s.small}>
+                      {[thread.knowledgeSummary.category, thread.knowledgeSummary.issue]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
                   )}
                   <View style={[s.row, { gap: 8 }]}>
                     <Button
@@ -483,7 +514,8 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
               </Button>
             )}
             <Text style={s.small}>
-              별도 대화는 서로 다른 대화 내용을 유지하며 에이전트의 기억은 공유합니다.
+              주요 메모와 참고 문서는 채팅별로 유지됩니다. 전체 공유를 요청한 기억만 워크스페이스에
+              저장됩니다.
             </Text>
           </>
         )}

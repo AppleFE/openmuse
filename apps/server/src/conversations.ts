@@ -17,6 +17,7 @@ import {
   finalizeRunEvents,
 } from "@copilotkit/runtime/v2";
 import { Observable, ReplaySubject } from "rxjs";
+import type { ThreadKnowledge } from "../../../packages/domain/src/thread-knowledge.ts";
 import type { ChatAttachments } from "./attachments.ts";
 import type { Auth } from "./auth.ts";
 import type { Config } from "./config.ts";
@@ -48,6 +49,7 @@ export interface ConversationThread {
   state: Record<string, unknown> | null;
   messageTimes?: Record<string, string>;
   approvalMode?: "review" | "bypass";
+  knowledge?: ThreadKnowledge;
 }
 
 interface ConversationRun {
@@ -359,8 +361,17 @@ export class ConversationStoreRunner extends AgentRunner {
   }
 
   metadata(thread: ConversationThread) {
-    const { messages: _messages, events: _events, state: _state, ...metadata } = thread;
-    return metadata;
+    const { messages: _messages, events: _events, state: _state, knowledge, ...metadata } = thread;
+    return {
+      ...metadata,
+      knowledgeSummary: {
+        category: knowledge?.category ?? "",
+        issue: knowledge?.issue ?? "",
+        documentCount: knowledge?.documents.length ?? 0,
+        hasNotes: !!knowledge?.notes,
+        revision: knowledge?.revision ?? 0,
+      },
+    };
   }
 
   private async runOwner(agent: OwnerBoundAgent) {
@@ -469,12 +480,26 @@ export class ConversationStoreRunner extends AgentRunner {
 
   async list(
     owner: string,
-    options: { agentId?: string; includeArchived?: boolean; limit?: number; cursor?: string },
+    options: {
+      agentId?: string;
+      includeArchived?: boolean;
+      limit?: number;
+      cursor?: string;
+      query?: string;
+    },
   ) {
     const limit = Math.min(MAX_THREADS_PER_PAGE, Math.max(1, options.limit ?? 50));
+    const query = options.query?.toLocaleLowerCase();
     let threads = (await this.db.list<ConversationThread>(owner, "conversation-threads"))
       .filter((thread) => !options.agentId || thread.agentId === options.agentId)
       .filter((thread) => options.includeArchived || !thread.archived)
+      .filter(
+        (thread) =>
+          !query ||
+          [thread.name, thread.knowledge?.category, thread.knowledge?.issue].some((value) =>
+            value?.toLocaleLowerCase().includes(query),
+          ),
+      )
       .sort(
         (left, right) =>
           right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id),

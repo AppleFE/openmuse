@@ -9,6 +9,7 @@ import type { ComputerService } from "../computer.ts";
 import type { ConnectorService } from "../connector-service.ts";
 import { skillTools } from "../skill-tools.ts";
 import type { Skills } from "../skills.ts";
+import { threadKnowledgeTools } from "../thread-knowledge.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import type { RoleRuntimeRequest } from "./runtime-hooks.ts";
 
@@ -269,6 +270,17 @@ export function createPiTools(
         onPolicyFallback,
       ),
     );
+  tools.push(
+    ...adaptCopilotTools(
+      threadKnowledgeTools(request.task.threadKnowledge),
+      dependencies,
+      request,
+      onCall,
+      maxToolCalls,
+      undefined,
+      onPolicyFallback,
+    ),
+  );
   return tools;
 }
 function hostCommandToolSchema() {

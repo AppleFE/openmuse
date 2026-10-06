@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { SkillActivation } from "./skills.ts";
+import type { ThreadKnowledge } from "./thread-knowledge.ts";
 
 export type TaskStatus =
   | "queued"
@@ -163,6 +164,7 @@ export interface AgentTask {
   id: string;
   /** Server-bound origin; model tool arguments cannot set this approval scope. */
   sourceThreadId?: string;
+  threadKnowledge?: ThreadKnowledge;
   skill?: SkillActivation;
   title: string;
   prompt: string;
