@@ -68,7 +68,7 @@ export function connectorTools(
     ),
     tool(
       "run_host_command",
-      "Run a command on an explicitly configured remote_host whose allowAgentShell permission is enabled by the owner. Use a fresh UUID operationId for each new command, reuse it only to recover the same dispatch. Returns a job receipt; poll host_job for output and actual exitCode. If permission is disabled, prepare_connector_action uses the existing native review. Do not use the isolated Docker computer to identify this host.",
+      "Run a command on an explicitly configured remote_host whose allowAgentShell permission is enabled by the owner. This is a background remote shell, not a Herdr-managed caller pane; use explicit discovered session/target IDs for external terminal control, never the focused pane or fabricated caller environment. Use a fresh UUID operationId for each new command, reuse it only to recover the same dispatch. Returns a job receipt; poll host_job for output and actual exitCode. If permission is disabled, prepare_connector_action uses the existing native review. Do not use the isolated Docker computer to identify this host.",
       remoteCommandSchema.extend({
         connectorId: z.string().min(1).max(120),
         operationId: z.uuid(),

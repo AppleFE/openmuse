@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2 — 2026-10-07
+
+- Distinguish OpenMuse's external remote-host shell from Herdr's in-pane skill workflow so a missing `HERDR_ENV` does not falsely block explicitly requested remote control.
+- Require discovered session and pane/agent targets, preserve actual permission and blocked-state handling, and distinguish idle agents from absent processes.
+- Server-only patch; existing Host Agent/CLI 0.9.0 installations remain compatible.
+
 ## 0.9.1 — 2026-10-07
 
 - Import report-only Host Agent messages into the next embedded Pi turn, including reports previously missing from existing sessions.
