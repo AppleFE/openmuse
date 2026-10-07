@@ -1255,6 +1255,8 @@ test("coding-capable standalone task and conversation paths select the shared pi
         calls.push(input);
         input.onTextDelta?.("streamed by pi");
         input.onToolStart?.("pi-tool", "agent_status", {});
+        input.onToolStart?.("pi-tool-parallel", "runtime_status", {});
+        input.onToolEnd?.("pi-tool-parallel", "runtime_status", { parallel: true }, false);
         input.onToolEnd?.("pi-tool", "agent_status", { ok: true }, false);
         return "streamed by pi";
       },
@@ -1304,6 +1306,26 @@ test("coding-capable standalone task and conversation paths select the shared pi
     assert.ok(events.some((event) => event.type === "TEXT_MESSAGE_CONTENT"));
     assert.ok(events.some((event) => event.type === "TOOL_CALL_START"));
     assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+    assert.deepEqual(
+      events.filter((e) => e.type.startsWith("TOOL_CALL_")).map((e) => [e.type, e.toolCallId]),
+      [
+        ["TOOL_CALL_START", "pi-tool"],
+        ["TOOL_CALL_ARGS", "pi-tool"],
+        ["TOOL_CALL_END", "pi-tool"],
+        ["TOOL_CALL_START", "pi-tool-parallel"],
+        ["TOOL_CALL_ARGS", "pi-tool-parallel"],
+        ["TOOL_CALL_END", "pi-tool-parallel"],
+        ["TOOL_CALL_RESULT", "pi-tool-parallel"],
+        ["TOOL_CALL_RESULT", "pi-tool"],
+      ],
+    );
+    // Exercise AG-UI's actual event validator, including a follow-up on this ID.
+    const chat = new ConversationAgent(configFor(directory), server.agent, "owner", model);
+    chat.threadId = "pi-chat-validated";
+    for (const runId of ["parallel-first", "parallel-followup"]) {
+      await chat.runAgent({ runId });
+      assert.equal(chat.messages.filter((m) => m.role === "tool").length > 0, true);
+    }
   } finally {
     await server.agent.stop();
     await db.close();

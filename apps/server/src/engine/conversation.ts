@@ -528,9 +528,11 @@ export class ConversationAgent extends AbstractAgent {
                   toolCallId,
                   delta: JSON.stringify(args),
                 });
+                // AG-UI END closes argument streaming, not execution. Pi may start
+                // another parallel tool before this one's result arrives.
+                subscriber.next({ type: EventType.TOOL_CALL_END, toolCallId });
               },
               onToolEnd: (toolCallId, _toolCallName, result) => {
-                subscriber.next({ type: EventType.TOOL_CALL_END, toolCallId });
                 subscriber.next({
                   type: EventType.TOOL_CALL_RESULT,
                   toolCallId,
