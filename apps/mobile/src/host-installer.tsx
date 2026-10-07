@@ -1,6 +1,6 @@
-import * as Clipboard from "expo-clipboard";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
+import { CopyButton } from "./copy-button";
 import { Button, Card, ErrorNotice, Field, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 export function HostInstaller({ onRegistered }: { onRegistered: () => Promise<void> }) {
@@ -62,18 +62,14 @@ export function HostInstaller({ onRegistered }: { onRegistered: () => Promise<vo
                   <Text selectable style={s.small}>
                     {instruction.windows}
                   </Text>
-                  <Button small onPress={() => void Clipboard.setStringAsync(instruction.windows)}>
-                    Windows 명령 복사
-                  </Button>
+                  <CopyButton text={instruction.windows} label="Windows 명령 복사" />
                 </Card>
                 <Card style={{ gap: 8 }}>
                   <Text style={s.heading}>macOS · Linux 터미널</Text>
                   <Text selectable style={s.small}>
                     {instruction.posix}
                   </Text>
-                  <Button small onPress={() => void Clipboard.setStringAsync(instruction.posix)}>
-                    macOS·Linux 명령 복사
-                  </Button>
+                  <CopyButton text={instruction.posix} label="macOS·Linux 명령 복사" />
                 </Card>
                 <Text style={s.small}>
                   {instruction.privileges} · {instruction.network}

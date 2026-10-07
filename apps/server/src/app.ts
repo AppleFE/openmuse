@@ -12,6 +12,7 @@ import {
   emailDraftSchema,
   proposalSchema,
 } from "../../../packages/domain/src/index.ts";
+import { threadNameSchema } from "../../../packages/domain/src/thread-name.ts";
 import { ActionService } from "./actions.ts";
 import { agentConfigured, makeConversationAgent, makeRuntime } from "./agent.ts";
 import { attachmentRoutes } from "./attachments.ts";
@@ -77,6 +78,7 @@ export async function createApp(
     connectors,
   );
   const conversations = new ConversationStoreRunner(db, auth, config, agent.attachments);
+  await conversations.prepareNames();
   await conversations.recoverInterrupted();
   const hostEvents = new HostEventService(db, connectors, conversations, (owner) =>
     makeConversationAgent(config, agent, owner),
@@ -316,7 +318,12 @@ export async function createApp(
     return c.json(
       await conversations.list(c.get("owner"), {
         agentId: c.req.query("agentId"),
-        includeArchived: c.req.query("includeArchived") === "true",
+        includeArchived:
+          c.req.query("includeArchived") === "true" || c.req.query("archived") === "true",
+        archived:
+          c.req.query("archived") === undefined
+            ? undefined
+            : z.enum(["true", "false"]).parse(c.req.query("archived")) === "true",
         query: z.string().trim().max(200).optional().parse(c.req.query("query")),
         limit:
           limit === undefined ? undefined : z.coerce.number().int().min(1).max(100).parse(limit),
@@ -328,7 +335,7 @@ export async function createApp(
     const body = z
       .object({
         id: z.string().min(1).max(200).optional(),
-        name: z.string().trim().min(1).max(200).optional(),
+        name: threadNameSchema.optional(),
         agentId: z.string().min(1).max(100).optional(),
       })
       .parse(await c.req.json());
@@ -341,9 +348,7 @@ export async function createApp(
     ),
   );
   app.patch("/api/copilotkit/threads/:id", async (c) => {
-    const body = z
-      .object({ name: z.string().trim().min(1).max(200).nullable() })
-      .parse(await c.req.json());
+    const body = z.object({ name: threadNameSchema }).parse(await c.req.json());
     return c.json(
       conversations.metadata(
         await conversations.rename(c.get("owner"), c.req.param("id"), body.name),
@@ -351,9 +356,12 @@ export async function createApp(
     );
   });
   app.get("/api/copilotkit/threads/:id/approval", async (c) => {
-    const thread = await conversations.ensure(c.get("owner"), c.req.param("id"));
+    const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ mode: thread.approvalMode ?? "review" });
   });
+  app.get("/api/copilotkit/threads/:id", async (c) =>
+    c.json(conversations.metadata(await conversations.get(c.get("owner"), c.req.param("id")))),
+  );
   app.get("/api/copilotkit/threads/:id/knowledge", async (c) =>
     c.json(await agent.knowledge.get(c.get("owner"), c.req.param("id"))),
   );

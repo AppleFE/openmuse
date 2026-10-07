@@ -403,4 +403,51 @@ test("local gateway rejects browser/rebinding calls; durable retries and CLI fil
     child.stdin!.end(Buffer.from("표준 입력 확인", "utf8"));
   });
   assert.equal(JSON.parse(stdinResult).data.input.message, "표준 입력 확인");
+  await a.conversations.create("local-user", { id: "named-side", name: "작업 보고" });
+  for (const selector of [
+    ["--target", "작업 보고"],
+    ["--thread-name", "작업 보고"],
+  ]) {
+    const named = JSON.parse(
+      (
+        await exec(
+          process.execPath,
+          [cli, "send", ...selector, "--message", "이름으로 보고", "--no-reply", "--port", cliPort],
+          { env },
+        )
+      ).stdout,
+    );
+    assert.equal(named.data.event.threadId, "named-side");
+    assert.equal(
+      named.data.event.status === "queued" || named.data.event.status === "delivered",
+      true,
+    );
+  }
+  const allThreads = await f.db.list("local-user", "conversation-threads");
+  assert.equal(allThreads.filter((t) => t.id === "named-side").length, 1);
+  await a.conversations.setArchived("local-user", "named-side", true);
+  await assert.rejects(
+    exec(
+      process.execPath,
+      [cli, "send", "--target", "작업 보고", "--message", "보관함 거부", "--port", cliPort],
+      { env },
+    ),
+  );
+  await assert.rejects(
+    exec(
+      process.execPath,
+      [
+        cli,
+        "send",
+        "--target",
+        "host",
+        "--thread-name",
+        "작업 보고",
+        "--message",
+        "충돌",
+        "--dry-run",
+      ],
+      { env },
+    ),
+  );
 });

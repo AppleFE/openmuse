@@ -37,7 +37,7 @@ test("self-hosted installers issue expiring single-use enrollment without exposi
   const base = /curl -fsSL '([^']+)\/install.sh'/.exec(commands.posix)![1];
   const manifest = await (await app.request(base + "/manifest")).json();
   assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(manifest.version, "0.6.0");
+  assert.equal(manifest.version, "0.9.0");
   const bootstrap = await app.request(base + "/install.ps1");
   assert.equal(bootstrap.status, 200);
   assert.match(await bootstrap.text(), /install.ps1\?worker=1/);

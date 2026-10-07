@@ -8,6 +8,7 @@ import {
   threadKnowledgeSchema,
 } from "../../../packages/domain/src/thread-knowledge";
 import { AssistantResponse } from "./assistant-response";
+import { CopyButton } from "./copy-button";
 import { useMuseThread } from "./threads";
 import { Button, Card, CheckRow, colors, ErrorNotice, Field, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -38,7 +39,7 @@ export function ChatNotebook({
   }, [active, replying, load]);
   return (
     <>
-      <View style={[s.row, { gap: 8, paddingVertical: 6 }]}>
+      <View style={[s.row, { gap: 8, paddingVertical: 6, flexWrap: "wrap" }]}>
         <View style={{ flex: 1, minWidth: 0 }}>
           {!!knowledge?.category && (
             <Text numberOfLines={1} style={s.small}>
@@ -51,6 +52,7 @@ export function ChatNotebook({
             </Text>
           )}
         </View>
+        <CopyButton text={threadId} label="세션 ID 복사" />
         <Button
           small
           icon={BookOpen}

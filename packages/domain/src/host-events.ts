@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasControlCharacters } from "./thread-name.ts";
 
 const text = (max: number) =>
   z
@@ -9,9 +10,8 @@ const text = (max: number) =>
     .refine((v) => !v.includes("\0"));
 export const hostEventInputSchema = z.strictObject({
   key: text(160),
-  target: z
-    .string()
-    .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/)
+  target: text(205)
+    .refine((v) => !hasControlCharacters(v))
     .default("main"),
   type: z.enum(["completed", "question", "error", "progress"]).default("completed"),
   source: text(80).default("agent"),

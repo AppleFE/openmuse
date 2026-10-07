@@ -27,6 +27,15 @@ export function storeSessionToken(token?: string) {
   }
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export class MuseApi {
   constructor(
     readonly token: string,
@@ -53,8 +62,9 @@ export class MuseApi {
         storeSessionToken();
         this.onUnauthorized?.();
       }
-      throw new Error(
+      throw new ApiError(
         typeof payload.error === "string" ? payload.error : `Request failed (${response.status})`,
+        response.status,
       );
     }
     return payload;

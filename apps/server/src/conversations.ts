@@ -18,6 +18,7 @@ import {
 } from "@copilotkit/runtime/v2";
 import { Observable, ReplaySubject } from "rxjs";
 import type { ThreadKnowledge } from "../../../packages/domain/src/thread-knowledge.ts";
+import { threadNameKey, threadNameSchema } from "../../../packages/domain/src/thread-name.ts";
 import type { ChatAttachments } from "./attachments.ts";
 import type { Auth } from "./auth.ts";
 import type { Config } from "./config.ts";
@@ -37,6 +38,7 @@ const THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/;
 export interface ConversationThread {
   id: string;
   name: string | null;
+  nameKey?: string | null;
   agentId: string;
   organizationId: "";
   createdById: string;
@@ -83,6 +85,16 @@ type OwnerBoundAgent = AbstractAgent & { openMuseOwner?: string };
 
 function assertThreadId(threadId: string) {
   if (!THREAD_ID.test(threadId)) throw new AppError("Invalid conversation thread ID", 422);
+}
+
+function nameConflict(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+}
+function duplicateName() {
+  return new AppError(
+    "이미 사용 중인 대화 이름입니다. 보관함을 포함해 다른 이름을 지정하세요.",
+    409,
+  );
 }
 
 function jsonBytes(value: unknown) {
@@ -361,7 +373,14 @@ export class ConversationStoreRunner extends AgentRunner {
   }
 
   metadata(thread: ConversationThread) {
-    const { messages: _messages, events: _events, state: _state, knowledge, ...metadata } = thread;
+    const {
+      messages: _messages,
+      events: _events,
+      state: _state,
+      nameKey: _nameKey,
+      knowledge,
+      ...metadata
+    } = thread;
     return {
       ...metadata,
       knowledgeSummary: {
@@ -372,6 +391,59 @@ export class ConversationStoreRunner extends AgentRunner {
         revision: knowledge?.revision ?? 0,
       },
     };
+  }
+
+  /** Backfill legacy names before serving requests; active names take precedence. */
+  async prepareNames() {
+    const records = (await this.db.scan<ConversationThread>("conversation-threads"))
+      .filter(({ value }) => value.name && !value.nameKey)
+      .sort(
+        (a, b) =>
+          Number(a.value.archived) - Number(b.value.archived) ||
+          a.value.createdAt.localeCompare(b.value.createdAt) ||
+          a.value.id.localeCompare(b.value.id),
+      );
+    for (const { owner, value } of records) {
+      const base =
+        Array.from((value.name ?? "").normalize("NFKC"))
+          .map((c) => (c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? " " : c))
+          .join("")
+          .trim()
+          .replace(/\s+/g, " ") || "새 대화";
+      for (let n = 0; ; n++) {
+        const name = n
+          ? `${base.slice(0, 178)} (${value.id.slice(0, 8)}${n > 1 ? `-${n}` : ""})`
+          : base.slice(0, 200);
+        try {
+          await this.db.compareAndSwap(
+            owner,
+            "conversation-threads",
+            value.id,
+            { name: value.name },
+            { name, nameKey: threadNameKey(name) },
+          );
+          break;
+        } catch (error) {
+          if (!nameConflict(error) || n > 100) throw error;
+        }
+      }
+    }
+  }
+
+  async resolveTarget(owner: string, target: string) {
+    const byName = target.startsWith("name:");
+    if (!byName && THREAD_ID.test(target)) {
+      const thread = await this.db.get<ConversationThread>(owner, "conversation-threads", target);
+      if (thread) return thread;
+    }
+    const key = threadNameKey(byName ? target.slice(5) : target);
+    const matches = (await this.db.list<ConversationThread>(owner, "conversation-threads")).filter(
+      (thread) => thread.name && threadNameKey(thread.name) === key,
+    );
+    if (matches.length > 1)
+      throw new AppError("같은 이름의 대화가 여러 개입니다. 세션 ID를 사용하세요.", 409);
+    if (!matches.length) throw new AppError("해당 이름 또는 ID의 대화를 찾을 수 없습니다.", 404);
+    return matches[0];
   }
 
   private async runOwner(agent: OwnerBoundAgent) {
@@ -466,9 +538,35 @@ export class ConversationStoreRunner extends AgentRunner {
     assertThreadId(id);
     const existing = await this.db.get(owner, "conversation-threads", id);
     if (existing) throw new AppError("Conversation already exists", 409);
-    const thread = await this.ensure(owner, id, input.agentId ?? "default");
-    if (input.name !== undefined) return this.rename(owner, id, input.name);
-    return thread;
+    const name = threadNameSchema.parse(input.name ?? `새 대화 (${id.slice(0, 8)})`);
+    const now = new Date().toISOString();
+    try {
+      const thread = await this.db.insertIfAbsent<ConversationThread>(
+        owner,
+        "conversation-threads",
+        {
+          id,
+          name,
+          nameKey: threadNameKey(name),
+          agentId: input.agentId ?? "default",
+          organizationId: "",
+          createdById: owner,
+          archived: false,
+          approvalMode: "review",
+          createdAt: now,
+          updatedAt: now,
+          activeRunId: null,
+          messages: [],
+          events: [],
+          state: null,
+        },
+      );
+      if (!thread) throw new AppError("Conversation already exists", 409);
+      return thread;
+    } catch (error) {
+      if (nameConflict(error)) throw duplicateName();
+      throw error;
+    }
   }
 
   async get(owner: string, threadId: string) {
@@ -483,6 +581,7 @@ export class ConversationStoreRunner extends AgentRunner {
     options: {
       agentId?: string;
       includeArchived?: boolean;
+      archived?: boolean;
       limit?: number;
       cursor?: string;
       query?: string;
@@ -493,6 +592,7 @@ export class ConversationStoreRunner extends AgentRunner {
     let threads = (await this.db.list<ConversationThread>(owner, "conversation-threads"))
       .filter((thread) => !options.agentId || thread.agentId === options.agentId)
       .filter((thread) => options.includeArchived || !thread.archived)
+      .filter((thread) => options.archived === undefined || thread.archived === options.archived)
       .filter(
         (thread) =>
           !query ||
@@ -522,15 +622,21 @@ export class ConversationStoreRunner extends AgentRunner {
 
   async rename(owner: string, threadId: string, name: string | null) {
     const thread = await this.get(owner, threadId);
-    const updated = await this.db.compareAndSwap<ConversationThread>(
-      owner,
-      "conversation-threads",
-      threadId,
-      { archived: thread.archived },
-      { name, updatedAt: new Date().toISOString() },
-    );
-    if (!updated) throw new AppError("Conversation changed; refresh and try again", 409);
-    return updated;
+    name = threadNameSchema.parse(name);
+    try {
+      const updated = await this.db.compareAndSwap<ConversationThread>(
+        owner,
+        "conversation-threads",
+        threadId,
+        { archived: thread.archived },
+        { name, nameKey: threadNameKey(name), updatedAt: new Date().toISOString() },
+      );
+      if (!updated) throw new AppError("Conversation changed; refresh and try again", 409);
+      return updated;
+    } catch (error) {
+      if (nameConflict(error)) throw duplicateName();
+      throw error;
+    }
   }
 
   async setApprovalMode(owner: string, threadId: string, mode: "review" | "bypass") {

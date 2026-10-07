@@ -203,5 +203,8 @@ export async function createStore(
   await database.query(
     "CREATE TABLE IF NOT EXISTS records(owner text NOT NULL,kind text NOT NULL,id text NOT NULL,data jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(owner,kind,id))",
   );
+  await database.query(
+    "CREATE UNIQUE INDEX IF NOT EXISTS conversation_name_unique ON records(owner,(data->>'nameKey')) WHERE kind='conversation-threads' AND data->>'nameKey' IS NOT NULL",
+  );
   return new Store(database);
 }

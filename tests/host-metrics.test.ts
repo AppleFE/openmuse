@@ -183,7 +183,7 @@ test("Host Agent metrics endpoint authenticates, reports native data and connect
     assert.equal(data.platform, process.platform);
     assert.ok(data.cpu.cores > 0);
     assert.ok(data.memory.total && data.memory.total > 0);
-    assert.equal(data.agentVersion, "0.6.0");
+    assert.equal(data.agentVersion, "0.9.0");
     assert.ok(!JSON.stringify(data).includes(token));
     const session = await (
       await server.app.request("/api/session", {

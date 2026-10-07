@@ -1,4 +1,4 @@
-# 호스트 호출 (Host Agent 0.6.0)
+# 호스트 호출 (Host Agent 0.9.0)
 
 원격 PC에서 작업하는 Codex 같은 에이전트가 완료·질문·문제를 OpenMuse 대화에 직접
 보냅니다. `muse-cli`의 send/target/파일 입력/중복 방지 키 인터페이스를 참고했습니다.
@@ -21,6 +21,7 @@ openmuse send --source codex --type completed --message "작업 완료. 테스�
 openmuse send --source codex --type question --message "두 구현 중 어느 쪽을 선택할까요?" --idempotency-key task-123-question-1
 openmuse send --source codex --type error --message "빌드 실패. 원인과 다음 조치는 다음과 같습니다…" --idempotency-key task-123-error-1
 openmuse send --source codex --type progress --file report.txt --target THREAD_ID --idempotency-key task-123-progress-1
+openmuse send --source codex --target "picker" --message "작업 완료" --idempotency-key picker-completed-1
 openmuse delivery show task-123-completed
 ```
 
@@ -34,6 +35,20 @@ PowerShell에서 여러 줄·따옴표·한글은 UTF-8 파일을 권장합니�
 얻을 수 있습니다. `openmuse config set-target THREAD_ID`로 현재 사용자 기본 대상을 저장하고
 `openmuse config set-target main`으로 되돌립니다. 다른 소유자의 대화나 보관된 대화에는
 전송할 수 없습니다. 응답 중인 대화에는 보고를 대기시켰다가 응답 종료 이벤트로 이어갑니다.
+
+**0.9.0부터 대화 이름으로도 호출할 수 있습니다.** 서버와 대상 PC의 Host Agent/CLI를 함께 업데이트하세요.
+`--target "picker"` 또는 `--thread-name "picker"`로 이미 존재하는 대화를 선택합니다.
+공백이 있으면 따옴표로 감싸세요. 이름이 `main`, `host` 또는 다른 세션의 ID와 같으면
+`--thread-name`을 사용합니다(API의 `target` 값은 `name:대화 이름`). 이름이 없거나 보관된
+대화이면 오류로 처리하며 새 대화를 만들지 않습니다. 접수된 보고는 이름을 나중에 바꿔도
+처음 선택한 세션 ID에 전달하고, 같은 중복 방지 키로 재전송하면 기존 영수증을 반환합니다.
+
+채팅 상단 **세션 ID 복사**에서도 ID를 복사합니다. HTTP에서 클립보드 API를 사용할 수 없는
+경우 선택 복사를 사용하며, 브라우저가 복사를 막으면 직접 선택할 입력창을 표시합니다.
+사이드 채팅의 이름 변경·보관·복원·삭제는 대화 목록의 **…** 메뉴에 있습니다.
+이름은 보관함을 포함해 소유자별로 중복될 수 없으며 앞뒤/연속 공백·대소문자·전각 문자 차이는
+같은 이름으로 취급합니다. 기존 중복 이름은 첫 항목을 유지하고 나머지에 ID 접미사를 붙입니다.
+세션 ID, 메시지, 메모는 변경하지 않습니다. 이름 변경 후 새 보고에는 새 이름을 사용하세요.
 
 작업하는 에이전트에는 다음처럼 지시할 수 있습니다. 특정 제품의 자동 훅을 설치하거나
 전역 에이전트 지침을 변경하지 않으며, 호출 시점은 작업 에이전트가 결정합니다.

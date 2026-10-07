@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — 2026-10-07
+
+- Fix parallel Pi tool calls by ending AG-UI argument streams before tool execution results arrive.
+- Copy session IDs directly from chat; reliably copy host commands inside modals on HTTP hosts and offer manual selection if copying is blocked.
+- Send Host Agent reports to a unique conversation name with `--target NAME` or `--thread-name NAME`.
+- Enforce owner-scoped normalized name uniqueness, including archived chats, with atomic database constraints and a legacy duplicate-name migration.
+- Separate active/archive pagination, compact conversation rows into an overflow menu, and prevent stale saved selections or approval reads from creating empty conversations.
+
 ## 0.8.0 — 2026-10-06
 
 - Add separate notebooks to main and side conversations: categories, issues, persistent key notes, editable Markdown documents and pins.

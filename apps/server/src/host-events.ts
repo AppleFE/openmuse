@@ -137,7 +137,14 @@ export class HostEventService {
     } else if (input.target === "host") {
       threadId = `host-${connector.id}`;
       const thread = await this.conversations.ensure(owner, threadId);
-      if (!thread.name) await this.conversations.rename(owner, threadId, `${connector.name} 보고`);
+      if (!thread.name)
+        await this.conversations.rename(
+          owner,
+          threadId,
+          `${connector.name.slice(0, 170)} 보고 (${connector.id.slice(0, 8)})`,
+        );
+    } else {
+      threadId = (await this.conversations.resolveTarget(owner, input.target)).id;
     }
     const thread = await this.conversations.get(owner, threadId);
     if (thread.archived)

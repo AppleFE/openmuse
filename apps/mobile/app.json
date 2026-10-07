@@ -3,7 +3,7 @@
     "name": "OpenMuse",
     "slug": "openmuse",
     "scheme": "openmuse",
-    "version": "0.8.0",
+    "version": "0.9.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

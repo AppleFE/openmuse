@@ -4,6 +4,7 @@ import {
   FileText,
   MessageCircle,
   Monitor,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Settings2,
@@ -19,10 +20,10 @@ import {
   useState,
 } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import { API_URL, type MuseApi } from "./api";
+import { API_URL, ApiError, type MuseApi } from "./api";
 import { mergeThreadPages } from "./thread-state";
 import { readStoredThreadId, writeStoredThreadId } from "./thread-storage";
-import { Button, colors, ErrorNotice, Field, LinkRow, Sheet, s } from "./ui";
+import { Button, colors, ErrorNotice, Field, IconButton, LinkRow, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
 function newThreadId() {
@@ -48,6 +49,7 @@ type ThreadMetadata = {
 };
 
 function useLocalThreads(api: MuseApi) {
+  const [archived, setArchived] = useState(false);
   const [search, setSearch] = useState("");
   const loadVersion = useRef(0);
   const [threads, setThreads] = useState<ThreadMetadata[]>([]);
@@ -71,7 +73,7 @@ function useLocalThreads(api: MuseApi) {
       try {
         const query = new URLSearchParams({
           agentId: "default",
-          includeArchived: "true",
+          archived: String(archived),
           limit: "20",
         });
         if (cursor) query.set("cursor", cursor);
@@ -95,7 +97,7 @@ function useLocalThreads(api: MuseApi) {
         }
       }
     },
-    [api, search],
+    [api, search, archived],
   );
 
   useEffect(() => {
@@ -184,6 +186,8 @@ function useLocalThreads(api: MuseApi) {
     [api, mutate],
   );
   return {
+    archived,
+    setArchived,
     search,
     setSearch,
     threads,
@@ -248,13 +252,25 @@ export function ThreadsProvider({ children }: { children: ReactNode }) {
       api.request<{ threadId: string; existing: boolean }>("/api/main-thread"),
       readStoredThreadId(API_URL),
     ])
-      .then(([main, storedId]) => {
+      .then(async ([main, storedId]) => {
+        let selectedId = main.threadId;
+        if (storedId && storedId !== main.threadId) {
+          try {
+            const stored = await api.request<ThreadMetadata>(
+              `/api/copilotkit/threads/${encodeURIComponent(storedId)}`,
+            );
+            if (!stored.archived) selectedId = stored.id;
+          } catch (cause) {
+            /* A stale/deleted selection must not create a new conversation. */
+            if (!(cause instanceof ApiError) || cause.status !== 404) throw cause;
+          }
+        }
         if (!active) return;
-        const next = { id: storedId || main.threadId, existing: true };
+        const next = { id: selectedId, existing: true };
         setMainId(main.threadId);
         setSelection(next);
         setVisited([next]);
-        if (!storedId) void writeStoredThreadId(API_URL, main.threadId).catch(() => undefined);
+        void writeStoredThreadId(API_URL, selectedId).catch(() => undefined);
         setLoading(false);
       })
       .catch((cause) => {
@@ -301,6 +317,8 @@ export function useMuseThread() {
 export function ThreadsSheet({ onClose }: { onClose: () => void }) {
   const {
     selection,
+    archived,
+    setArchived,
     search,
     setSearch,
     mainId,
@@ -327,7 +345,7 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<string>();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const [archived, setArchived] = useState(false);
+  const [actionsId, setActionsId] = useState<string>();
   const [deleting, setDeleting] = useState<string>();
 
   async function mutate(action: () => Promise<void>) {
@@ -417,85 +435,109 @@ export function ThreadsSheet({ onClose }: { onClose: () => void }) {
                     gap: 10,
                   }}
                 >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`대화 열기: ${thread.name || "제목 없는 대화"}`}
-                    accessibilityState={{ selected: selection.id === thread.id }}
-                    onPress={() =>
-                      void mutate(async () => {
-                        if (thread.archived) await restoreThread(thread.id);
-                        select({ id: thread.id, existing: true });
-                        onClose();
-                      })
-                    }
-                    style={[s.row, { gap: 10 }]}
-                  >
-                    <MessageCircle size={19} color={colors.text} />
-                    <Text style={[s.text, { flex: 1 }]}>{thread.name || "제목 없는 대화"}</Text>
-                  </Pressable>
+                  <View style={[s.row, { gap: 6 }]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`대화 열기: ${thread.name || "제목 없는 대화"}`}
+                      accessibilityState={{ selected: selection.id === thread.id }}
+                      onPress={() =>
+                        void mutate(async () => {
+                          if (thread.archived) await restoreThread(thread.id);
+                          select({ id: thread.id, existing: true });
+                          onClose();
+                        })
+                      }
+                      style={[
+                        s.row,
+                        {
+                          gap: 10,
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 10,
+                          borderRadius: 16,
+                          backgroundColor:
+                            selection.id === thread.id ? colors.surfaceRaised : undefined,
+                        },
+                      ]}
+                    >
+                      <MessageCircle size={19} color={colors.text} />
+                      <Text numberOfLines={1} style={[s.text, { flex: 1 }]}>
+                        {thread.name || "제목 없는 대화"}
+                      </Text>
+                    </Pressable>
+                    <IconButton
+                      icon={MoreHorizontal}
+                      label={`대화 관리: ${thread.name || "제목 없는 대화"}`}
+                      onPress={() => setActionsId(actionsId === thread.id ? undefined : thread.id)}
+                    />
+                  </View>
                   {editing === thread.id && (
                     <Field label="대화 이름" value={name} onChangeText={setName} />
                   )}
                   {(thread.knowledgeSummary?.category || thread.knowledgeSummary?.issue) && (
-                    <Text style={s.small}>
+                    <Text numberOfLines={1} style={s.small}>
                       {[thread.knowledgeSummary.category, thread.knowledgeSummary.issue]
                         .filter(Boolean)
                         .join(" · ")}
                     </Text>
                   )}
-                  <View style={[s.row, { gap: 8 }]}>
-                    <Button
-                      small
-                      disabled={isMutating || (editing === thread.id && !name.trim())}
-                      onPress={() => {
-                        if (editing === thread.id)
-                          void mutate(() => renameThread(thread.id, name.trim()));
-                        else {
-                          setEditing(thread.id);
-                          setName(thread.name || "");
-                        }
-                      }}
-                    >
-                      {editing === thread.id ? "이름 저장" : "이름 변경"}
-                    </Button>
-                    <Button
-                      small
-                      icon={Archive}
-                      disabled={isMutating}
-                      onPress={() =>
-                        void mutate(async () => {
-                          if (thread.archived) await restoreThread(thread.id);
-                          else {
-                            await archiveThread(thread.id);
-                            if (selection.id === thread.id) select({ id: mainId, existing: true });
-                          }
-                        })
-                      }
-                    >
-                      {thread.archived ? "복원" : "보관"}
-                    </Button>
-                    {thread.archived && (
+                  {(actionsId === thread.id || editing === thread.id) && (
+                    <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
                       <Button
                         small
-                        danger
-                        icon={Trash2}
-                        disabled={isMutating}
+                        disabled={isMutating || (editing === thread.id && !name.trim())}
                         onPress={() => {
-                          if (deleting !== thread.id) {
-                            setDeleting(thread.id);
-                            return;
+                          if (editing === thread.id)
+                            void mutate(() => renameThread(thread.id, name.trim()));
+                          else {
+                            setEditing(thread.id);
+                            setName(thread.name || "");
                           }
-                          void mutate(async () => {
-                            await deleteThread(thread.id);
-                            if (selection.id === thread.id) select({ id: mainId, existing: true });
-                            setDeleting(undefined);
-                          });
                         }}
                       >
-                        {deleting === thread.id ? "복구 불가 · 삭제 확인" : "완전 삭제"}
+                        {editing === thread.id ? "이름 저장" : "이름 변경"}
                       </Button>
-                    )}
-                  </View>
+                      <Button
+                        small
+                        icon={Archive}
+                        disabled={isMutating}
+                        onPress={() =>
+                          void mutate(async () => {
+                            if (thread.archived) await restoreThread(thread.id);
+                            else {
+                              await archiveThread(thread.id);
+                              if (selection.id === thread.id)
+                                select({ id: mainId, existing: true });
+                            }
+                          })
+                        }
+                      >
+                        {thread.archived ? "복원" : "보관"}
+                      </Button>
+                      {thread.archived && (
+                        <Button
+                          small
+                          danger
+                          icon={Trash2}
+                          disabled={isMutating}
+                          onPress={() => {
+                            if (deleting !== thread.id) {
+                              setDeleting(thread.id);
+                              return;
+                            }
+                            void mutate(async () => {
+                              await deleteThread(thread.id);
+                              if (selection.id === thread.id)
+                                select({ id: mainId, existing: true });
+                              setDeleting(undefined);
+                            });
+                          }}
+                        >
+                          {deleting === thread.id ? "복구 불가 · 삭제 확인" : "완전 삭제"}
+                        </Button>
+                      )}
+                    </View>
+                  )}
                 </View>
               ))}
             {!isLoading &&

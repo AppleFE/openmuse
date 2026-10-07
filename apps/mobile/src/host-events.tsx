@@ -1,10 +1,10 @@
 import { fetch as streamFetch } from "expo/fetch";
-import * as Clipboard from "expo-clipboard";
-import { Copy, MessageCircle, Radio } from "lucide-react-native";
+import { MessageCircle, Radio } from "lucide-react-native";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { AppState, Platform, Text, View } from "react-native";
 import { type HostEvent, hostEventLabels } from "../../../packages/domain/src/host-events";
 import { API_URL } from "./api";
+import { CopyButton } from "./copy-button";
 import { useMuseThread } from "./threads";
 import { Button, Card, Chip, ErrorNotice, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
@@ -123,10 +123,9 @@ export function HostEventsButton() {
   );
 }
 export function HostEventsSheet() {
-  const { close, notify } = useWorkspace(),
+  const { close } = useWorkspace(),
     { events, connected } = useHostEvents(),
     { selection, select, refetch } = useMuseThread();
-  const [error, setError] = useState("");
   const command = `openmuse send --source codex --target ${selection.id} --type completed --message "작업 완료: 테스트 통과" --idempotency-key 작업ID-complete`;
   return (
     <Sheet
@@ -144,26 +143,16 @@ export function HostEventsSheet() {
           <Text selectable style={s.text}>
             {command}
           </Text>
-          <Button
-            icon={Copy}
-            onPress={() =>
-              void Clipboard.setStringAsync(command)
-                .then(() => notify("호출 명령을 복사했습니다"))
-                .catch(() => setError("명령을 복사하지 못했습니다"))
-            }
-          >
-            명령 복사
-          </Button>
+          <CopyButton text={command} label="명령 복사" />
           <Text style={s.muted}>
-            Host Agent 0.6.0 이상이 설치된 PC에서 실행하세요. 대상을 생략하면 기본 대화로 보냅니다.
-            AI 응답 없이 기록만 남기려면 --no-reply를 추가하세요.
+            대상을 생략하면 기본 대화로 보냅니다. Host Agent 0.9.0부터 --target "대화 이름"도 사용할
+            수 있습니다. AI 응답 없이 기록만 남기려면 --no-reply를 추가하세요.
           </Text>
           <Text style={s.small}>
             유형: completed(완료) · question(질문) · error(문제) · progress(진행). 같은 보고를
             재시도할 때 중복 방지 키를 그대로 사용하세요.
           </Text>
         </Card>
-        <ErrorNotice error={error} />
         {!events.length && <Text style={s.muted}>아직 받은 보고가 없습니다.</Text>}
         {events.map((e) => (
           <Card key={e.id}>

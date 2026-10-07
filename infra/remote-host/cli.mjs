@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const version = "0.6.0";
+const version = "0.9.0";
 const output = (data) => process.stdout.write(JSON.stringify({ ok: true, data }) + "\n");
 const fail = (message, code = "INVALID_INPUT", exitCode = 2) =>
   Object.assign(new Error(message), { code, exitCode });
@@ -24,9 +24,13 @@ async function settings() {
   }
 }
 const validTarget = (v) => {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(v))
-    throw fail("대상은 main, host 또는 OpenMuse 대화 ID여야 합니다");
-  return v;
+  if (
+    !v.trim() ||
+    v.trim().length > 205 ||
+    Array.from(v).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
+  )
+    throw fail("대상은 main, host 또는 기존 대화 ID/이름이어야 합니다");
+  return v.trim();
 };
 async function api(path, body, port) {
   if (!Number.isInteger(port) || port < 1 || port > 65535)
@@ -63,6 +67,7 @@ try {
       file: { type: "string" },
       stdin: { type: "boolean" },
       target: { type: "string" },
+      "thread-name": { type: "string" },
       type: { type: "string" },
       source: { type: "string" },
       task: { type: "string" },
@@ -77,7 +82,7 @@ try {
   if (values.version) console.log(version);
   else if (values.help || !positionals.length)
     console.log(
-      `OpenMuse Host Agent CLI ${version}\n\nopenmuse send --message "작업 완료" [--target main|host|THREAD_ID] [--type completed|question|error|progress]\n  --file PATH | --stdin            UTF-8 메시지 (최대 32,000바이트)\n  --source codex --task TASK_ID    보고한 에이전트와 작업 이름\n  --idempotency-key KEY            재시도할 때 같은 키 사용\n  --no-reply                      대화에 저장만 하고 AI는 호출하지 않음\n  --dry-run                       입력만 검증\nopenmuse delivery show KEY\nopenmuse status\nopenmuse config set-target main|host|THREAD_ID\nopenmuse config show\nopenmuse schema\n\n설치된 Host Agent의 로컬 API(127.0.0.1:8792)를 사용합니다. 별도 로그인은 필요하지 않습니다.\n`,
+      `OpenMuse Host Agent CLI ${version}\n\nopenmuse send --message "작업 완료" [--target main|host|THREAD_ID|NAME] [--type completed|question|error|progress]\n  --thread-name NAME              이름으로 명시적 선택 (main/host 예약 이름 포함)\n  --file PATH | --stdin            UTF-8 메시지 (최대 32,000바이트)\n  --source codex --task TASK_ID    보고한 에이전트와 작업 이름\n  --idempotency-key KEY            재시도할 때 같은 키 사용\n  --no-reply                      대화에 저장만 하고 AI는 호출하지 않음\n  --dry-run                       입력만 검증\nopenmuse delivery show KEY\nopenmuse status\nopenmuse config set-target main|host|THREAD_ID|NAME\nopenmuse config show\nopenmuse schema\n\n설치된 Host Agent의 로컬 API(127.0.0.1:8792)를 사용합니다. 별도 로그인은 필요하지 않습니다.\n`,
     );
   else {
     const config = await settings(),
@@ -116,13 +121,24 @@ try {
       if (!message || message.includes("\0")) throw fail("메시지가 비어 있거나 유효하지 않습니다");
       const input = {
         key: values["idempotency-key"] ?? randomUUID(),
-        target: validTarget(values.target ?? config.target ?? "main"),
+        target: validTarget(
+          values["thread-name"] === undefined
+            ? (values.target ?? config.target ?? "main")
+            : `name:${values["thread-name"].trim()}`,
+        ),
         type: values.type ?? "completed",
         source: values.source ?? "agent",
         ...(values.task ? { task: values.task } : {}),
         message,
         reply: !values["no-reply"],
       };
+      if (values.target !== undefined && values["thread-name"] !== undefined)
+        throw fail("--target과 --thread-name 중 하나만 지정하세요");
+      if (
+        values["thread-name"] !== undefined &&
+        (!values["thread-name"].trim() || values["thread-name"].trim().length > 200)
+      )
+        throw fail("대화 이름은 1~200자여야 합니다");
       if (!["completed", "question", "error", "progress"].includes(input.type))
         throw fail("유효하지 않은 보고 유형입니다");
       for (const [v, max] of [
@@ -165,7 +181,8 @@ try {
         headers: { "Content-Type": "application/json", "X-OpenMuse-Client": "cli" },
         input: {
           key: "string, stable unique key, max 160",
-          target: "main (default), host, existing thread ID",
+          target:
+            "main (default), host, existing thread ID or unique name; name:NAME forces name lookup",
           type: ["completed", "question", "error", "progress"],
           source: "string, max 80",
           task: "optional string, max 160",
