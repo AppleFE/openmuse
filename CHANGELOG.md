@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-10-07
+
+- Import report-only Host Agent messages into the next embedded Pi turn, including reports previously missing from existing sessions.
+- Persist report identities to avoid duplicate context on restart; preserve conversation boundaries and label reports as external task data.
+- Clarify Windows SYSTEM versus interactive-user CLI paths so command lookup failures are not mistaken for account permission failures.
+- Server-only patch; Host Agent and CLI 0.9.0 remain compatible and do not require reinstalling.
+
 ## 0.9.0 — 2026-10-07
 
 - Fix parallel Pi tool calls by ending AG-UI argument streams before tool execution results arrive.

@@ -16,6 +16,7 @@ import type { Store } from "../db.ts";
 import { Skills } from "../skills.ts";
 import { type UsageRecord, UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
+import { type PiHostReport, syncPiHostReports } from "./pi-host-reports.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
 import { adaptCopilotTools } from "./pi-tools.ts";
 import type { RoleRuntimeRequest } from "./runtime-hooks.ts";
@@ -47,6 +48,7 @@ export interface PiAgentSessionInput {
   sessionDir: string;
   cwd: string;
   sessionFile?: string;
+  hostReports?: readonly PiHostReport[];
   tools: readonly CopilotToolDefinition[];
   maxToolCalls: number;
   onToolCall(): number | Promise<number>;
@@ -72,6 +74,7 @@ export interface PiAgentRunInput extends PiAgentRunCallbacks {
   systemPrompt: string;
   prompt: string;
   images?: AttachmentImage[];
+  hostReports?: readonly PiHostReport[];
   tools: readonly CopilotToolDefinition[];
   abortTools?(): void;
   completion?: {
@@ -165,6 +168,7 @@ export class PiAgentRunner {
       sessionDir,
       cwd,
       sessionFile: existing?.sessionFile ?? durableSession?.sessionFile,
+      hostReports: input.hostReports,
       tools: input.tools,
       maxToolCalls:
         localBudget || (settings.jev.enabled && settings.jev.failMode === "local-budget") ? 4 : 32,
@@ -356,6 +360,7 @@ export class PiAgentRunner {
       input.sessionFile && existsSync(input.sessionFile)
         ? SessionManager.open(input.sessionFile, input.sessionDir, input.cwd)
         : SessionManager.create(input.cwd, input.sessionDir);
+    syncPiHostReports(manager, input.hostReports ?? []);
     const { session } = await createAgentSession({
       cwd: input.cwd,
       agentDir,

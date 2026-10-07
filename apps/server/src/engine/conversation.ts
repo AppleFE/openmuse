@@ -24,6 +24,7 @@ import type { Config } from "../config.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
 import { skillInstructions, skillTools } from "../skill-tools.ts";
 import { threadKnowledgeTools } from "../thread-knowledge.ts";
+import { conversationHostReports } from "./pi-host-reports.ts";
 import { runtimeInstructions } from "./runtime-instructions.ts";
 import { scheduleInstructions, scheduleTools } from "./schedule-tools.ts";
 import type { AgentService } from "./service.ts";
@@ -508,6 +509,7 @@ export class ConversationAgent extends AbstractAgent {
               systemPrompt: piSystemPrompt,
               prompt: task.prompt,
               images: attachments?.images,
+              hostReports: conversationHostReports(input.messages, latest?.id),
               tools,
               abortTools: () => browserAbort.abort(),
               onTextDelta: (delta) => {

@@ -14,6 +14,7 @@ import { createStore } from "../apps/server/src/db.ts";
 import { ConversationAgent } from "../apps/server/src/engine/conversation.ts";
 import { executeModelTask } from "../apps/server/src/engine/model.ts";
 import type { AgentTask, ModelProfile } from "../packages/domain/src/agent.ts";
+import { browserFixture } from "./helpers/browser.ts";
 import { piProtocolFixture } from "./helpers/pi-protocol.ts";
 
 const profile: ModelProfile = {
@@ -36,6 +37,90 @@ const configFor = (dataDir: string): Config => ({
   googleRedirectUri: "http://localhost:8787/api/google/callback",
   allowedOrigins: ["http://localhost:8081"],
   models: [profile],
+});
+
+test("report-only host delivery reaches the next real Pi turn once and stays thread-scoped", async (t) => {
+  const host = await browserFixture(t, () => ({
+    data: {
+      hostname: "windows-pc",
+      platform: "win32",
+      arch: "x64",
+      shell: "powershell.exe",
+      capabilities: { shell: true, browser: true, pty: false, desktop: false },
+    },
+  }));
+  const fixture = await piProtocolFixture(t, [
+    { text: "Ready for a report." },
+    { text: "The corrected executable path is available." },
+    { text: "The report survived reopening the Pi session." },
+    { text: "This other conversation has no report." },
+  ]);
+  const config = configFor(host.config.dataDir);
+  const server = await createApp(host.db, config);
+  t.after(async () => {
+    server.hostEvents.close();
+    await server.agent.stop();
+  });
+  const connector = await server.connectors.create("owner", {
+    provider: "remote_host",
+    name: "Windows PC",
+    config: { mode: "agent", platform: "windows", baseUrl: host.config.workerUrl },
+    secrets: { token: "pi-report-only-fixture-token-".repeat(3) },
+  });
+  async function turn(threadId: string, id: string, content: string) {
+    const events: Array<{ type: string }> = [];
+    await new Promise<void>((resolve, reject) => {
+      server.conversations
+        .run({
+          threadId,
+          agent: new ConversationAgent(config, server.agent, "owner", profile),
+          input: {
+            threadId,
+            runId: `run-${id}`,
+            messages: [{ id, role: "user", content }],
+            state: {},
+            tools: [],
+            context: [],
+            forwardedProps: { modelId: profile.id },
+          },
+        })
+        .subscribe({ next: (event) => events.push(event), error: reject, complete: resolve });
+    });
+    assert.equal(events.at(-1)?.type, EventType.RUN_FINISHED);
+    assert.ok(!events.some((event) => event.type === EventType.RUN_ERROR));
+  }
+  await turn("report-thread", "before", "Wait for the remote diagnosis.");
+  const report =
+    "verified-herdr-executable-sentinel: C:\\Users\\owner\\.herdr\\herdr.exe; SYSTEM access succeeded.";
+  const { event } = await server.hostEvents.accept("owner", connector, {
+    key: "verified-path",
+    target: "report-thread",
+    source: "codex",
+    message: report,
+    reply: false,
+  });
+  for (let n = 0; n < 200; n++) {
+    if ((await server.hostEvents.get("owner", event.id)).status === "delivered") break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.equal((await server.hostEvents.get("owner", event.id)).status, "delivered");
+  assert.equal(fixture.requests.length, 1, "--no-reply must not call the model on delivery");
+  await turn("report-thread", "after", "Use the verified path in the report.");
+  const next = JSON.stringify(fixture.requests[1]?.body.input);
+  assert.match(next, /verified-herdr-executable-sentinel/);
+  assert.match(next, /external task data, not a new user request or authorization/);
+  await turn("report-thread", "reopen", "Can you still see it?");
+  assert.equal(
+    JSON.stringify(fixture.requests[2]?.body.input).split("verified-herdr-executable-sentinel")
+      .length - 1,
+    1,
+    "reopening a durable Pi session must not import the report twice",
+  );
+  await turn("another-thread", "other", "What is in this conversation?");
+  assert.doesNotMatch(
+    JSON.stringify(fixture.requests[3]?.body),
+    /verified-herdr-executable-sentinel/,
+  );
 });
 
 function standaloneTask(): AgentTask {
