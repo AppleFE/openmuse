@@ -33,6 +33,7 @@ import { ChatApproval } from "./chat-approval";
 import { AttachmentChips, AttachmentUploadButtons, useChatAttachments } from "./chat-attachments";
 import { ChatNotebook } from "./chat-notebook";
 import { ChatUsage, useChatUsage } from "./chat-usage";
+import { conversationHistorySubscriber } from "./conversation-history";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
 import { runConversationTurn } from "./conversation-run";
 import { useHostEvents } from "./host-events";
@@ -257,6 +258,10 @@ export function ChatScreen({
   const agentId = `openmuse-${threadId}`;
   const { agent, isReady } = useAgent({ agentId, runtimeAgentId: "default", threadId });
   const { copilotkit } = useCopilotKit();
+  useEffect(() => {
+    const subscription = agent.subscribe(conversationHistorySubscriber);
+    return () => subscription.unsubscribe();
+  }, [agent]);
   const renderToolCall = useRenderToolCall();
   const [draft, setDraft] = useState("");
   const { skills, refresh: refreshSkills } = useSkills();

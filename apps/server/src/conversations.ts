@@ -835,6 +835,15 @@ export class ConversationStoreRunner extends AgentRunner {
             }
             events.push(event);
             subject.next(event);
+            if (event.type === EventType.RUN_STARTED) {
+              // Another client or a host report can have extended this chat.
+              // Hydrate after RUN_STARTED (required by AG-UI), before the reply,
+              // without duplicating full history in every durable event log.
+              subject.next({
+                type: EventType.MESSAGES_SNAPSHOT,
+                messages: structuredClone(messages),
+              });
+            }
             checkpoint();
           },
         }),

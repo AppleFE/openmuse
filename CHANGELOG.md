@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3 — 2026-10-07
+
+- Restore server message order when reconnecting or replying from another client, including intervening Host Agent reports.
+- Synchronize authoritative history before streaming a new reply without duplicating full snapshots in stored run logs.
+- Require fresh remote terminal targets and distinguish retired diagnostic panes from the user's original task when retrying.
+- Existing Host Agent/CLI 0.9.0 installations remain compatible.
+
 ## 0.9.2 — 2026-10-07
 
 - Distinguish OpenMuse's external remote-host shell from Herdr's in-pane skill workflow so a missing `HERDR_ENV` does not falsely block explicitly requested remote control.
