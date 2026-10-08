@@ -2,6 +2,7 @@ import {
   BetaAbstractComputerToolset20260801,
   type BetaToolsetCallContext,
 } from "@anthropic-ai/sdk/helpers/beta/toolsets";
+import { imageSize } from "image-size";
 import { type DesktopAction, desktopActionSchema } from "../../worker/src/automation-schema.ts";
 import { runToolsetBatch } from "./browser-sdk.ts";
 
@@ -52,4 +53,13 @@ export const runDesktopBatch = (
   backend: DesktopSDKBackend,
   actions: DesktopAction[],
   signal?: AbortSignal,
-) => runToolsetBatch(new OpenMuseComputerToolset(backend), actions, signal);
+) =>
+  runToolsetBatch(new OpenMuseComputerToolset(backend), actions, signal, (raw, image) => {
+    const action = desktopActionSchema.parse(raw);
+    const { width, height } = imageSize(Buffer.from(image.data, "base64"));
+    if (action.action === "zoom") {
+      const [left, top, right, bottom] = action.region;
+      return `ZOOM OBSERVATION: this image is ${width}x${height} pixels and shows original screen region [${left}, ${top}, ${right}, ${bottom}]. Its top-left is NOT screen (0, 0). To click image pixel (u, v), use full-screen coordinate [round(${left} + u * ${right - left} / ${width}), round(${top} + v * ${bottom - top} / ${height})]. Never send cropped image coordinates directly. If text is still too small, zoom a narrower original-screen region. Before clicking, identify the target in this image and convert its position. If a click fails or changes nothing, take a fresh screenshot and try browser tab search/keyboard navigation instead of stopping.`;
+    }
+    return `FULL SCREEN OBSERVATION: ${width}x${height} pixels. Mouse coordinates and zoom regions use this full image, including black margins. The zoom region format is [left, top, right, bottom]. For a wide desktop, zoom just the relevant window, menu or text; exclude black margins. In Chrome, focus the correct window, press Ctrl+Shift+A (Cmd+Shift+A on Mac), then screenshot and zoom the tab-search popup to read results. Do not toggle the shortcut again without inspecting the popup. Do not ask the user to select a visible tab until you have tried tab search and inspected the result.`;
+  });

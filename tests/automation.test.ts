@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { EventType } from "@ag-ui/core";
+import { PNG } from "pngjs";
 import { z } from "zod";
 import { createApp } from "../apps/server/src/app.ts";
 import { automationResultSchema } from "../apps/server/src/automation-result.ts";
@@ -17,6 +18,26 @@ import { piProtocolFixture } from "./helpers/pi-protocol.ts";
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6H+sAAAAASUVORK5CYII=";
 const tabs = [{ tab_id: "t1", title: "Fixture", url: "https://example.com/", active: true }];
+
+test("computer observations describe each zoom's actual image-to-screen coordinates", async () => {
+  const data = PNG.sync.write(new PNG({ width: 1280, height: 120 })).toString("base64");
+  const result = await runDesktopBatch(
+    { confirm: async () => true, action: async () => ({ data, media_type: "image/png" }) },
+    [
+      { action: "zoom", region: [320, 220, 960, 280] },
+      { action: "zoom", region: [0, 220, 320, 250] },
+    ],
+  );
+  assert.equal(result.isError, false);
+  assert.equal(result.content.length, 4);
+  assert.equal(result.content[0].type, "image");
+  assert.equal(result.content[2].type, "image");
+  assert.match(JSON.stringify(result.content[1]), /round\(320 \+ u \* 640 \/ 1280\)/);
+  assert.match(JSON.stringify(result.content[1]), /round\(220 \+ v \* 60 \/ 120\)/);
+  assert.match(JSON.stringify(result.content[3]), /round\(0 \+ u \* 320 \/ 1280\)/);
+  assert.match(JSON.stringify(result.content[3]), /Never send cropped image coordinates directly/);
+  assert.ok(automationResultSchema.safeParse(result).success);
+});
 
 test("zoom rejects inverted corners before execution and explains how to retry", async (t) => {
   const calls: unknown[] = [];

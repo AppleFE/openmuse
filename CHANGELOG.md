@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.4 — 2026-10-08
+
+- Return image dimensions and an explicit image-to-screen coordinate mapping with each computer-use zoom result, keeping separate mappings for multiple crops.
+- Add observation-time guidance for tab search, narrow crops on wide desktops, and recovering from ineffective clicks.
+- Server-only patch; Host Agent and desktop helper 0.10.2 remain compatible.
+
 ## 0.10.3 — 2026-10-08
 
 - Show assistant answers after their tool cards so the final response stays at the bottom of long computer-use turns, including existing conversations.

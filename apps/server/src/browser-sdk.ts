@@ -122,6 +122,10 @@ export async function runToolsetBatch(
   },
   actions: ({ action: string } & Record<string, unknown>)[],
   signal?: AbortSignal,
+  describeImage?: (
+    action: { action: string } & Record<string, unknown>,
+    image: { data: string; mediaType: string },
+  ) => string,
 ): Promise<AutomationResult> {
   const content: AutomationResult["content"] = [];
   let failed = false;
@@ -147,13 +151,21 @@ export async function runToolsetBatch(
       for (const block of typeof result.content === "string"
         ? [{ type: "text", text: result.content }]
         : (result.content ?? [])) {
-        if (block.type === "image" && "source" in block && block.source.type === "base64")
+        if (block.type === "image" && "source" in block && block.source.type === "base64") {
           content.push({
             type: "image",
             data: block.source.data,
             mimeType: block.source.media_type === "image/jpeg" ? "image/jpeg" : "image/png",
           });
-        else if (block.type === "text" && "text" in block)
+          if (describeImage)
+            content.push({
+              type: "text",
+              text: describeImage(action, {
+                data: block.source.data,
+                mediaType: block.source.media_type,
+              }),
+            });
+        } else if (block.type === "text" && "text" in block)
           content.push({ type: "text", text: block.text.slice(0, 64000) });
         else content.push({ type: "text", text: JSON.stringify(block).slice(0, 64000) });
       }
