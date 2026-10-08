@@ -97,6 +97,30 @@ export function WorkspaceTools() {
     ),
   });
   useRenderTool({
+    name: "open_computer_desktop",
+    description: "공유 데스크톱 열기",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <BrowserToolCard url="desktop://virtual" result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
+    name: "browser_use",
+    description: "브라우저 조작",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <ConnectorActionCard result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
+    name: "computer_use",
+    description: "컴퓨터 조작",
+    parameters: displayParameters,
+    render: ({ result, status }) => (
+      <ConnectorActionCard result={result} loading={status !== "complete"} />
+    ),
+  });
+  useRenderTool({
     name: "delegate_task",
     description: "위임한 작업 표시",
     parameters: displayParameters,
@@ -138,6 +162,54 @@ export function WorkspaceTools() {
   });
   return null;
 }
+function AutomationToolCard({
+  result,
+  loading,
+  sessionId,
+}: {
+  result: unknown;
+  loading: boolean;
+  sessionId: unknown;
+}) {
+  const { workspace, open } = useWorkspace();
+  const parsed = proxmoxToolValue(result) as { kind?: string; error?: string } | undefined;
+  if (parsed?.kind === "automation.write")
+    return <ConnectorActionCard result={result} loading={loading} />;
+  let envelope: unknown = result;
+  try {
+    if (typeof envelope === "string") envelope = JSON.parse(envelope);
+  } catch {}
+  const rich = z
+    .object({
+      isError: z.boolean().optional(),
+      content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
+    })
+    .safeParse(envelope);
+  const failed = !!parsed?.error || (rich.success && rich.data.isError);
+  const session = workspace.browsers.find((b) => b.id === sessionId);
+  return (
+    <Card style={{ gap: 10 }}>
+      <Text style={s.heading}>{loading ? "?? ????? ??" : failed ? "?? ?? ??" : "?? ?? ??"}</Text>
+      <ErrorNotice
+        error={
+          parsed?.error ||
+          (failed && rich.success
+            ? rich.data.content
+                ?.filter((b) => b.type === "text")
+                .map((b) => b.text)
+                .join("\n")
+                .slice(0, 1200)
+            : undefined)
+        }
+      />
+      {session && (
+        <Button small onPress={() => open({ type: "browser", browser: session })}>
+          ?? ?? ??
+        </Button>
+      )}
+    </Card>
+  );
+}
 function ConnectorActionCard({ result, loading }: { result: unknown; loading: boolean }) {
   const { workspace, open } = useWorkspace();
   const value = proxmoxToolValue(result);
@@ -151,7 +223,8 @@ function ConnectorActionCard({ result, loading }: { result: unknown; loading: bo
     .passthrough()
     .safeParse(value);
   const action =
-    response.success && response.data.kind === "connector.write"
+    response.success &&
+    (response.data.kind === "connector.write" || response.data.kind === "automation.write")
       ? (workspace.actions.find((a) => a.id === response.data.id) ??
         (response.data as unknown as ActionProposal))
       : undefined;

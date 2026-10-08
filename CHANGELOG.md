@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0 — 2026-10-08
+
+- Integrate the official Anthropic browser/computer toolset SDK as a provider-neutral execution layer; keep model routing in embedded Pi and support OpenCodex/OpenAI-compatible vision models.
+- Add browser DOM references, screenshots, forms, keys and shared tabs, with expired/cross-tab reference rejection and fail-stop batches.
+- Add shared native Windows/macOS/X11 desktops and isolated Docker virtual desktops, including mouse, keyboard, Unicode input, original-resolution zoom and JPEG live views.
+- Ship an optional logged-in desktop helper with automatic startup, loopback authentication and explicit OS permission/availability reporting.
+- Apply conversation review/bypass and user control ownership to screen input. Send real images to models while keeping image bytes out of UI/activity receipts.
+- Repair the Mac mini Colima launcher and add desktop setup documentation. Host Agent/CLI 0.10.0 is required for the new remote capabilities.
+
 ## 0.9.3 — 2026-10-07
 
 - Restore server message order when reconnecting or replying from another client, including intervening Host Agent reports.

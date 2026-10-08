@@ -2,6 +2,8 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BrowserContext, Page } from "playwright";
+import { browserActionSchema } from "./automation-schema.ts";
+import { BrowserAutomation } from "./browser-automation.ts";
 import {
   capturePdfDownload,
   MAX_DOWNLOAD_BYTES,
@@ -23,6 +25,9 @@ export interface Session {
 type Running = {
   context: BrowserContext;
   page: Page;
+  tabs: Map<string, { page: Page; automation: BrowserAutomation }>;
+  nextTab: number;
+  changes: { type: "navigation_refused" | "dialog_dismissed"; kind?: string; message?: string }[];
   touched: number;
   vncButtons?: number;
   pending: Set<Promise<void>>;
@@ -78,6 +83,14 @@ export async function createBrowserManager(options: {
   }
   function active(id: string) {
     const value = running.get(id);
+    if (value?.page.isClosed()) {
+      const next = [...value.tabs.values()].find((t) => !t.page.isClosed());
+      if (next) {
+        void value.frames?.close();
+        value.frames = undefined;
+        value.page = next.page;
+      }
+    }
     if (!value || value.page.isClosed())
       throw new WorkerError(
         "SESSION_CLOSED",
@@ -115,14 +128,14 @@ export async function createBrowserManager(options: {
     return list;
   }
   async function navigate(id: string, url: string) {
-    const target = await validatePublicUrl(url);
+    const target = url === "about:blank" ? { url: new URL(url) } : await validatePublicUrl(url);
     const { page } = active(id);
     try {
       await page.goto(target.url.href, { waitUntil: "domcontentloaded", timeout: 20_000 });
       // Chromium can follow redirects outside Playwright's initial route hook.
       // The proxy blocks those sockets, but its 403 is still an HTTP response:
       // validate the final location so the API does not report it as success.
-      await validatePublicUrl(page.url());
+      if (page.url() !== "about:blank") await validatePublicUrl(page.url());
     } catch (error) {
       if (error instanceof WorkerError && error.code === "BLOCKED_URL") {
         await page.goto("about:blank", { timeout: 5000 });
@@ -155,7 +168,7 @@ export async function createBrowserManager(options: {
     return result;
   }
   async function createSession(id: string, url: string) {
-    await validatePublicUrl(url);
+    if (url !== "about:blank") await validatePublicUrl(url);
     if (running.has(id)) return navigate(id, url);
     if (running.size >= maxSessions)
       throw new WorkerError(
@@ -235,6 +248,12 @@ export async function createBrowserManager(options: {
           await validatePublicUrl(route.request().url());
           await route.continue();
         } catch {
+          const instance = running.get(id);
+          if (route.request().isNavigationRequest() && instance && instance.changes.length < 20)
+            instance.changes.push({
+              type: "navigation_refused",
+              message: "Navigation to a non-public or invalid destination was blocked.",
+            });
           await route.abort("blockedbyclient").catch(() => {});
         }
       });
@@ -242,15 +261,50 @@ export async function createBrowserManager(options: {
       for (const old of context.pages()) await old.close();
       const page = await context.newPage();
       page.setDefaultTimeout(10_000);
-      const instance: Running = { context, page, touched: Date.now(), pending: new Set() };
+      const instance: Running = {
+        context,
+        page,
+        touched: Date.now(),
+        pending: new Set(),
+        tabs: new Map(),
+        nextTab: 1,
+        changes: [],
+      };
+      instance.tabs.set("t1", { page, automation: new BrowserAutomation(page) });
       running.set(id, instance);
       context.on("page", (popup) => {
-        void popup.close();
+        if (instance.tabs.size >= 10) {
+          void popup.close();
+          return;
+        }
+        popup.setDefaultTimeout(10000);
+        popup.on("download", captureDownload);
+        instance.tabs.set(`t${++instance.nextTab}`, {
+          page: popup,
+          automation: new BrowserAutomation(popup),
+        });
+        popup.on("dialog", (dialog) => {
+          instance.changes.push({
+            type: "dialog_dismissed",
+            kind: dialog.type(),
+            message: dialog.message().slice(0, 500),
+          });
+          void dialog.dismiss();
+        });
+        popup.on("close", () => {
+          for (const [key, entry] of instance.tabs)
+            if (entry.page === popup) instance.tabs.delete(key);
+        });
       });
       page.on("dialog", (dialog) => {
+        instance.changes.push({
+          type: "dialog_dismissed",
+          kind: dialog.type(),
+          message: dialog.message().slice(0, 500),
+        });
         void dialog.dismiss();
       });
-      page.on("download", (download) => {
+      function captureDownload(download: import("playwright").Download) {
         const pending = downloads(id).then((saved) =>
           capturePdfDownload({
             directory: directory(id),
@@ -267,7 +321,8 @@ export async function createBrowserManager(options: {
             instance.pending.delete(pending);
           },
         );
-      });
+      }
+      page.on("download", captureDownload);
       const initial: Session = {
         id,
         title: previous?.title ?? "New session",
@@ -308,6 +363,85 @@ export async function createBrowserManager(options: {
   sweeper.unref();
   return {
     list: () => [...sessions.values()],
+    automationState: (id: string, consume = true) =>
+      serial(id, async () => {
+        const instance = active(id);
+        const tabs = await Promise.all(
+          [...instance.tabs]
+            .filter(([, v]) => !v.page.isClosed())
+            .map(async ([tab_id, v]) => ({
+              tab_id,
+              title: (await v.page.title()).slice(0, 300),
+              url: v.page.url(),
+              active: v.page === instance.page,
+            })),
+        );
+        return { tabs, state_changes: consume ? instance.changes.splice(0) : [] };
+      }),
+    automation: (id: string, raw: unknown) =>
+      serial(id, async () => {
+        const input = browserActionSchema.parse(raw),
+          instance = active(id);
+        let entry =
+          "tab_id" in input && input.tab_id
+            ? instance.tabs.get(input.tab_id)
+            : [...instance.tabs.values()].find((v) => v.page === instance.page);
+        if (input.action === "new_tab") {
+          if (instance.tabs.size >= 10)
+            throw new WorkerError("TAB_LIMIT", "Close a tab before opening another", 409);
+          const page = await instance.context.newPage();
+          entry = [...instance.tabs.values()].find((v) => v.page === page);
+        }
+        if (!entry || entry.page.isClosed())
+          throw new WorkerError(
+            "TAB_NOT_FOUND",
+            "Read the current tab list before choosing a target",
+            404,
+          );
+        if (instance.page !== entry.page) {
+          await instance.frames?.close();
+          instance.frames = undefined;
+          instance.page = entry.page;
+        }
+        const page = entry.page;
+        if (input.action === "close_tab") {
+          if (instance.tabs.size === 1)
+            throw new WorkerError(
+              "LAST_TAB",
+              "Close the browser session to close its last tab",
+              409,
+            );
+          await entry.automation.clear();
+          await page.close();
+          for (const [key, v] of instance.tabs) if (v === entry) instance.tabs.delete(key);
+          await instance.frames?.close();
+          instance.frames = undefined;
+          instance.page = [...instance.tabs.values()][0].page;
+          await refresh(id);
+          return;
+        }
+        if (input.action === "navigate") {
+          await entry.automation.clear();
+          if (["back", "forward", "reload"].includes(input.url)) {
+            const opts = { waitUntil: "domcontentloaded" as const, timeout: 20000 };
+            if (input.url === "back") await page.goBack(opts);
+            else if (input.url === "forward") await page.goForward(opts);
+            else await page.reload(opts);
+            return refresh(id);
+          }
+          return navigate(
+            id,
+            /^[a-z][a-z0-9+.-]*:/i.test(input.url) ? input.url : `https://${input.url}`,
+          );
+        }
+        if (["new_tab", "switch_tab", "list_tabs"].includes(input.action)) {
+          await refresh(id);
+          return;
+        }
+        const result = await entry.automation.execute(input);
+        await refresh(id);
+        return result;
+      }),
     create: (id: string, url: string) =>
       serial("create", () => serial(id, () => createSession(id, url))),
     navigate: (id: string, url: string) => serial(id, () => navigate(id, url)),
@@ -322,7 +456,7 @@ export async function createBrowserManager(options: {
     read: (id: string) =>
       serial(id, async () => {
         const { page } = active(id);
-        await validatePublicUrl(page.url());
+        if (page.url() !== "about:blank") await validatePublicUrl(page.url());
         // Evaluation is fixed by the worker; callers cannot inject JavaScript.
         const result = await page.evaluate(() => {
           const text = document.body?.innerText ?? "";
@@ -369,7 +503,7 @@ export async function createBrowserManager(options: {
               }),
           };
         });
-        await validatePublicUrl(result.url);
+        if (result.url !== "about:blank") await validatePublicUrl(result.url);
         const session: Session = {
           id,
           url: result.url,

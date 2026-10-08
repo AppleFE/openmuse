@@ -328,7 +328,7 @@ export class WorkspaceService {
     };
   }
   async prepare(owner: string, input: ProposalInput, connectionId?: string) {
-    if (input.kind === "connector.write")
+    if (input.kind === "connector.write" || input.kind === "automation.write")
       throw new AppError("Connector actions must use the connector executor", 422);
     if (input.kind === "email.send") {
       for (const id of input.data.attachmentIds) await this.files.get(owner, id);
@@ -354,7 +354,7 @@ export class WorkspaceService {
     connectionId?: string,
     targetVersion?: string,
   ): Promise<string> {
-    if (input.kind === "connector.write")
+    if (input.kind === "connector.write" || input.kind === "automation.write")
       throw new AppError("Connector actions must use the connector executor", 422);
     if (this.config.mode === "sample") {
       if (input.kind === "email.send") {

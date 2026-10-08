@@ -816,10 +816,15 @@ test("shared pi runner persists non-team sessions, reuses completed runs, and re
 
     const controller = new AbortController();
     let rejectPrompt: ((error: Error) => void) | undefined;
+    let promptStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      promptStarted = resolve;
+    });
     const cancelled = new PiAgentRunner(db, config, jev, async () => ({
       prompt: () =>
         new Promise<void>((_resolve, reject) => {
           rejectPrompt = reject;
+          promptStarted();
         }),
       abort: async () => rejectPrompt?.(new Error("cancelled by shared signal")),
       dispose: () => {},
@@ -831,7 +836,8 @@ test("shared pi runner persists non-team sessions, reuses completed runs, and re
       request: { ...request, signal: controller.signal },
       runKey: `task:${taskValue.id}:cancel`,
     });
-    setTimeout(() => controller.abort(), 10);
+    await started;
+    controller.abort();
     await assert.rejects(cancelledRun, /cancelled by shared signal/);
     const records = await db.list<{ status: string; error?: string }>("owner", "pi-agent-runs");
     assert.ok(records.some((record) => record.status === "cancelled"));

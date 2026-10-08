@@ -29,6 +29,13 @@ const child = spawn(process.execPath, [entry], {
     HOST_AGENT_DATA_DIR: resolve(config.dataDir),
     HOST_AGENT_CONFIG_PATH: path,
     HOST_AGENT_NOTIFY_PORT: String(config.notifyPort ?? 8792),
+    ...(config.desktopProxy
+      ? {
+          OPENMUSE_DESKTOP_PROXY_URL: config.desktopProxy.url,
+          OPENMUSE_DESKTOP_PROXY_TOKEN: config.desktopProxy.token,
+        }
+      : {}),
+    ...(config.desktopImage ? { OPENMUSE_DESKTOP_IMAGE: config.desktopImage } : {}),
     ...(config.browserPath ? { PLAYWRIGHT_BROWSERS_PATH: resolve(config.browserPath) } : {}),
   },
 });

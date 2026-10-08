@@ -15,3 +15,4 @@ minimumReleaseAgeExclude:
   - '@tanstack/ai-openai@0.23.2'
   - '@tanstack/ai@0.59.0'
   - '@tanstack/openai-base@0.10.16'
+  - '@anthropic-ai/sdk@0.132.1'

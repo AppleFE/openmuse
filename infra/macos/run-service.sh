@@ -74,6 +74,8 @@ case "$service" in
     exec "$node" --env-file="$env_file" dist/apps/server/src/index.js
     ;;
   browser-worker)
+    PATH="$root/runtime/node-current/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    export PATH
     exec "$node" --env-file="$env_file" --experimental-strip-types apps/worker/src/index.ts
     ;;
   web)

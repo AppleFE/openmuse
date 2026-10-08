@@ -47,25 +47,41 @@ export async function createApp(
     google = new GoogleAuth(db, config),
     workspace = new WorkspaceService(db, config, files, google);
   const connectors = new ConnectorService(db, config);
-  const actions = new ActionService(db, {
-    execute: (owner, input, connectionId, targetVersion) =>
-      input.kind === "connector.write"
-        ? connectors.executeWrite(owner, input.data, targetVersion)
-        : workspace.execute(owner, input, connectionId, targetVersion),
-    prepare: (owner, input, connectionId) =>
-      input.kind === "connector.write"
-        ? connectors.prepareWrite(owner, input.data)
-        : workspace.prepare(owner, input, connectionId),
-    connected: async (owner, input) =>
-      input.kind === "connector.write"
-        ? Boolean(await connectors.actionConnection(owner, input.data))
-        : workspace.connected(owner),
-    connection: (owner, input) =>
-      input.kind === "connector.write"
-        ? connectors.actionConnection(owner, input.data)
-        : workspace.connection(owner),
-  });
   const browser = new BrowserService(db, config, auth, files, Date.now, connectors);
+  const actions = new ActionService(db, {
+    execute: (owner, input, connectionId, targetVersion, signal) =>
+      input.kind === "automation.write"
+        ? browser.runAutomation(owner, input.data, targetVersion, signal).then((result) => {
+            if (result.isError)
+              throw new AppError(
+                JSON.stringify(result.content.filter((b) => b.type === "text")),
+                422,
+              );
+            return JSON.stringify(result);
+          })
+        : input.kind === "connector.write"
+          ? connectors.executeWrite(owner, input.data, targetVersion)
+          : workspace.execute(owner, input, connectionId, targetVersion),
+    prepare: (owner, input, connectionId) =>
+      input.kind === "automation.write"
+        ? browser.prepareAutomation(owner, input)
+        : input.kind === "connector.write"
+          ? connectors.prepareWrite(owner, input.data)
+          : workspace.prepare(owner, input, connectionId),
+    connected: async (owner, input) =>
+      input.kind === "automation.write"
+        ? Boolean(await browser.get(owner, input.data.sessionId))
+        : input.kind === "connector.write"
+          ? Boolean(await connectors.actionConnection(owner, input.data))
+          : workspace.connected(owner),
+    connection: (owner, input) =>
+      input.kind === "automation.write"
+        ? browser.automationConnection(owner, input.data.sessionId)
+        : input.kind === "connector.write"
+          ? connectors.actionConnection(owner, input.data)
+          : workspace.connection(owner),
+  });
+  browser.configureActions(actions);
   const computer = new ComputerService(db, config, options.docker);
   const agent = new AgentService(
     db,
@@ -488,6 +504,23 @@ export async function createApp(
       .parse(await c.req.json());
     return c.json(await browser.create(c.get("owner"), body.url, body.connectorId), 201);
   });
+  app.get("/api/automation/capabilities", async (c) =>
+    c.json(
+      await browser.capabilities(
+        c.get("owner"),
+        z.string().max(120).optional().parse(c.req.query("connectorId")),
+      ),
+    ),
+  );
+  app.post("/api/desktops", async (c) => {
+    const body = z
+      .object({
+        mode: z.enum(["virtual", "native"]),
+        connectorId: z.string().min(1).max(120).optional(),
+      })
+      .parse(await c.req.json());
+    return c.json(await browser.createDesktop(c.get("owner"), body.mode, body.connectorId), 201);
+  });
   app.delete("/api/browsers/:id", async (c) =>
     c.json(await browser.remove(c.get("owner"), c.req.param("id"))),
   );
@@ -523,6 +556,12 @@ export async function createApp(
   );
   app.get("/api/browsers/:id/read", async (c) =>
     c.json(await browser.read(c.get("owner"), c.req.param("id"))),
+  );
+  app.get("/api/browsers/:id/tabs", async (c) =>
+    c.json(await browser.tabs(c.get("owner"), c.req.param("id"))),
+  );
+  app.post("/api/browsers/:id/tabs", async (c) =>
+    c.json(await browser.userTab(c.get("owner"), c.req.param("id"), await c.req.json())),
   );
   app.post("/api/browsers/:id/control", async (c) => {
     const body = z.strictObject({ control: z.enum(["agent", "user"]) }).parse(await c.req.json());

@@ -9,7 +9,7 @@ import {
 } from "react";
 
 interface ComputerDrafts {
-  tab: "브라우저" | "터미널" | "파일";
+  tab: "브라우저" | "데스크톱" | "터미널" | "파일";
   command: string;
   cwd: string;
   path: string;

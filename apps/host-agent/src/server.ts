@@ -33,7 +33,12 @@ export async function createHostAgent(options: { token: string; dataDir: string 
           arch: arch(),
           shell: process.platform === "win32" ? "powershell.exe" : "/bin/sh",
           identity: await hostIdentity(),
-          capabilities: { shell: true, browser: true, pty: false, desktop: false },
+          capabilities: {
+            shell: true,
+            browser: true,
+            pty: false,
+            desktop: Object.values(await worker.desktopStatus()).some((s) => s.available),
+          },
         });
         return true;
       }

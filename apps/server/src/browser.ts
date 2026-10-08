@@ -1,12 +1,21 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import type { BetaBrowserState } from "@anthropic-ai/sdk/helpers/beta/toolsets";
 import { z } from "zod";
-import type { BrowserSession } from "../../../packages/domain/src/index.ts";
+import type { BrowserSession, ProposalInput } from "../../../packages/domain/src/index.ts";
 import { browserInputSchema } from "../../../packages/domain/src/remote-host.ts";
+import {
+  browserBatchSchema,
+  desktopBatchSchema,
+  observationActions,
+} from "../../worker/src/automation-schema.ts";
+import type { ActionService } from "./actions.ts";
 import type { Auth } from "./auth.ts";
 import { browserConsole } from "./browser-console.ts";
+import { runBrowserBatch } from "./browser-sdk.ts";
 import type { Config } from "./config.ts";
 import type { ConnectorService } from "./connector-service.ts";
 import type { Store } from "./db.ts";
+import { runDesktopBatch } from "./desktop-sdk.ts";
 import { AppError } from "./errors.ts";
 import type { Files } from "./files.ts";
 
@@ -37,6 +46,240 @@ const failureSchema = z.object({
 type ChatBrowser = { id: string; sessionId: string };
 
 export class BrowserService {
+  private actions?: ActionService;
+  configureActions(actions: ActionService) {
+    this.actions = actions;
+  }
+  private automationVersion(session: BrowserSession) {
+    return createHash("sha256")
+      .update(
+        JSON.stringify([
+          session.id,
+          session.connectorRevision,
+          session.updatedAt,
+          session.control,
+          session.url,
+        ]),
+      )
+      .digest("hex");
+  }
+  async automationConnection(owner: string, sessionId: string) {
+    const session = await this.get(owner, sessionId);
+    return { id: session.id, account: `${session.title} · ${session.url}` };
+  }
+  async prepareAutomation(
+    owner: string,
+    input: Extract<ProposalInput, { kind: "automation.write" }>,
+  ) {
+    const s = await this.get(owner, input.data.sessionId);
+    const data = (s.kind === "desktop" ? desktopBatchSchema : browserBatchSchema).parse(input.data);
+    await this.agentAccess(owner, data.sessionId);
+    const session = await this.get(owner, data.sessionId);
+    if (session.status !== "active") throw new AppError("먼저 브라우저 세션을 여세요", 409);
+    return { input: { ...input, data }, targetVersion: this.automationVersion(session) };
+  }
+  async automation(
+    owner: string,
+    threadId: string,
+    raw: unknown,
+    signal?: AbortSignal,
+    kind: "browser" | "desktop" = "browser",
+  ) {
+    const data = (kind === "desktop" ? desktopBatchSchema : browserBatchSchema).parse(raw);
+    const session = await this.get(owner, data.sessionId);
+    if ((session.kind ?? "browser") !== kind)
+      throw new AppError(
+        "선택한 세션은 다른 종류의 화면입니다. browser_use / computer_use를 확인하세요.",
+        422,
+      );
+    if (
+      data.actions.some(
+        (a) =>
+          !observationActions.has(a.action) &&
+          !(
+            kind === "browser" &&
+            [
+              "navigate",
+              "new_tab",
+              "switch_tab",
+              "scroll",
+              "scroll_to",
+              "hover",
+              "mouse_move",
+              "close_tab",
+            ].includes(a.action)
+          ),
+      )
+    ) {
+      if (!this.actions) throw new AppError("화면 조작 승인 서비스를 사용할 수 없습니다", 503);
+      const action = await this.actions.proposeForConversation(
+        owner,
+        threadId,
+        {
+          kind: "automation.write",
+          data,
+        },
+        undefined,
+        undefined,
+        signal,
+      );
+      if (action.status === "succeeded" && action.result) return JSON.parse(action.result);
+      return action;
+    }
+    return this.runAutomation(owner, data, undefined, signal);
+  }
+  async runAutomation(owner: string, raw: unknown, targetVersion?: string, signal?: AbortSignal) {
+    const id = z.object({ sessionId: z.uuid() }).parse(raw).sessionId;
+    const desktop = (await this.get(owner, id)).kind === "desktop";
+    const data = (desktop ? desktopBatchSchema : browserBatchSchema).parse(raw);
+    return this.serial(data.sessionId, async () => {
+      const session = await this.get(owner, data.sessionId);
+      if (targetVersion && targetVersion !== this.automationVersion(session))
+        throw new AppError(
+          "검토 이후 화면 또는 제어권이 변경됐습니다. 다시 확인한 후 요청하세요.",
+          409,
+        );
+      if (desktop) {
+        const result = await runDesktopBatch(
+          {
+            confirm: async (action) => {
+              signal?.throwIfAborted();
+              if (!observationActions.has(action.action)) await this.agentAccess(owner, id);
+              return true;
+            },
+            action: async (input) => {
+              if (!observationActions.has(input.action)) await this.agentAccess(owner, id);
+              return (
+                await (
+                  await this.sessionRequest(owner, id, `/sessions/${id}/automation`, input, signal)
+                ).json()
+              ).result;
+            },
+          },
+          desktopBatchSchema.parse(data).actions,
+          signal,
+        );
+        if (data.actions.some((a) => !observationActions.has(a.action)))
+          await this.save(owner, { ...session, updatedAt: new Date().toISOString() }, id);
+        return result;
+      }
+      const state = async () =>
+        (await (
+          await this.sessionRequest(
+            owner,
+            session.id,
+            `/sessions/${session.id}/state`,
+            undefined,
+            signal,
+          )
+        ).json()) as BetaBrowserState;
+      const result = await runBrowserBatch(
+        {
+          state,
+          confirm: async (action) => {
+            signal?.throwIfAborted();
+            if (!observationActions.has(action.action)) await this.agentAccess(owner, session.id);
+            return true;
+          },
+          action: async (input) => {
+            if (!observationActions.has(input.action) || ("tab_id" in input && input.tab_id))
+              await this.agentAccess(owner, id);
+            const response = await this.sessionRequest(
+              owner,
+              session.id,
+              `/sessions/${session.id}/automation`,
+              input,
+              signal,
+            );
+            return (await response.json()).result;
+          },
+        },
+        browserBatchSchema.parse(data).actions,
+        signal,
+      );
+      const latest = await state();
+      const active = latest.tabs.find((t) => t.active);
+      if (active)
+        await this.save(
+          owner,
+          { ...session, title: active.title, url: active.url, updatedAt: new Date().toISOString() },
+          session.id,
+        );
+      return result;
+    });
+  }
+  async capabilities(owner: string, connectorId?: string) {
+    const target = connectorId
+      ? await this.connectors?.browserTarget(owner, connectorId)
+      : undefined;
+    try {
+      return await (await this.request("/capabilities", undefined, undefined, target)).json();
+    } catch (error) {
+      return {
+        browserToolset: false,
+        desktop: { virtual: { available: false }, native: { available: false } },
+        message: error instanceof Error ? error.message : "호스트 업데이트 필요",
+      };
+    }
+  }
+  async tabs(owner: string, id: string) {
+    const session = await this.get(owner, id);
+    if (session.kind === "desktop") return { tabs: [] };
+    return (await this.sessionRequest(owner, id, `/sessions/${id}/state?peek=1`)).json();
+  }
+  async userTab(owner: string, id: string, value: unknown) {
+    const input = z
+      .discriminatedUnion("action", [
+        z.object({ action: z.literal("new_tab") }),
+        z.object({ action: z.literal("switch_tab"), tab_id: z.string().min(1).max(100) }),
+        z.object({ action: z.literal("close_tab"), tab_id: z.string().min(1).max(100) }),
+      ])
+      .parse(value);
+    return this.serial(id, async () => {
+      const session = await this.get(owner, id);
+      if (session.kind === "desktop" || session.control !== "user")
+        throw new AppError("브라우저 제어를 가져온 뒤 탭을 변경하세요", 409);
+      await this.sessionRequest(owner, id, `/sessions/${id}/automation`, input);
+      const state = await this.tabs(owner, id);
+      const tab = state.tabs.find((t: { active: boolean }) => t.active);
+      if (tab)
+        await this.save(
+          owner,
+          { ...session, title: tab.title, url: tab.url, updatedAt: new Date().toISOString() },
+          id,
+        );
+      return state;
+    });
+  }
+  async createDesktop(owner: string, mode: "virtual" | "native", connectorId?: string) {
+    await this.cleanup(owner, connectorId);
+    await this.checkHistoryLimit(owner, connectorId);
+    const target = connectorId
+      ? await this.connectors?.browserTarget(owner, connectorId)
+      : undefined;
+    const existing = (await this.db.list<BrowserSession>(owner, "browsers")).find(
+      (s) =>
+        s.kind === "desktop" &&
+        s.desktopMode === mode &&
+        (s.connectorId ?? "") === (connectorId ?? "") &&
+        s.status === "active" &&
+        (!connectorId || s.connectorRevision === target?.revision),
+    );
+    if (existing) return this.decorate(owner, existing);
+    const id = randomUUID();
+    await this.db.put(owner, "browsers", {
+      id,
+      kind: "desktop",
+      desktopMode: mode,
+      url: "desktop://" + mode,
+      title: mode === "native" ? "호스트 데스크톱" : "가상 데스크톱",
+      status: "idle",
+      control: "agent",
+      updatedAt: new Date().toISOString(),
+      ...(connectorId ? { connectorId, connectorRevision: target?.revision } : {}),
+    });
+    return this.reopen(owner, id);
+  }
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly pendingPointers = new Map<
     string,
@@ -209,7 +452,11 @@ export class BrowserService {
         owner,
         id,
         "/sessions",
-        { id, url: target },
+        {
+          id,
+          url: target,
+          ...(value.kind === "desktop" ? { kind: "desktop", desktopMode: value.desktopMode } : {}),
+        },
         signal,
       );
       return await this.save(owner, await response.json(), id);
@@ -343,7 +590,7 @@ export class BrowserService {
       const payload = await (
         await this.sessionRequest(owner, id, `/sessions/${id}/input`, parsed, signal)
       ).json();
-      return parsed.type.startsWith("vnc_")
+      return parsed.type.startsWith("vnc_") || (await this.get(owner, id)).kind === "desktop"
         ? this.decorate(owner, await this.get(owner, id))
         : this.save(owner, payload, id);
     });
@@ -376,7 +623,8 @@ export class BrowserService {
       const payload = await (
         await this.sessionRequest(owner, id, `/sessions/${id}/input`, parsed)
       ).json();
-      if (!parsed.type.startsWith("vnc_")) return this.save(owner, payload, id);
+      if (!parsed.type.startsWith("vnc_") && session.kind !== "desktop")
+        return this.save(owner, payload, id);
       return payload;
     });
     slot.promise = promise;

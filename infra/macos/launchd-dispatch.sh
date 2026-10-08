@@ -9,6 +9,7 @@ pids=/Volumes/p41-1tb/openmuse/data/service-pids
 node=/Volumes/p41-1tb/openmuse/runtime/node-current/bin/node
 
 case "${SSH_ORIGINAL_COMMAND:-}" in
+  colima) exec /bin/sh "$root/repo/infra/macos/run-colima.sh" ;;
   server|browser-worker|web|ollama) action=start; service=$SSH_ORIGINAL_COMMAND ;;
   host-agent) action=start; service=host-agent ;;
   stop-server) action=stop; service=server ;;

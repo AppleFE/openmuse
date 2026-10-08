@@ -15,6 +15,7 @@ import type { ConnectorView } from "../../../packages/domain/src/connectors";
 import { browserAddress } from "./browser-address";
 import { useComputerDraft } from "./computer-drafts";
 import { LinuxWorkspace } from "./computer-workspace";
+import { DesktopPanel } from "./desktop-panel";
 import { Button, Card, colors, ErrorNotice, Field, LinkRow, Sheet, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -86,10 +87,18 @@ export function BrowserThreadCard({
           <Globe2 size={21} color={colors.blueDark} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[s.text, { fontWeight: "600" }]}>브라우저</Text>
+          <Text style={[s.text, { fontWeight: "600" }]}>
+            {browser.kind === "desktop"
+              ? browser.desktopMode === "native"
+                ? "호스트 데스크톱"
+                : "가상 데스크톱"
+              : "브라우저"}
+          </Text>
           <Text numberOfLines={1} style={s.small}>
             {browser.status === "closed"
-              ? "세션 저장됨"
+              ? browser.kind === "desktop"
+                ? "화면 연결 종료"
+                : "세션 저장됨"
               : browser.status === "error"
                 ? "확인 필요"
                 : browser.title}
@@ -129,9 +138,9 @@ export function BrowserThreadCard({
       )}
       <Button onPress={() => open({ type: "browser", browser })}>
         {browser.status === "closed"
-          ? "브라우저 다시 열기"
+          ? "화면 다시 열기"
           : browser.status === "error"
-            ? "브라우저 다시 연결"
+            ? "화면 다시 연결"
             : "직접 제어"}
       </Button>
       {removable && (
@@ -150,7 +159,11 @@ export function BrowserThreadCard({
               .catch((e) => setError(e.message));
           }}
         >
-          {deleting ? "로그인·다운로드 포함 삭제 확인" : "세션 삭제"}
+          {deleting
+            ? browser.kind === "desktop"
+              ? "세션 삭제 확인"
+              : "로그인·다운로드 포함 삭제 확인"
+            : "세션 삭제"}
         </Button>
       )}
       <ErrorNotice error={error} />
@@ -242,7 +255,7 @@ export function ComputerSheet() {
           </View>
         )}
         <View style={[s.row, { gap: 8 }]}>
-          {(["브라우저", "터미널", "파일"] as const).map((item) => (
+          {(["브라우저", "데스크톱", "터미널", "파일"] as const).map((item) => (
             <Button
               key={item}
               primary={tab === item}
@@ -253,10 +266,11 @@ export function ComputerSheet() {
             </Button>
           ))}
         </View>
-        <View style={{ display: tab === "브라우저" ? "none" : "flex" }}>
+        <View style={{ display: tab === "터미널" || tab === "파일" ? "flex" : "none" }}>
           <LinuxWorkspace tab={tab === "파일" ? "파일" : "터미널"} />
         </View>
         <ErrorNotice error={error} />
+        {tab === "데스크톱" && <DesktopPanel hosts={hosts} hostId={hostId} setHostId={setHostId} />}
         {tab === "브라우저" ? (
           <>
             {!!hosts.length && (
@@ -337,6 +351,7 @@ export function ComputerSheet() {
               </Button>
             </View>
             {[...workspace.browsers]
+              .filter((b) => b.kind !== "desktop")
               .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
               .map((browser) => (
                 <BrowserThreadCard key={browser.id} browser={browser} removable />

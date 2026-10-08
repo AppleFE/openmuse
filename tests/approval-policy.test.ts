@@ -101,6 +101,8 @@ test("approval settings are authenticated, persistent, reject active edits and i
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
   const path = "/api/copilotkit/threads/setting-fixture/approval";
   assert.equal((await app.app.request(path)).status, 401);
+  assert.equal((await app.app.request(path, { headers })).status, 404);
+  await app.conversations.create("local-user", { id: "setting-fixture", name: "Approval fixture" });
   assert.deepEqual(await (await app.app.request(path, { headers })).json(), { mode: "review" });
   assert.deepEqual(
     await (

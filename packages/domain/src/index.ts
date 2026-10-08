@@ -52,6 +52,8 @@ export interface Artifact {
   fields?: { name: string; value: string; type: "text" | "checkbox" | "unsupported" }[];
 }
 export interface BrowserSession {
+  kind?: "browser" | "desktop";
+  desktopMode?: "virtual" | "native";
   id: string;
   title: string;
   url: string;
@@ -120,6 +122,13 @@ export const eventDraftSchema = z
     }
   });
 export const proposalSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("automation.write"),
+    data: z.object({
+      sessionId: z.uuid(),
+      actions: z.array(z.record(z.string(), z.unknown())).min(1).max(8),
+    }),
+  }),
   z.object({ kind: z.literal("connector.write"), data: connectorWriteSchema }),
   z.object({ kind: z.literal("email.send"), data: emailDraftSchema }),
   z.object({ kind: z.literal("calendar.create"), data: eventDraftSchema }),

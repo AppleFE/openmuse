@@ -37,6 +37,7 @@ import { remoteOperationLabels } from "../../../packages/domain/src/remote-host"
 import { DelegateSheet, NotificationsSheet, TaskDetail } from "./agent-ui";
 import BrowserConsole from "./BrowserConsole";
 import { browserAddress, browserSite } from "./browser-address";
+import { BrowserTabs } from "./browser-tabs";
 import { ComputerSheet } from "./computer";
 import DateTimeEditor from "./DateTimeEditor";
 import { localDateTime, zonedInstant } from "./date-time";
@@ -589,6 +590,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
   }
   const email = action.kind === "email.send";
   const connector = action.kind === "connector.write";
+  const automation = action.kind === "automation.write";
   return (
     <Sheet
       title={pending ? "마지막 확인" : action.title}
@@ -610,7 +612,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
           <Text style={s.small}>{action.kind.replace(".", " · ")}</Text>
         </View>
         <Chip tint={pending ? colors.lavender : colors.green}>
-          {connector
+          {connector || automation
             ? {
                 awaiting_review: "검토 대기",
                 executing: "명령 전송 중",
@@ -626,7 +628,12 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
       </View>
       <Card style={{ gap: 13 }}>
         <ReviewLine label={connector ? "연결" : "계정"} value={action.account || w.profile.email} />
-        {connector ? (
+        {automation ? (
+          <>
+            <ReviewLine label="화면 세션" value={String(d.sessionId)} />
+            <ReviewLine label="실행할 조작" value={JSON.stringify(d.actions, null, 2)} />
+          </>
+        ) : connector ? (
           <>
             <ReviewLine
               label="작업"
@@ -747,7 +754,7 @@ function ReviewDetail({ initial }: { initial: ActionProposal }) {
                     ? "승인하고 전송"
                     : "변경 승인"}
             </Button>
-            {action.kind !== "calendar.delete" && !connector && (
+            {action.kind !== "calendar.delete" && !connector && !automation && (
               <Button icon={Edit3} disabled={busy} onPress={() => void edit()}>
                 세부 내용 수정
               </Button>
@@ -947,8 +954,8 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
     setError("");
     try {
       const result = await api.request<BrowserSession>(
-        `/api/browsers/${browser.id}/${end ? "close" : browser.status === "closed" ? "reopen" : "navigate"}`,
-        end ? {} : { url: browserAddress(url) },
+        `/api/browsers/${browser.id}/${end ? "close" : browser.kind === "desktop" || browser.status === "closed" ? "reopen" : "navigate"}`,
+        end || browser.kind === "desktop" ? {} : { url: browserAddress(url) },
       );
       setLocal(result);
       setUrl(result.url);
@@ -962,14 +969,23 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
   }
   return (
     <Sheet
-      title={browserSite(browser.url)}
+      title={browser.kind === "desktop" ? browser.title : browserSite(browser.url)}
       subtitle={`${uiLabel(browser.status)} · 업데이트: ${timeLabel(browser.updatedAt)}`}
       onClose={close}
       wide
       dock
     >
-      <View style={[s.row, { gap: 10, marginBottom: 16 }]}>
-        <View style={{ flex: 1 }}>
+      <View
+        style={[
+          s.row,
+          {
+            gap: 10,
+            marginBottom: 16,
+            display: browser.kind === "desktop" && browser.status === "active" ? "none" : "flex",
+          },
+        ]}
+      >
+        <View style={{ flex: 1, display: browser.kind === "desktop" ? "none" : "flex" }}>
           <Field
             label="웹사이트 주소"
             value={url}
@@ -1011,9 +1027,12 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
               .finally(() => setBusy(false));
           }}
         >
-          {browser.control === "user" ? "에이전트에게 제어 반환" : "브라우저 제어 가져오기"}
+          {browser.control === "user" ? "에이전트에게 제어 반환" : "화면 제어 가져오기"}
         </Button>
       </View>
+      {!loading && browser.kind !== "desktop" && browser.status === "active" && (
+        <BrowserTabs browser={browser} />
+      )}
       {loading ? (
         <View style={[s.row, { gap: 10, paddingVertical: 24 }]}>
           {error ? (
@@ -1021,7 +1040,7 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
           ) : (
             <>
               <ActivityIndicator color={colors.blueDark} />
-              <Text style={s.muted}>브라우저에 연결하는 중…</Text>
+              <Text style={s.muted}>화면에 연결하는 중…</Text>
             </>
           )}
         </View>
@@ -1038,9 +1057,13 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
           icon={Globe2}
           title={browser.status === "closed" ? "닫힌 세션입니다" : "미리 보기를 사용할 수 없습니다"}
           detail={
-            browser.status === "closed"
-              ? "프로필과 다운로드가 저장됐습니다. 다시 열어 이어서 작업하세요."
-              : "다시 연결하여 저장된 브라우저 프로필로 계속하세요."
+            browser.kind === "desktop"
+              ? browser.desktopMode === "virtual"
+                ? "가상 데스크톱은 닫으면 초기화됩니다. 다시 열면 새 환경으로 시작합니다."
+                : "호스트 화면 연결이 닫혔습니다. 로그인한 사용자 화면에 다시 연결하세요."
+              : browser.status === "closed"
+                ? "프로필과 다운로드가 저장됐습니다. 다시 열어 이어서 작업하세요."
+                : "다시 연결하여 저장된 브라우저 프로필로 계속하세요."
           }
         />
       )}
@@ -1050,7 +1073,7 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
             icon={ExternalLink}
             onPress={() => void Linking.openURL(api.url(browser.consoleUrl || ""))}
           >
-            브라우저를 새 창에서 열기
+            화면을 새 창에서 열기
           </Button>
         )}
         {!loading && (
@@ -1058,7 +1081,7 @@ function BrowserDetail({ initial }: { initial: BrowserSession }) {
             연결 새로고침
           </Button>
         )}
-        {!loading && browser.status !== "closed" && (
+        {!loading && browser.kind !== "desktop" && browser.status !== "closed" && (
           <Button icon={Download} busy={busy} onPress={() => void importDownloads()}>
             다운로드한 PDF 가져오기
           </Button>

@@ -16,7 +16,7 @@ await writeFile(
   JSON.stringify(
     {
       name: "@openmuse/host-agent",
-      version: "0.9.0",
+      version: "0.10.0",
       private: true,
       type: "module",
       scripts: { start: "node run.mjs", setup: "node setup.mjs" },
@@ -31,12 +31,18 @@ await writeFile(
     2,
   ),
 );
+await mkdir(`${directory}/infra/desktop`, { recursive: true });
+for (const name of ["driver.py", "requirements.txt"])
+  await copyFile(`infra/desktop/${name}`, `${directory}/infra/desktop/${name}`);
+for (const name of ["install-desktop.mjs", "desktop-helper.mjs"])
+  await copyFile(`infra/remote-host/${name}`, `${directory}/${name}`);
 await copyFile("infra/remote-host/setup.mjs", `${directory}/setup.mjs`);
 await copyFile("infra/remote-host/run.mjs", `${directory}/run.mjs`);
 await copyFile("infra/remote-host/install.mjs", `${directory}/install.mjs`);
 await copyFile("infra/remote-host/cli.mjs", `${directory}/cli.mjs`);
 await copyFile("infra/remote-host/install-cli.mjs", `${directory}/install-cli.mjs`);
 await copyFile("docs/REMOTE-HOSTS.md", `${directory}/README.md`);
+await copyFile("docs/COMPUTER-USE.md", `${directory}/COMPUTER-USE.md`);
 await copyFile("docs/HOST-EVENTS.md", `${directory}/HOST-EVENTS.md`);
 const npmCli = resolve(
   dirname(process.execPath),
@@ -50,7 +56,7 @@ const lock = spawnSync(
   { cwd: directory, stdio: "inherit" },
 );
 if (lock.status !== 0) process.exit(lock.status ?? 1);
-const archive = resolve("dist/openmuse-host-agent-0.9.0.tar.gz");
+const archive = resolve("dist/openmuse-host-agent-0.10.0.tar.gz");
 const tar = spawnSync(
   "tar",
   [
@@ -61,6 +67,9 @@ const tar = spawnSync(
     ...[
       "apps",
       "packages",
+      "infra",
+      "install-desktop.mjs",
+      "desktop-helper.mjs",
       "package.json",
       "package-lock.json",
       "setup.mjs",
@@ -70,6 +79,7 @@ const tar = spawnSync(
       "install-cli.mjs",
       "README.md",
       "HOST-EVENTS.md",
+      "COMPUTER-USE.md",
     ].map((file) => `host-agent/${file}`),
   ],
   { stdio: "inherit" },

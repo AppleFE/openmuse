@@ -1,6 +1,6 @@
 {
   "name": "openmuse",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "dev:mobile": "pnpm --dir apps/mobile start",
     "dev:web": "pnpm --dir apps/mobile web",
     "test": "node infra/remote-host/build.mjs && tsx --test tests/*.test.ts apps/mobile/test/*.test.ts",
-    "test:browser": "node --experimental-strip-types --test apps/worker/tests/lifecycle.test.ts apps/worker/tests/frame-stream.test.ts",
+    "test:browser": "node --experimental-strip-types --test apps/worker/tests/lifecycle.test.ts apps/worker/tests/frame-stream.test.ts apps/worker/tests/automation.test.ts",
     "test:macos-deploy": "node --test infra/macos/*.test.mjs",
     "typecheck": "tsc --noEmit && pnpm --dir apps/mobile typecheck",
     "lint": "biome check .",
@@ -34,6 +34,7 @@
   "dependencies": {
     "@ag-ui/client": "0.0.59",
     "@ag-ui/core": "0.0.59",
+    "@anthropic-ai/sdk": "0.132.1",
     "@copilotkit/runtime": "1.70.1",
     "@earendil-works/pi-ai": "0.87.1",
     "@earendil-works/pi-coding-agent": "0.87.1",

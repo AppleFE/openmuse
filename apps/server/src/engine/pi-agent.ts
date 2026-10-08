@@ -343,8 +343,23 @@ export class PiAgentRunner {
       callbacks.onTextDelta?.(event.assistantMessageEvent.delta);
     else if (event.type === "tool_execution_start")
       callbacks.onToolStart?.(event.toolCallId, event.toolName, event.args);
-    else if (event.type === "tool_execution_end")
-      callbacks.onToolEnd?.(event.toolCallId, event.toolName, event.result, event.isError);
+    else if (event.type === "tool_execution_end") {
+      // Keep images in Pi's model history, not duplicated into the UI event journal.
+      const result = event.result?.details?.automation
+        ? {
+            ...event.result,
+            content: event.result.content.map((block: { type: string }) =>
+              block.type === "image"
+                ? {
+                    type: "text",
+                    text: "[화면 캡처를 모델에 전달했습니다. 에이전트 컴퓨터에서 같은 화면을 볼 수 있습니다.]",
+                  }
+                : block,
+            ),
+          }
+        : event.result;
+      callbacks.onToolEnd?.(event.toolCallId, event.toolName, result, event.isError);
+    }
   }
 
   private async createSession(input: PiAgentSessionInput): Promise<PiAgentSession> {
