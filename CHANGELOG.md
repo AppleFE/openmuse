@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 — 2026-10-08
+
+- Accept `Win`/`WIN`/`Windows` shortcuts in computer use and report unsupported keys as input errors instead of generic browser failures.
+- Archive completed Host Agent shell receipts after 100 recent jobs so new commands continue to run. Archived operation IDs remain readable and cannot execute twice, including after restart.
+- Report specific host command validation/state errors without exposing internal failures.
+
 ## 0.10.0 — 2026-10-08
 
 - Integrate the official Anthropic browser/computer toolset SDK as a provider-neutral execution layer; keep model routing in embedded Pi and support OpenCodex/OpenAI-compatible vision models.

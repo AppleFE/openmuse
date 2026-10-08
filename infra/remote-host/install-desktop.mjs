@@ -12,6 +12,7 @@ const root = join(
   "OpenMuseDesktop",
 );
 const configPath = join(root, "config.json");
+const launch = join(bundle, "desktop-helper.mjs");
 const hostPath = resolve(process.argv[2] ?? join(bundle, "..", "config.json"));
 if ((!win && process.getuid?.() === 0) || (win && userInfo().username.toUpperCase() === "SYSTEM"))
   throw Error(
@@ -31,8 +32,13 @@ function powershell(script) {
   run("powershell.exe", [
     "-NoProfile",
     "-NonInteractive",
+    "-OutputFormat",
+    "Text",
     "-EncodedCommand",
-    Buffer.from("$ErrorActionPreference='Stop'\n" + script, "utf16le").toString("base64"),
+    Buffer.from(
+      "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'\n" + script,
+      "utf16le",
+    ).toString("base64"),
   ]);
 }
 if (win) {
@@ -71,6 +77,31 @@ if (!python)
   throw Error(
     "Python 3.10 이상을 먼저 설치하세요. Windows: winget install Python.Python.3.12 / macOS: brew install python / Ubuntu·Debian: sudo apt install python3-venv python3-tk scrot xclip",
   );
+// An active native session holds python.exe open on Windows. Stop before
+// rebuilding its venv, and prevent the service manager from restarting it mid-update.
+const helperToken = host.desktopProxy?.token ?? randomBytes(32).toString("hex");
+await fetch("http://127.0.0.1:8793/desktop/shutdown", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${helperToken}` },
+  signal: AbortSignal.timeout(3000),
+}).catch(() => {});
+await new Promise((resolve) => setTimeout(resolve, 500));
+if (win) {
+  powershell(`Stop-ScheduledTask -TaskName 'OpenMuse Desktop' -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.ExecutablePath -eq ${psQuote(process.execPath)} -and $_.CommandLine.Contains(${psQuote(`"${launch}"`)}) -and $_.CommandLine.Contains(${psQuote(`"${configPath}"`)}) } | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }`);
+} else if (process.platform === "darwin") {
+  spawnSync(
+    "/bin/launchctl",
+    [
+      "bootout",
+      `gui/${process.getuid()}`,
+      join(homedir(), "Library/LaunchAgents/com.openmuse.desktop.plist"),
+    ],
+    { stdio: "ignore" },
+  );
+} else {
+  spawnSync("systemctl", ["--user", "stop", "openmuse-desktop.service"], { stdio: "ignore" });
+}
 run(python[0], [
   ...python[1],
   "-m",
@@ -88,7 +119,7 @@ run(executable, [
   join(bundle, "infra/desktop/requirements.txt"),
 ]);
 const config = {
-  token: host.desktopProxy?.token ?? randomBytes(32).toString("hex"),
+  token: helperToken,
   port: 8793,
   python: executable,
   driver: join(bundle, "infra/desktop/driver.py"),
@@ -96,15 +127,6 @@ const config = {
   log: join(root, "desktop.log"),
 };
 await writeFile(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
-const launch = join(bundle, "desktop-helper.mjs");
-// Stop a previous helper gracefully before changing its startup registration.
-// Older helpers lack this endpoint; Windows has a scoped process check below.
-await fetch(`http://127.0.0.1:${config.port}/desktop/shutdown`, {
-  method: "POST",
-  headers: { Authorization: `Bearer ${config.token}` },
-  signal: AbortSignal.timeout(3000),
-}).catch(() => {});
-await new Promise((resolve) => setTimeout(resolve, 300));
 if (win) {
   // Interactive logon, not Session 0. The requested elevated level applies only
   // to this user's existing administrator rights; UAC/secure desktop is excluded.

@@ -221,6 +221,47 @@ test("persisted commands are idempotent, bounded and not replayed after restart"
   );
 });
 
+test("completed shell receipts archive at 100 without blocking new commands or replaying old IDs", async (t) => {
+  const path = await directory(t);
+  let launches = 0;
+  const driver = async (
+    _input: unknown,
+    output: (text: string) => void,
+    exit: (code: number | null) => void,
+  ) => {
+    launches++;
+    output(`receipt-${launches}`);
+    exit(0);
+    return { input: () => {}, stop: () => {} };
+  };
+  const manager = await new RemoteJobManager(path, driver).initialize();
+  closeAfter(t, () => manager.close());
+  const firstInput = { command: "first", cwd: path };
+  const first = await manager.start(firstInput);
+  await Promise.all(
+    Array.from({ length: 105 }, (_, i) => manager.start({ command: `command-${i}` })),
+  );
+  assert.equal(launches, 106);
+  assert.equal(manager.list().length, 100);
+  assert.deepEqual(manager.get(first.id), first);
+  assert.equal(
+    JSON.parse(await readFile(join(path, "archive", `${first.id}.json`), "utf8")).job.id,
+    first.id,
+  );
+  await manager.start(firstInput, first.id);
+  await assert.rejects(() => manager.start({ command: "different" }, first.id), /변경/);
+  assert.equal(launches, 106);
+  await manager.close();
+  const restored = await new RemoteJobManager(path, driver).initialize();
+  closeAfter(t, () => restored.close());
+  assert.deepEqual(restored.get(first.id), first);
+  await restored.start(firstInput, first.id);
+  assert.equal(launches, 106);
+  await restored.start({ command: "after restart" });
+  assert.equal(launches, 107);
+  assert.equal(restored.list().length, 100);
+});
+
 test("SSH verifies the host key before remote execution and allocates a real PTY", async (t) => {
   const key = generateKeyPairSync("rsa", {
     modulusLength: 2048,

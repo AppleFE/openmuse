@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkerError } from "./errors.ts";
 
 const tab = { tab_id: z.string().min(1).max(100).optional() };
 const point = z.object({
@@ -109,9 +110,13 @@ export function playwrightKey(text: string) {
     ctrl: "Control",
     control: "Control",
     cmd: "Meta",
+    command: "Meta",
+    win: "Meta",
+    windows: "Meta",
     super: "Meta",
     meta: "Meta",
     alt: "Alt",
+    option: "Alt",
     shift: "Shift",
     return: "Enter",
     enter: "Enter",
@@ -131,16 +136,22 @@ export function playwrightKey(text: string) {
     pagedown: "PageDown",
   };
   const keys = text.split("+");
-  if (keys.length > 5) throw Error("Too many key modifiers");
+  if (keys.length > 5)
+    throw new WorkerError("INVALID_KEY", "키 조합은 최대 5개 키까지 지원합니다.", 422);
   return keys
     .map((key) => {
-      const value = aliases[key.toLowerCase()] ?? key;
+      key = key.trim();
+      const value = aliases[key.toLowerCase()] ?? (/^f\d+$/i.test(key) ? key.toUpperCase() : key);
       if (
         !/^(Control|Meta|Alt|Shift|Enter|Escape|Space|Backspace|Delete|Tab|Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown|F([1-9]|1[0-2])|[a-zA-Z0-9])$/.test(
           value,
         )
       )
-        throw Error("Unsupported key");
+        throw new WorkerError(
+          "INVALID_KEY",
+          "지원하지 않는 키입니다. Windows 키는 Win, Windows, Super 또는 Meta를 사용하세요.",
+          422,
+        );
       return value;
     })
     .join("+");

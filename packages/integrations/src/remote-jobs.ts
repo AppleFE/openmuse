@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { z } from "zod";
@@ -19,6 +20,9 @@ export type JobDriver = (
 const MAX_OUTPUT = 128 * 1024;
 const MAX_JOBS = 100;
 const timestamp = () => new Date().toISOString();
+const validId = (id: string) =>
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id);
+export class RemoteJobError extends Error {}
 
 /** Private durable receipts. Running processes are not silently replayed after a restart. */
 export class RemoteJobManager {
@@ -31,6 +35,7 @@ export class RemoteJobManager {
   private dirty = new Set<string>();
   private flushTimer?: ReturnType<typeof setTimeout>;
   private closed = false;
+  private admissions: Promise<unknown> = Promise.resolve();
   constructor(
     private readonly directory: string,
     private readonly driver: JobDriver,
@@ -69,9 +74,46 @@ export class RemoteJobManager {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   get(id: string): RemoteJob {
-    const record = this.jobs.get(id);
-    if (!record) throw new Error("원격 셸 작업을 찾을 수 없습니다");
+    const record = this.jobs.get(id) ?? this.archived(id);
+    if (!record) throw new RemoteJobError("원격 셸 작업을 찾을 수 없습니다");
     return { ...record.job };
+  }
+  private archived(id: string): { job: RemoteJob; input: RemoteCommand } | undefined {
+    if (!validId(id)) throw new RemoteJobError("유효한 작업 ID가 필요합니다");
+    try {
+      const record = JSON.parse(
+        readFileSync(join(this.directory, "archive", `${id}.json`), "utf8"),
+      );
+      if (record.job?.id !== id || typeof record.job.output !== "string")
+        throw new Error("Invalid archived receipt");
+      return { job: record.job, input: remoteCommandSchema.parse(record.input) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
+    }
+  }
+  private async archiveCompleted() {
+    if (this.jobs.size < MAX_JOBS) return;
+    const oldest = [...this.jobs.values()]
+      .filter(
+        ({ job }) =>
+          !this.starting.has(job.id) &&
+          !this.running.has(job.id) &&
+          job.status !== "running" &&
+          job.status !== "stopping",
+      )
+      .sort((a, b) => a.job.createdAt.localeCompare(b.job.createdAt))[0];
+    if (!oldest)
+      throw new RemoteJobError("실행 중인 호스트 작업이 너무 많습니다. 완료 후 다시 실행하세요");
+    // Preserve the full receipt and operation ID: retries of archived commands must never replay.
+    await this.flush();
+    const archive = join(this.directory, "archive");
+    await mkdir(archive, { recursive: true, mode: 0o700 });
+    await rename(
+      join(this.directory, `${oldest.job.id}.json`),
+      join(archive, `${oldest.job.id}.json`),
+    );
+    this.jobs.delete(oldest.job.id);
   }
   private changed(id: string) {
     this.dirty.add(id);
@@ -95,21 +137,25 @@ export class RemoteJobManager {
       });
     await this.writes;
   }
-  async start(raw: unknown, id: string = randomUUID()): Promise<RemoteJob> {
-    if (this.closed) throw new Error("호스트 에이전트가 종료 중입니다");
-    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id))
-      throw new Error("유효한 작업 ID가 필요합니다");
+  start(raw: unknown, id: string = randomUUID()): Promise<RemoteJob> {
+    const next = this.admissions.catch(() => {}).then(() => this.startJob(raw, id));
+    this.admissions = next;
+    return next;
+  }
+  private async startJob(raw: unknown, id: string): Promise<RemoteJob> {
+    if (this.closed) throw new RemoteJobError("호스트 에이전트가 종료 중입니다");
+    if (!validId(id)) throw new RemoteJobError("유효한 작업 ID가 필요합니다");
     const input = remoteCommandSchema.parse(raw);
-    const existing = this.jobs.get(id);
+    const existing = this.jobs.get(id) ?? this.archived(id);
     if (existing) {
       if (JSON.stringify(existing.input) !== JSON.stringify(input))
-        throw new Error("같은 작업 ID의 명령을 변경할 수 없습니다");
+        throw new RemoteJobError("같은 작업 ID의 명령을 변경할 수 없습니다");
       return this.get(id);
     }
     if (this.running.size + this.starting.size >= 4)
-      throw new Error("동시에 실행할 수 있는 작업은 4개입니다");
-    if (this.jobs.size >= MAX_JOBS)
-      throw new Error("호스트 작업 기록 한도에 도달했습니다. 관리자가 기록을 보관 후 정리하세요");
+      throw new RemoteJobError("동시에 실행할 수 있는 작업은 4개입니다");
+    await this.archiveCompleted();
+    if (this.closed) throw new RemoteJobError("호스트 에이전트가 종료 중입니다");
     const job: RemoteJob = {
       id,
       command: input.command,
@@ -187,7 +233,7 @@ export class RemoteJobManager {
   input(id: string, text: string) {
     const control = this.running.get(id);
     if (!control || this.get(id).status !== "running")
-      throw new Error("실행 중인 작업만 입력할 수 있습니다");
+      throw new RemoteJobError("실행 중인 작업만 입력할 수 있습니다");
     control.input(text);
     return this.get(id);
   }

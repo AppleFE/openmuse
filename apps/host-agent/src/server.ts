@@ -4,6 +4,7 @@ import { z } from "zod";
 import { remoteWriteSchemas } from "../../../packages/domain/src/remote-host.ts";
 import {
   localJobDriver,
+  RemoteJobError,
   RemoteJobManager,
 } from "../../../packages/integrations/src/remote-jobs.ts";
 import { WorkerError } from "../../worker/src/errors.ts";
@@ -77,7 +78,9 @@ export async function createHostAgent(options: { token: string; dataDir: string 
           "HOST_OPERATION_FAILED",
           error instanceof z.ZodError
             ? "호스트 작업 입력 형식이 올바르지 않습니다"
-            : "호스트 작업 실패: 작업 ID·실행 상태·기록 한도를 확인하세요",
+            : error instanceof RemoteJobError
+              ? error.message
+              : "호스트 작업 실패: 작업 ID·실행 상태·기록 한도를 확인하세요",
           422,
         );
       }
