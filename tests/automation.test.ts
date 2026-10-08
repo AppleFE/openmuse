@@ -36,6 +36,7 @@ test("computer observations describe each zoom's actual image-to-screen coordina
   assert.match(JSON.stringify(result.content[1]), /round\(220 \+ v \* 60 \/ 120\)/);
   assert.match(JSON.stringify(result.content[3]), /round\(0 \+ u \* 320 \/ 1280\)/);
   assert.match(JSON.stringify(result.content[3]), /Never send cropped image coordinates directly/);
+  assert.match(JSON.stringify(result.content[3]), /A tab-search result is NOT the active page/);
   assert.ok(automationResultSchema.safeParse(result).success);
 });
 
