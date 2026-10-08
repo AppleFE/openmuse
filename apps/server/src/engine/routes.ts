@@ -98,6 +98,9 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
   app.get("/tasks/:id", async (c) =>
     c.json(await service.detail(c.get("owner"), c.req.param("id"))),
   );
+  app.delete("/tasks/:id", async (c) =>
+    c.json(await service.deleteTask(c.get("owner"), c.req.param("id"))),
+  );
   app.post("/tasks/:id/control", async (c) => {
     const { action } = z
       .object({ action: z.enum(["pause", "resume", "cancel", "retry"]) })
@@ -206,6 +209,13 @@ export function agentRoutes(service: AgentService): Hono<{ Variables: { owner: s
     );
     if (!notification) throw new AppError("Notification not found", 404);
     return c.json(notification);
+  });
+  app.post("/notifications/read", async (c) => {
+    const { ids } = z
+      .object({ ids: z.array(z.string().min(1).max(200)).max(5000) })
+      .strict()
+      .parse(await c.req.json());
+    return c.json({ count: await service.db.readNotifications(c.get("owner"), ids) });
   });
   app.post("/sample-page", async (c) => {
     if (service.config.mode !== "sample") throw new AppError("Not found", 404);

@@ -13,6 +13,13 @@ export function ScheduleManager() {
     [busy, setBusy] = useState(false),
     [form, setForm] = useState(false),
     [editing, setEditing] = useState<AgentSchedule>();
+  const [showInactive, setShowInactive] = useState(false);
+  const activeCount = items.filter((item) => item.enabled).length;
+  const visibleItems = items
+    .filter((item) => showInactive || item.enabled)
+    .sort(
+      (a, b) => Number(b.enabled) - Number(a.enabled) || b.createdAt.localeCompare(a.createdAt),
+    );
   const [title, setTitle] = useState(""),
     [prompt, setPrompt] = useState(""),
     [mode, setMode] = useState("daily"),
@@ -102,7 +109,7 @@ export function ScheduleManager() {
   return (
     <Card style={{ gap: 12 }}>
       <View style={[s.row, { gap: 8 }]}>
-        <Text style={[s.heading, { flex: 1 }]}>AI 예약 실행</Text>
+        <Text style={[s.heading, { flex: 1 }]}>예약 작업 관리</Text>
         <Button small onPress={() => edit()}>
           스케줄 추가
         </Button>
@@ -112,8 +119,19 @@ export function ScheduleManager() {
         저장됩니다.
       </Text>
       <ErrorNotice error={error} />
+      <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+        <Button small primary={!showInactive} onPress={() => setShowInactive(false)}>
+          실행 중 {activeCount}
+        </Button>
+        <Button small primary={showInactive} onPress={() => setShowInactive(true)}>
+          전체 {items.length}
+        </Button>
+      </View>
       {!items.length && <Text style={s.muted}>등록된 스케줄이 없습니다.</Text>}
-      {items.map((item) => (
+      {!!items.length && !visibleItems.length && (
+        <Text style={s.muted}>실행 중인 예약이 없습니다. 전체에서 중지된 예약을 확인하세요.</Text>
+      )}
+      {visibleItems.map((item) => (
         <View key={item.id} style={{ gap: 8, paddingVertical: 12 }}>
           <Text style={s.text}>
             {item.title} · {item.enabled ? "예약 중" : "일시 중지·완료"}
@@ -124,7 +142,9 @@ export function ScheduleManager() {
               : new Date(item.timing.at).toLocaleString("ko-KR")}{" "}
             · 다음 {item.nextRunAt ? new Date(item.nextRunAt).toLocaleString("ko-KR") : "없음"}
           </Text>
-          <Text style={s.muted}>{item.prompt}</Text>
+          <Text numberOfLines={3} style={s.muted}>
+            {item.prompt}
+          </Text>
           <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
             <Button small disabled={busy} onPress={() => edit(item)}>
               수정

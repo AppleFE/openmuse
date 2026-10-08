@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createStore } from "../apps/server/src/db.ts";
+import { scheduleTools } from "../apps/server/src/engine/schedule-tools.ts";
 import { nextScheduleDate, ScheduleService } from "../apps/server/src/engine/schedules.ts";
 import type { AgentTask } from "../packages/domain/src/agent.ts";
 
@@ -99,6 +100,69 @@ test("cron timezone handles DST and rejects seconds, invalid zones and past one-
       service.create("a", { ...input, timing: { type: "once", at: "2020-01-01T00:00:00Z" } }),
       /미래/,
     );
+  } finally {
+    await db.close();
+  }
+});
+
+test("scheduled occurrences cannot create or modify registrations, but can read receipts", async () => {
+  const db = await createStore();
+  try {
+    const service = new ScheduleService(db, async () => {
+      throw Error("unused");
+    });
+    const tools = scheduleTools(service, "a", (name) => name, { readOnly: true });
+    assert.deepEqual(
+      tools.map((t) => t.name),
+      ["list_schedules", "schedule_runs"],
+    );
+    assert.ok(
+      scheduleTools(service, "a", (name) => name).some((t) => t.name === "create_schedule"),
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("paused, changed or deleted schedules do not dispatch pending retry occurrences", async () => {
+  const db = await createStore();
+  let clock = Date.parse("2026-10-05T00:00:00Z"),
+    calls = 0;
+  const service = new ScheduleService(
+    db,
+    async () => {
+      calls++;
+      throw Error("queue temporarily unavailable");
+    },
+    undefined,
+    () => clock,
+  );
+  try {
+    for (const operation of ["pause", "change", "delete"]) {
+      const input = {
+        title: operation,
+        prompt: operation,
+        timing: { type: "cron" as const, expression: "* * * * *", timeZone: "Asia/Seoul" },
+      };
+      const s = await service.create("a", input);
+      clock += 60000;
+      await service.tick();
+      assert.equal((await service.runs("a", s.id))[0].status, "pending");
+      if (operation === "delete") await service.remove("a", s.id);
+      else
+        await service.update("a", s.id, {
+          ...input,
+          enabled: operation !== "pause",
+          timing: { ...input.timing, expression: "0 8 * * *" },
+        });
+      const before = calls;
+      clock += 15000;
+      await service.tick();
+      assert.equal(calls, before);
+      const run = (await db.list<any>("a", "schedule-runs")).find((r) => r.scheduleId === s.id);
+      assert.equal(run.status, "skipped");
+      if (operation !== "delete") await service.remove("a", s.id);
+    }
   } finally {
     await db.close();
   }

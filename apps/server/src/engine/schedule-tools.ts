@@ -3,11 +3,14 @@ import { z } from "zod";
 import { scheduleInputSchema } from "../../../../packages/domain/src/schedules.ts";
 import type { ScheduleService } from "./schedules.ts";
 export const scheduleInstructions =
-  "For explicit reminders or recurring work, use create_schedule to register an actual durable AI/tool task. Convert natural-language timing to a five-field minute/hour/day/month/weekday cron and an IANA timezone (default Asia/Seoul), or a future ISO datetime with offset for one-time work. Ask for an exact time if essential timing is ambiguous. Tell the user the returned nextRunAt/timezone and job prompt; do not claim a schedule exists before the tool succeeds. Scheduled jobs run while the server is online; downtime is coalesced into one catch-up job. They use normal connected tools and native external-write review. list_schedules and schedule_runs show registrations and task receipts. Pause/resume via update_schedule; delete_schedule stops future launches, existing tasks remain in Activity.";
+  "For explicit reminders or recurring work, first list_schedules and reuse an existing registration for the same purpose; use update_schedule for changes, never create another on a retry or status report. Only create_schedule for a new explicit user scheduling request. Convert natural-language timing to a five-field minute/hour/day/month/weekday cron and an IANA timezone (default Asia/Seoul), or a future ISO datetime with offset for one-time work. Ask for an exact time if essential timing is ambiguous. Tell the user the returned nextRunAt/timezone and job prompt; do not claim a schedule exists before the tool succeeds. Scheduled jobs run while the server is online; downtime is coalesced into one catch-up job. They use normal connected tools and native external-write review. list_schedules and schedule_runs show registrations and task receipts. Pause/resume via update_schedule; delete_schedule stops future launches, existing tasks remain in Activity.";
+export const scheduledOccurrenceInstructions =
+  "This task is ONE occurrence of an ALREADY REGISTERED schedule. Perform the requested check/work once and finish_task with its actual outcome. The scheduler handles future occurrences. Do not create, update, delete or re-register schedules, even if timing is mentioned in the prompt or earlier context. Do not ask another agent or host shell to create a replacement schedule.";
 export function scheduleTools(
   service: ScheduleService,
   owner: string,
   key: (name: string, value: unknown) => string,
+  options: { readOnly?: boolean } = {},
 ) {
   return [
     defineTool({
@@ -48,5 +51,5 @@ export function scheduleTools(
       parameters: z.object({ id: z.string().min(1).max(200) }),
       execute: async ({ id }) => service.remove(owner, id),
     }),
-  ];
+  ].filter((tool) => !options.readOnly || ["list_schedules", "schedule_runs"].includes(tool.name));
 }

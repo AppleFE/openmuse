@@ -34,6 +34,7 @@ export interface AgentSchedule extends ScheduleInput {
 export interface ScheduleRun {
   id: string;
   scheduleId: string;
+  scheduleVersion?: number;
   scheduledFor: string;
   title: string;
   prompt: string;

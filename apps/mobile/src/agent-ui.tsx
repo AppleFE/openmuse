@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Square,
   Target,
+  Trash2,
   Users,
   X,
 } from "lucide-react-native";
@@ -41,6 +42,7 @@ import { HostEventsButton } from "./host-events";
 import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
 import { RuntimeSettings } from "./runtime-settings";
+import { ScheduleManager } from "./schedules";
 import { ActivityScreen, ConnectionsScreen } from "./screens";
 import { SkillsSettings } from "./skills";
 import { type ThemePreference, useTheme } from "./theme";
@@ -193,6 +195,7 @@ export function ChatWork() {
 export function AgentActivityScreen() {
   const { data } = useAgentWorkspace();
   const [filter, setFilter] = useState("전체");
+  const [showSchedules, setShowSchedules] = useState(false);
   const tasks = [...(data?.tasks || [])]
     .filter(
       (task) => filter === "전체" || (filter === "진행 중" ? activeTask(task) : !activeTask(task)),
@@ -201,6 +204,11 @@ export function AgentActivityScreen() {
   return (
     <View style={{ gap: 20 }}>
       <AgentStatus />
+      <Button icon={CalendarDays} onPress={() => setShowSchedules(!showSchedules)}>
+        {showSchedules ? "예약 작업 관리 닫기" : "예약 작업 관리 · 중지 / 삭제"}
+      </Button>
+      {showSchedules && <ScheduleManager />}
+      <Text style={s.small}>작업을 열면 취소하거나 기록을 삭제할 수 있습니다.</Text>
       <View style={[s.row, { gap: 8 }]}>
         {["전체", "진행 중", "완료됨"].map((item) => (
           <Button key={item} small primary={filter === item} onPress={() => setFilter(item)}>
@@ -277,7 +285,27 @@ export function EvidenceList({ items }: { items: Evidence[] }) {
 }
 export function TaskDetail({ taskId }: { taskId: string }) {
   const { api, workspace, close, open, refresh: refreshWorkspace } = useWorkspace();
-  const { data, mutate } = useAgentWorkspace();
+  const { data, mutate, refresh } = useAgentWorkspace();
+  const [deleting, setDeleting] = useState(false);
+  const [showSchedules, setShowSchedules] = useState(false);
+  async function deleteTask() {
+    if (!deleting) {
+      setDeleting(true);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      if (task && activeTask(task)) await mutate(`/tasks/${taskId}/control`, { action: "cancel" });
+      await api.request(`/api/agent/tasks/${taskId}`, undefined, "DELETE");
+      await refresh();
+      close();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   const [detail, setDetail] = useState<{
     task: AgentTask;
     events: RunEvent[];
@@ -474,7 +502,28 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 작업 취소
               </Button>
             )}
+            <Button small danger icon={Trash2} busy={busy} onPress={() => void deleteTask()}>
+              {deleting ? (activeTask(task) ? "중지 후 삭제 확인" : "삭제 확인") : "작업 삭제"}
+            </Button>
+            {deleting && (
+              <Button small disabled={busy} onPress={() => setDeleting(false)}>
+                삭제 취소
+              </Button>
+            )}
           </View>
+          {deleting && (
+            <Text style={s.small}>
+              작업 기록과 관련 알림을 삭제합니다. 생성된 파일과 예약 등록은 유지됩니다.
+            </Text>
+          )}
+          {typeof task.input.scheduleId === "string" && (
+            <View style={{ gap: 12 }}>
+              <Button small icon={CalendarDays} onPress={() => setShowSchedules(!showSchedules)}>
+                예약 작업 관리 · 반복 실행 중지 / 삭제
+              </Button>
+              {showSchedules && <ScheduleManager />}
+            </View>
+          )}
           {task.status === "waiting_approval" && (
             <Card style={{ backgroundColor: colors.lavender, gap: 12 }}>
               <Text style={s.heading}>검토할 준비가 됐습니다</Text>
@@ -1703,6 +1752,21 @@ export function NotificationsSheet() {
   const { data, mutate } = useAgentWorkspace();
   const { close, open } = useWorkspace();
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(true);
+  const unread = data?.notifications.filter((item) => !item.read) ?? [];
+  const items = unreadOnly ? unread : (data?.notifications ?? []);
+  async function readAll() {
+    setBusy(true);
+    setError("");
+    try {
+      await mutate("/notifications/read", { ids: unread.map((item) => item.id) });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function read(id: string, taskId?: string) {
     try {
       await mutate(`/notifications/${id}/read`, {});
@@ -1715,8 +1779,19 @@ export function NotificationsSheet() {
     <Sheet title="알림" subtitle="확인이 필요한 결과와 결정을 살펴보세요." onClose={close}>
       <View style={{ gap: 14 }}>
         <HostEventsButton />
+        <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+          <Button small primary={unreadOnly} onPress={() => setUnreadOnly(true)}>
+            안 읽음 {unread.length}
+          </Button>
+          <Button small primary={!unreadOnly} onPress={() => setUnreadOnly(false)}>
+            전체
+          </Button>
+          <Button small busy={busy} disabled={!unread.length} onPress={() => void readAll()}>
+            모두 확인
+          </Button>
+        </View>
         <ErrorNotice error={error} />
-        {data?.notifications.map((item) => (
+        {items.map((item) => (
           <Card
             key={item.id}
             style={{ gap: 8, backgroundColor: item.read ? colors.card : colors.sky }}
@@ -1732,7 +1807,7 @@ export function NotificationsSheet() {
             </Button>
           </Card>
         ))}
-        {!data?.notifications.length && (
+        {!items.length && (
           <Empty
             icon={Bell}
             title="모든 알림을 확인했습니다"

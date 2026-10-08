@@ -50,6 +50,31 @@ export class Store {
       [owner, threadId],
     );
   }
+  async readNotifications(owner: string, ids: string[]): Promise<number> {
+    const result = await this.db.query(
+      `UPDATE records SET data=data || '{"read":true}'::jsonb,updated_at=now()
+       WHERE owner=$1 AND kind='notifications' AND id=ANY($2::text[])
+         AND data->>'read'='false' RETURNING data`,
+      [owner, ids],
+    );
+    return result.rows.length;
+  }
+  async removeSettledTask(owner: string, taskId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `WITH deleted_task AS (
+         DELETE FROM records WHERE owner=$1 AND kind='tasks' AND id=$2
+           AND data->>'status' IN ('succeeded','failed','cancelled')
+           AND data->>'leaseId' IS NULL RETURNING id
+       ), deleted_history AS (
+         DELETE FROM records WHERE owner=$1
+           AND kind IN ('runs','run-events','task-thread-messages','notifications')
+           AND data->>'taskId'=$2 AND EXISTS (SELECT 1 FROM deleted_task) RETURNING id
+       )
+       SELECT jsonb_build_object('deleted', EXISTS (SELECT 1 FROM deleted_task)) AS data`,
+      [owner, taskId],
+    );
+    return result.rows[0]?.data.deleted === true;
+  }
   async saveThreadKnowledge(
     owner: string,
     threadId: string,

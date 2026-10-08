@@ -78,6 +78,21 @@ test("CopilotKit model worker executes server tools and persists the confirmed o
     assert.ok(!requests[0].body.includes('"name":"approve"'));
     requests.length = 0;
     calls.splice(0, calls.length, {
+      name: "finish_task",
+      arguments: { summary: "Checked this occurrence once" },
+    });
+    const occurrence = await server.agent.createTask("owner", {
+      prompt: "Check every 30 minutes",
+      input: { scheduleId: "existing-registration" },
+    });
+    await server.agent.worker.tick();
+    assert.equal((await server.agent.getTask("owner", occurrence.id)).status, "succeeded");
+    assert.ok(requests[0].body.includes('"name":"list_schedules"'));
+    for (const name of ["create_schedule", "update_schedule", "delete_schedule"])
+      assert.ok(!requests[0].body.includes(`"name":"${name}"`));
+    assert.match(requests[0].body, /ALREADY REGISTERED/);
+    requests.length = 0;
+    calls.splice(0, calls.length, {
       name: "prepare_event",
       arguments: {
         title: "Sample walk",

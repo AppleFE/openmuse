@@ -125,6 +125,8 @@ const labels: Record<string, string> = {
   "Analyzing the imported transactions": "가져온 거래 내역 분석",
   "A meaningful change was found": "의미 있는 변화 발견",
   "Watch needs attention": "추적 항목 확인 필요",
+  "Task needs attention": "작업 확인 필요",
+  "Task completed": "작업 완료",
   "Make a concrete plan for the delegated outcome": "요청한 결과를 위한 구체적인 계획 수립",
   "Read the authorized workspace sources": "접근이 허용된 워크스페이스 자료 읽기",
   "Read the complete selected email thread": "선택한 메일 대화 전체 읽기",

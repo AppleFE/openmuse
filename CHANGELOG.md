@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.6 — 2026-10-08
+
+- Add “모두 확인” to the chat update banner and notification list, with unread/all filters and Korean task-error titles. Bulk reads use explicit notification IDs so later arrivals remain unread.
+- Add task deletion with stop-then-delete for active work. Remove associated run history and notifications after the worker finishes publishing; retain generated files, action receipts and schedule registrations.
+- Expose schedule management from Activity and scheduled-task details, with active/all filters and bounded prompt previews.
+- Prevent scheduled occurrences from creating or modifying schedule registrations. Skip pending retries after their registration is paused, changed or deleted.
+- Recover native screenshot/zoom observations after a helper loses its session, using the same owned host. Never replay screen input or take user control.
+- Guide desktop retries toward fresh native observations instead of stale vision refusals or SYSTEM-shell UIAutomation workarounds.
+- Server/web update; existing Host Agent and desktop helper 0.10.2 remain compatible.
+
 ## 0.10.4 — 2026-10-08
 
 - Return image dimensions and an explicit image-to-screen coordinate mapping with each computer-use zoom result, keeping separate mappings for multiple crops.

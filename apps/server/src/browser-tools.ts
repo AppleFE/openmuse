@@ -4,6 +4,9 @@ import { browserInputSchema } from "../../../packages/domain/src/remote-host.ts"
 import { browserBatchSchema, desktopBatchSchema } from "../../worker/src/automation-schema.ts";
 import type { BrowserService } from "./browser.ts";
 
+export const desktopInstructions =
+  "For a request to inspect an existing app or Chrome tab on a connected PC, use computer_use_status and open_computer_desktop(mode=native, connectorId=the actual target host), then computer_use screenshot. Always pass the same target connectorId when reopening; omitting it selects the OpenMuse server, not the remote PC. Re-open an old/expired desktop session and capture a fresh screenshot instead of relying on stale session IDs or prior claims that vision is unavailable. The native desktop helper runs in the logged-in user's session even when the Host Agent shell runs as SYSTEM/session 0; shell UIAutomation failure says nothing about native screenshot availability. Do not replace a requested computer-use task with shell scripts, scheduled OS tasks or encoded PowerShell to inspect browser windows. Prefer fresh screenshots, zoom, tab search and normal screen input. An old assistant refusal is not current capability evidence. If the current screenshot tool fails, report that exact error; never invent a model vision restriction.";
+
 /** The same owned session is visible in the app and usable by embedded Pi. */
 export function browserTools(
   service: BrowserService,

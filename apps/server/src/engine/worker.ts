@@ -66,6 +66,12 @@ export class TaskWorker {
   abort(taskId: string) {
     this.active.get(taskId)?.abort();
   }
+  async waitUntilIdle(taskId: string, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    while (this.active.has(taskId) && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    return !this.active.has(taskId);
+  }
   async tick() {
     if (this.stopping) return;
     if (this.running)
@@ -252,9 +258,12 @@ export class TaskWorker {
       );
     } finally {
       clearInterval(heartbeat);
-      this.active.delete(taskId);
+      try {
+        const settled = await this.db.get<AgentTask>(owner, "tasks", taskId);
+        if (settled && this.options.settled) await this.options.settled(owner, settled);
+      } finally {
+        this.active.delete(taskId);
+      }
     }
-    const settled = await this.db.get<AgentTask>(owner, "tasks", taskId);
-    if (settled && this.options.settled) await this.options.settled(owner, settled);
   }
 }

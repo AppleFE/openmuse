@@ -251,6 +251,16 @@ export class AgentService {
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     };
   }
+  async deleteTask(owner: string, id: string) {
+    const task = await this.getTask(owner, id);
+    if (!["succeeded", "failed", "cancelled"].includes(task.status))
+      throw new AppError("진행 중인 작업은 먼저 취소한 뒤 삭제하세요", 409);
+    if (!(await this.worker.waitUntilIdle(id)))
+      throw new AppError("작업을 마무리하고 있습니다. 잠시 후 삭제하세요", 409);
+    if (!(await this.db.removeSettledTask(owner, id)))
+      throw new AppError("작업 상태가 변경되었습니다. 새로고침하세요", 409);
+    return { ok: true };
+  }
   async modelSelection(owner: string) {
     return this.models.selection(owner);
   }

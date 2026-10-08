@@ -44,6 +44,14 @@ const failureSchema = z.object({
   createdAt: z.string(),
 });
 type ChatBrowser = { id: string; sessionId: string };
+class BrowserWorkerError extends AppError {
+  constructor(
+    message: string,
+    readonly upstreamStatus: number,
+  ) {
+    super(message, 502);
+  }
+}
 
 export class BrowserService {
   private actions?: ActionService;
@@ -149,11 +157,30 @@ export class BrowserService {
             },
             action: async (input) => {
               if (!observationActions.has(input.action)) await this.agentAccess(owner, id);
-              return (
-                await (
-                  await this.sessionRequest(owner, id, `/sessions/${id}/automation`, input, signal)
-                ).json()
-              ).result;
+              const request = () =>
+                this.sessionRequest(owner, id, `/sessions/${id}/automation`, input, signal);
+              let response: Response;
+              try {
+                response = await request();
+              } catch (error) {
+                // A restarted helper loses its in-memory session, not the logged-in desktop.
+                // Reattach only observations to the same owned host. Never replay input.
+                if (
+                  !(error instanceof BrowserWorkerError) ||
+                  !(
+                    error.upstreamStatus === 404 ||
+                    // Older Host Agents wrap the helper's missing-session response as 409.
+                    (error.upstreamStatus === 409 && error.message === "Desktop not found")
+                  ) ||
+                  session.desktopMode !== "native" ||
+                  session.status !== "active" ||
+                  !["screenshot", "zoom"].includes(input.action)
+                )
+                  throw error;
+                await this.openOwned(owner, id, undefined, signal);
+                response = await request();
+              }
+              return (await response.json()).result;
             },
           },
           desktopBatchSchema.parse(data).actions,
@@ -357,11 +384,11 @@ export class BrowserService {
     if (frameOptions?.allowMissing && [304, 404].includes(response.status)) return response;
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      throw new AppError(
+      throw new BrowserWorkerError(
         typeof payload?.error?.message === "string"
           ? payload.error.message.split(workerToken).join("[redacted]")
           : "Browser request failed",
-        502,
+        response.status,
       );
     }
     return response;

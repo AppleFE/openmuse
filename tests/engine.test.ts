@@ -43,6 +43,40 @@ test("two workers claim one task only once", async () => {
     await db.close();
   }
 });
+
+test("task deletion waits for final notifications instead of leaving late orphan records", async () => {
+  const db = await createStore();
+  const deferred = () => {
+    let resolve: () => void = () => {};
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  };
+  const publishing = deferred(),
+    release = deferred();
+  try {
+    await db.put("owner", "tasks", task());
+    const worker = new TaskWorker(db, async () => ({ status: "succeeded" }), {
+      settled: async () => {
+        publishing.resolve();
+        await release.promise;
+        await db.put("owner", "notifications", { id: "final", taskId: "task1", read: false });
+      },
+    });
+    const run = worker.tick();
+    await publishing.promise;
+    assert.equal(await worker.waitUntilIdle("task1", 10), false);
+    release.resolve();
+    await run;
+    assert.equal(await worker.waitUntilIdle("task1", 10), true);
+    assert.equal(await db.removeSettledTask("owner", "task1"), true);
+    assert.equal(await db.get("owner", "notifications", "final"), null);
+  } finally {
+    release.resolve();
+    await db.close();
+  }
+});
 test("cancellation invalidates a stale worker before its next effect", async () => {
   const db = await createStore();
   try {

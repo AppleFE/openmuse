@@ -2,6 +2,7 @@ import { ArrowRight, Bell, ChevronDown, ChevronUp, X } from "lucide-react-native
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useAgentWorkspace } from "./agent-workspace";
+import { uiLabel } from "./locale";
 import { Button, Card, colors, ErrorNotice, resultSummary, s } from "./ui";
 import { useWorkspace } from "./workspace";
 
@@ -15,11 +16,13 @@ export function BackgroundUpdates() {
   const update = updates[0];
   if (!update || data?.identity.showChatUpdates === false) return null;
   const expanded = expandedId === update.id;
-  async function dismiss() {
+  async function dismiss(all = false) {
     if (!update) return;
     setBusy(true);
     try {
-      await mutate(`/notifications/${update.id}/read`, {});
+      await mutate("/notifications/read", {
+        ids: all ? updates.map((item) => item.id) : [update.id],
+      });
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -39,7 +42,7 @@ export function BackgroundUpdates() {
         >
           <Bell size={14} color={colors.blueDark} />
           <Text numberOfLines={1} style={[s.small, { flex: 1 }]}>
-            새 업데이트 {updates.length}개 · {update.title}
+            새 업데이트 {updates.length}개 · {uiLabel(update.title)}
           </Text>
           {expanded ? (
             <ChevronUp size={16} color={colors.muted} />
@@ -47,6 +50,9 @@ export function BackgroundUpdates() {
             <ChevronDown size={16} color={colors.muted} />
           )}
         </Pressable>
+        <Button small busy={busy} onPress={() => void dismiss(true)}>
+          모두 확인
+        </Button>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="백그라운드 업데이트 닫기"
@@ -60,7 +66,7 @@ export function BackgroundUpdates() {
       </View>
       {expanded && (
         <>
-          <Text style={s.heading}>{update.title}</Text>
+          <Text style={s.heading}>{uiLabel(update.title)}</Text>
           <Text style={s.text}>{resultSummary(update.body)}</Text>
           <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
             <Button

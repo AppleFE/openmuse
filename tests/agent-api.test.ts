@@ -77,6 +77,56 @@ test("agent API requires a session and reports the actual worker state", async (
   assert.equal(workspace.identity.tone, "warm");
 });
 
+test("bulk notification read only marks the selected owner's snapshot", async () => {
+  for (const owner of ["local-user", "other-user"])
+    for (const id of ["bulk-old", "bulk-new"])
+      await db.put(owner, "notifications", { id, read: false, title: "Task needs attention" });
+  assert.deepEqual(await read("/notifications/read", { ids: ["bulk-old", "missing"] }), {
+    count: 1,
+  });
+  assert.equal((await db.get("local-user", "notifications", "bulk-old"))?.read, true);
+  assert.equal((await db.get("local-user", "notifications", "bulk-new"))?.read, false);
+  assert.equal((await db.get("other-user", "notifications", "bulk-old"))?.read, false);
+  assert.deepEqual(await read("/notifications/read", { ids: ["bulk-old"] }), { count: 0 });
+});
+
+test("task deletion fences active work and removes its history without deleting other records", async () => {
+  const task = await server.agent.createTask("local-user", { prompt: "Delete fixture" });
+  const remove = () =>
+    server.app.request(`/api/agent/tasks/${task.id}`, { method: "DELETE", headers: headers() });
+  assert.equal((await remove()).status, 409);
+  for (const kind of [
+    "runs",
+    "run-events",
+    "task-thread-messages",
+    "notifications",
+    "agent-artifacts",
+    "actions",
+  ])
+    for (const owner of ["local-user", "other-user"])
+      await db.put(owner, kind, { id: "delete-fixture", taskId: task.id });
+  await server.agent.control("local-user", task.id, "cancel");
+  assert.equal((await remove()).status, 200);
+  assert.equal((await request(`/tasks/${task.id}`)).status, 404);
+  for (const kind of ["runs", "run-events", "task-thread-messages", "notifications"]) {
+    assert.equal(await db.get("local-user", kind, "delete-fixture"), null);
+    assert.ok(await db.get("other-user", kind, "delete-fixture"));
+  }
+  assert.ok(await db.get("local-user", "agent-artifacts", "delete-fixture"));
+  assert.ok(await db.get("local-user", "actions", "delete-fixture"));
+  const hidden = await server.agent.createTask("other-user", { prompt: "Private fixture" });
+  assert.equal(
+    (
+      await server.app.request(`/api/agent/tasks/${hidden.id}`, {
+        method: "DELETE",
+        headers: headers(),
+      })
+    ).status,
+    404,
+  );
+  await server.agent.control("other-user", hidden.id, "cancel");
+});
+
 test("the main local thread survives reopening and concurrent initialization", async () => {
   assert.equal((await server.app.request("/api/main-thread")).status, 401);
   const responses = await Promise.all(

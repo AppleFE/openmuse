@@ -19,6 +19,83 @@ const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6H+sAAAAASUVORK5CYII=";
 const tabs = [{ tab_id: "t1", title: "Fixture", url: "https://example.com/", active: true }];
 
+test("native screenshot reattaches a lost helper session; input and authorization failures never replay", async (t) => {
+  const calls: string[] = [];
+  let missing = true,
+    status = 404;
+  const { service, db } = await browserFixture(t, (path, body) => {
+    calls.push(path);
+    if (path === "/sessions") {
+      missing = false;
+      return {
+        data: {
+          ...body,
+          title: "Native desktop",
+          status: "active",
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    }
+    return missing
+      ? {
+          status,
+          data: {
+            error: { message: status === 409 ? "Desktop not found" : "Session unavailable" },
+          },
+        }
+      : { data: { result: { data: png, media_type: "image/png" } } };
+  });
+  const id = randomUUID();
+  await db.put("owner", "browsers", {
+    id,
+    kind: "desktop",
+    desktopMode: "native",
+    title: "Native desktop",
+    url: "desktop://native",
+    status: "active",
+    control: "user",
+    updatedAt: new Date().toISOString(),
+  });
+  const shot = await service.runAutomation("owner", {
+    sessionId: id,
+    actions: [{ action: "screenshot" }],
+  });
+  assert.equal(shot.isError, false);
+  assert.equal(calls.filter((p) => p === "/sessions").length, 1);
+  assert.equal((await service.get("owner", id)).control, "user", "recovery preserves user control");
+  missing = true;
+  status = 409;
+  calls.length = 0;
+  const legacy = await service.runAutomation("owner", {
+    sessionId: id,
+    actions: [{ action: "screenshot" }],
+  });
+  assert.equal(legacy.isError, false);
+  assert.equal(calls.filter((p) => p === "/sessions").length, 1);
+  await assert.rejects(
+    service.runAutomation("other", { sessionId: id, actions: [{ action: "screenshot" }] }),
+    { status: 404 },
+  );
+  await db.compareAndSwap("owner", "browsers", id, {}, { control: "agent" });
+  missing = true;
+  calls.length = 0;
+  const click = await service.runAutomation("owner", {
+    sessionId: id,
+    actions: [{ action: "left_click", coordinate: [1, 1] }],
+  });
+  assert.equal(click.isError, true);
+  assert.equal(calls.length, 1);
+  assert.ok(!calls.includes("/sessions"));
+  status = 401;
+  calls.length = 0;
+  const denied = await service.runAutomation("owner", {
+    sessionId: id,
+    actions: [{ action: "screenshot" }],
+  });
+  assert.equal(denied.isError, true);
+  assert.equal(calls.length, 1);
+});
+
 test("computer observations describe each zoom's actual image-to-screen coordinates", async () => {
   const data = PNG.sync.write(new PNG({ width: 1280, height: 120 })).toString("base64");
   const result = await runDesktopBatch(

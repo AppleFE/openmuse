@@ -137,6 +137,7 @@ export class ScheduleService {
         const run: ScheduleRun = {
           id: hash(`${s.id}:${s.nextRunAt}`),
           scheduleId: s.id,
+          scheduleVersion: s.version,
           scheduledFor: s.nextRunAt,
           title: s.title,
           prompt: s.prompt,
@@ -182,6 +183,26 @@ export class ScheduleService {
         )
           continue;
         try {
+          const schedule = await this.db.get<AgentSchedule>(owner, "schedules", r.scheduleId);
+          if (
+            !schedule ||
+            (r.scheduleVersion !== undefined && r.scheduleVersion !== schedule.version) ||
+            (!schedule.enabled && schedule.timing.type !== "once")
+          ) {
+            await this.db.compareAndSwap(
+              owner,
+              "schedule-runs",
+              r.id,
+              { status: "dispatching", attempts: r.attempts + 1 },
+              {
+                status: "skipped",
+                leaseUntil: null,
+                error: "예약이 중지·변경·삭제되어 실행하지 않았습니다",
+                updatedAt: iso,
+              },
+            );
+            continue;
+          }
           const previous = (await this.db.list<ScheduleRun>(owner, "schedule-runs")).filter(
             (p) => p.scheduleId === r.scheduleId && p.id !== r.id && p.taskId,
           );
