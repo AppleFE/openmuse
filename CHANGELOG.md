@@ -4,6 +4,8 @@
 
 - Return image dimensions and an explicit image-to-screen coordinate mapping with each computer-use zoom result, keeping separate mappings for multiple crops.
 - Add observation-time guidance for tab search, narrow crops on wide desktops, and recovering from ineffective clicks.
+- Require a fresh active-page check after selecting a tab so search-result domains are not mistaken for the page behind the popup.
+- Verified a real Windows Chrome lookup with `gpt-6-sol`; `gpt-6-luna` still failed the same lookup in testing. This patch does not establish reliable computer use for every vision model.
 - Server-only patch; Host Agent and desktop helper 0.10.2 remain compatible.
 
 ## 0.10.3 — 2026-10-08
