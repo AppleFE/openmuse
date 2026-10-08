@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { EventType } from "@ag-ui/core";
+import { z } from "zod";
 import { createApp } from "../apps/server/src/app.ts";
 import { automationResultSchema } from "../apps/server/src/automation-result.ts";
 import { OpenMuseBrowserToolset, runBrowserBatch } from "../apps/server/src/browser-sdk.ts";
+import { browserTools } from "../apps/server/src/browser-tools.ts";
 import { runDesktopBatch } from "../apps/server/src/desktop-sdk.ts";
 import { ConversationAgent } from "../apps/server/src/engine/conversation.ts";
 import { browserActionSchema, desktopActionSchema } from "../apps/worker/src/automation-schema.ts";
@@ -15,6 +17,52 @@ import { piProtocolFixture } from "./helpers/pi-protocol.ts";
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6H+sAAAAASUVORK5CYII=";
 const tabs = [{ tab_id: "t1", title: "Fixture", url: "https://example.com/", active: true }];
+
+test("zoom rejects inverted corners before execution and explains how to retry", async (t) => {
+  const calls: unknown[] = [];
+  const { service, db } = await browserFixture(t, (_path, body) => {
+    calls.push(body);
+    return { data: { result: { data: png, media_type: "image/png" } } };
+  });
+  const sessionId = randomUUID();
+  await db.put("owner", "browsers", {
+    id: sessionId,
+    kind: "desktop",
+    desktopMode: "native",
+    title: "Zoom fixture",
+    url: "desktop://native",
+    status: "active",
+    control: "agent",
+    updatedAt: new Date().toISOString(),
+  });
+  const tool = browserTools(service, "owner", "chat").find((t) => t.name === "computer_use");
+  assert.ok(tool?.execute);
+  const execute = tool.execute as (input: unknown) => Promise<unknown>;
+  for (const region of [
+    [325, 218, 640, 55],
+    [320, 220, 620, 65],
+    [320, 220, 320, 285],
+    [320, 220, 960, 220],
+  ] as [number, number, number, number][]) {
+    const result = await execute({
+      sessionId,
+      actions: [
+        { action: "zoom", region },
+        { action: "left_click", coordinate: [10, 10] },
+      ],
+    });
+    assert.match(JSON.stringify(result), /left, top, right, bottom/);
+    assert.doesNotMatch(JSON.stringify(result), /Permission|confirmation/);
+  }
+  assert.deepEqual(calls, [], "invalid zoom must not reach the desktop or click afterward");
+  const valid = { action: "zoom" as const, region: [320, 220, 960, 285] as const };
+  const parsed = desktopActionSchema.parse(valid);
+  const result = automationResultSchema.parse(await execute({ sessionId, actions: [parsed] }));
+  assert.notEqual(result.isError, true);
+  assert.deepEqual(calls, [valid], "valid corners must reach the driver without reinterpretation");
+  assert.ok(result.content.some((b) => b.type === "image" && b.data === png));
+  assert.match(JSON.stringify(z.toJSONSchema(desktopActionSchema)), /NOT x\/y\/width\/height/);
+});
 test("cancellation stops the rest of an automation batch", async () => {
   const controller = new AbortController();
   let count = 0;

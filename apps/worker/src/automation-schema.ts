@@ -91,12 +91,20 @@ export const desktopActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("wait"), duration: z.number().min(0).max(3) }),
   z.object({
     action: z.literal("zoom"),
-    region: z.tuple([
-      z.number().int().min(0).max(1279),
-      z.number().int().min(0).max(799),
-      z.number().int().min(1).max(1280),
-      z.number().int().min(1).max(800),
-    ]),
+    region: z
+      .tuple([
+        z.number().int().min(0).max(1279),
+        z.number().int().min(0).max(799),
+        z.number().int().min(1).max(1280),
+        z.number().int().min(1).max(800),
+      ])
+      .refine(([left, top, right, bottom]) => right > left && bottom > top, {
+        message:
+          "zoom.region must be [left, top, right, bottom], not [x, y, width, height]. right must exceed left; bottom must exceed top. Example: [320, 220, 960, 285] covers a 640 by 65 area.",
+      })
+      .describe(
+        "[left, top, right, bottom] in the original 1280x800 screenshot, NOT x/y/width/height. right > left, bottom > top. Exclude black bars. Click coordinates still use the original full screenshot, not the zoomed image.",
+      ),
   }),
 ]);
 export type DesktopAction = z.infer<typeof desktopActionSchema>;

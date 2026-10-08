@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.3 — 2026-10-08
+
+- Show assistant answers after their tool cards so the final response stays at the bottom of long computer-use turns, including existing conversations.
+- Collapse background task updates by default so a long notification does not push the latest chat answer offscreen; expand to see the full update and existing task controls.
+- Describe and validate zoom rectangles as left/top/right/bottom, with corrective errors for inverted corners and guidance for unreadable browser tabs.
+- Server/web patch; Host Agent and desktop helper 0.10.2 remain compatible.
+
 ## 0.10.2 — 2026-10-08
 
 - Reattach the same desktop after the logged-in helper restarts, even when the Host Agent still considers it active. Reopening does not replay input or take user control.

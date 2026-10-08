@@ -650,8 +650,28 @@ export function ChatScreen({
                     })}
                   </Text>
                 )}
+                <BrowserRunContext
+                  value={{
+                    running: busy || agent.isRunning,
+                    active:
+                      (busy || agent.isRunning) && messages.indexOf(message) > latestUserIndex,
+                  }}
+                >
+                  {toolCalls.map((toolCall) => {
+                    const toolMessage = messages.find(
+                      (candidate): candidate is ToolMessage =>
+                        candidate.role === "tool" && candidate.toolCallId === toolCall.id,
+                    );
+                    return (
+                      <View key={toolCall.id} testID={`tool-call-${toolCall.id}`}>
+                        {renderToolCall({ toolCall, toolMessage })}
+                      </View>
+                    );
+                  })}
+                </BrowserRunContext>
                 {!!text && (
                   <View
+                    testID={`message-text-${message.id}`}
                     style={{
                       paddingHorizontal: 16,
                       paddingVertical: 13,
@@ -671,23 +691,6 @@ export function ChatScreen({
                   </View>
                 )}
                 {!!messageFiles.length && <AttachmentChips files={messageFiles} />}
-                <BrowserRunContext
-                  value={{
-                    running: busy || agent.isRunning,
-                    active:
-                      (busy || agent.isRunning) && messages.indexOf(message) > latestUserIndex,
-                  }}
-                >
-                  {toolCalls.map((toolCall) => {
-                    const toolMessage = messages.find(
-                      (candidate): candidate is ToolMessage =>
-                        candidate.role === "tool" && candidate.toolCallId === toolCall.id,
-                    );
-                    return (
-                      <View key={toolCall.id}>{renderToolCall({ toolCall, toolMessage })}</View>
-                    );
-                  })}
-                </BrowserRunContext>
               </View>
             );
           })

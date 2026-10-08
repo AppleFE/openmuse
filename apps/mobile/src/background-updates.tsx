@@ -1,4 +1,4 @@
-import { ArrowRight, Bell, X } from "lucide-react-native";
+import { ArrowRight, Bell, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useAgentWorkspace } from "./agent-workspace";
@@ -10,9 +10,11 @@ export function BackgroundUpdates() {
   const { open } = useWorkspace();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<string>();
   const updates = data?.notifications.filter((item) => !item.read && item.taskId) || [];
   const update = updates[0];
   if (!update || data?.identity.showChatUpdates === false) return null;
+  const expanded = expandedId === update.id;
   async function dismiss() {
     if (!update) return;
     setBusy(true);
@@ -28,10 +30,23 @@ export function BackgroundUpdates() {
   return (
     <Card style={{ backgroundColor: colors.sky, padding: 16, gap: 10 }}>
       <View style={[s.between, { gap: 12 }]}>
-        <View style={[s.row, { gap: 7 }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`백그라운드 업데이트 ${updates.length}개 ${expanded ? "접기" : "펼치기"}`}
+          accessibilityState={{ expanded }}
+          onPress={() => setExpandedId(expanded ? undefined : update.id)}
+          style={[s.row, { gap: 7, flex: 1 }]}
+        >
           <Bell size={14} color={colors.blueDark} />
-          <Text style={s.small}>새 업데이트</Text>
-        </View>
+          <Text numberOfLines={1} style={[s.small, { flex: 1 }]}>
+            새 업데이트 {updates.length}개 · {update.title}
+          </Text>
+          {expanded ? (
+            <ChevronUp size={16} color={colors.muted} />
+          ) : (
+            <ChevronDown size={16} color={colors.muted} />
+          )}
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="백그라운드 업데이트 닫기"
@@ -43,22 +58,26 @@ export function BackgroundUpdates() {
           <X size={16} color={colors.muted} />
         </Pressable>
       </View>
-      <Text style={s.heading}>{update.title}</Text>
-      <Text style={s.text}>{resultSummary(update.body)}</Text>
-      <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
-        <Button
-          small
-          icon={ArrowRight}
-          onPress={() => update.taskId && open({ type: "task", taskId: update.taskId })}
-        >
-          작업 보기
-        </Button>
-        {updates.length > 1 && (
-          <Button small onPress={() => open({ type: "notifications" })}>
-            {updates.length - 1} 개 추가 업데이트
-          </Button>
-        )}
-      </View>
+      {expanded && (
+        <>
+          <Text style={s.heading}>{update.title}</Text>
+          <Text style={s.text}>{resultSummary(update.body)}</Text>
+          <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+            <Button
+              small
+              icon={ArrowRight}
+              onPress={() => update.taskId && open({ type: "task", taskId: update.taskId })}
+            >
+              작업 보기
+            </Button>
+            {updates.length > 1 && (
+              <Button small onPress={() => open({ type: "notifications" })}>
+                {updates.length - 1} 개 추가 업데이트
+              </Button>
+            )}
+          </View>
+        </>
+      )}
       <ErrorNotice error={error} />
     </Card>
   );
