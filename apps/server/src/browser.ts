@@ -265,7 +265,7 @@ export class BrowserService {
         s.status === "active" &&
         (!connectorId || s.connectorRevision === target?.revision),
     );
-    if (existing) return this.decorate(owner, existing);
+    if (existing) return this.reopen(owner, existing.id);
     const id = randomUUID();
     await this.db.put(owner, "browsers", {
       id,

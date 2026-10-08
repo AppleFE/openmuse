@@ -14,11 +14,18 @@ test("desktop SDK normalizes Windows shortcuts before the native helper and repo
   const path = await mkdtemp(join(tmpdir(), "openmuse-keys-"));
   const token = "key-test-token-at-least-32-characters";
   const received: string[] = [];
+  let helperAttached = false;
   const helper = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, `Bearer ${token}`);
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk);
     const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+    if (req.url === "/sessions") helperAttached = true;
+    if (req.url?.endsWith("/automation") && !helperAttached) {
+      res.writeHead(409, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Open the desktop first" } }));
+      return;
+    }
     if (req.url?.endsWith("/automation")) received.push(body.text);
     res.setHeader("content-type", "application/json");
     res.end(JSON.stringify({ result: null }));
@@ -78,6 +85,16 @@ test("desktop SDK normalizes Windows shortcuts before the native helper and repo
     assert.match(JSON.stringify(failed), /지원하지 않는 키/);
     assert.match(JSON.stringify(failed), /Not executed/);
     assert.equal(received.length, 5);
+    helperAttached = false; // A helper restart loses the active session; Host Agent stays online.
+    await assert.rejects(() => action({ action: "key", text: "Win+r" }), /Open the desktop first/);
+    assert.equal(
+      (await request("/sessions", { id, kind: "desktop", desktopMode: "native" })).status,
+      201,
+    );
+    assert.ok(helperAttached);
+    assert.equal(received.length, 5, "reopening must not replay input");
+    await action({ action: "key", text: "Win+r" });
+    assert.equal(received.at(-1), "Meta+r");
   } finally {
     await worker.close();
     helper.closeAllConnections();

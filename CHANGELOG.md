@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 — 2026-10-08
+
+- Reattach the same desktop after the logged-in helper restarts, even when the Host Agent still considers it active. Reopening does not replay input or take user control.
+
 ## 0.10.1 — 2026-10-08
 
 - Accept `Win`/`WIN`/`Windows` shortcuts in computer use and report unsupported keys as input errors instead of generic browser failures.

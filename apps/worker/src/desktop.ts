@@ -318,7 +318,14 @@ export async function createDesktopManager(dataDir: string, options: DesktopOpti
               "Desktop mode cannot change for an existing session",
               409,
             );
-          if (existing?.status === "active") return existing;
+          if (existing?.status === "active") {
+            // The per-user helper can restart independently of the system Host Agent.
+            // Opening the same session must reattach it without replaying any input.
+            if (mode === "native" && options.nativeProxy)
+              await proxy("/sessions", { id, kind: "desktop", desktopMode: "native" });
+            touched.set(id, Date.now());
+            return existing;
+          }
           if (sessions.size >= 20 && !existing)
             throw new WorkerError("PROFILE_LIMIT", "Delete an old desktop session first", 409);
           if ([...sessions.values()].filter((s) => s.status === "active").length >= 3)

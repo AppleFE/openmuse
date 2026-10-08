@@ -110,6 +110,15 @@ test("automation keeps ownership, user control and conversation review/bypass on
   const calls: string[] = [];
   const fixture = await browserFixture(t, (path, body) => {
     calls.push(path);
+    if (path === "/sessions")
+      return {
+        data: {
+          ...body,
+          title: "Reattached",
+          status: "active",
+          updatedAt: new Date().toISOString(),
+        },
+      };
     return {
       data: path.endsWith("/state")
         ? { tabs }
@@ -182,6 +191,11 @@ test("automation keeps ownership, user control and conversation review/bypass on
     ),
     { status: 409 },
   );
+  const beforeReopen = calls.length;
+  const reopened = await browser.createDesktop("owner", "native");
+  assert.equal(reopened.id, desktopId);
+  assert.equal(reopened.control, "user", "opening must preserve the user's control");
+  assert.deepEqual(calls.slice(beforeReopen), ["/sessions"], "reattach without replaying input");
 });
 test("OpenAI-compatible Pi receives screenshot image content, while AG-UI excludes base64", async (t) => {
   const id = randomUUID();
