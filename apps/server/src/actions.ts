@@ -71,7 +71,7 @@ export class ActionService {
         parsed.kind === "connector.write"
           ? "Connect the target connector before preparing an action"
           : parsed.kind === "automation.write"
-            ? "?? ??? ?? ?????"
+            ? "화면 세션을 먼저 연결하세요."
             : "Connect Google before preparing an action",
         409,
       );
@@ -195,7 +195,7 @@ export class ActionService {
         proposal.kind === "connector.write"
           ? "The connector is disconnected. Reconnect before approving this action."
           : proposal.kind === "automation.write"
-            ? "?? ??? ?? ?????"
+            ? "화면 세션이 연결되어 있지 않습니다. 다시 연결하세요."
             : "Google is disconnected. Reconnect before approving this action.",
         409,
       );
@@ -210,7 +210,7 @@ export class ActionService {
           proposal.kind === "connector.write"
             ? "Connector connection changed. Prepare a fresh action."
             : proposal.kind === "automation.write"
-              ? "?? ??? ??????. ? ??? ?????"
+              ? "화면 연결이 변경되었습니다. 작업을 다시 요청하세요."
               : "Google account or connection changed. Prepare a new action for the connected account.",
           409,
         );

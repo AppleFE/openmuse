@@ -18,7 +18,12 @@ const worker = await createWorkerServer({
   token: config.token,
   dataDir: config.dataDir,
   desktop: { python: config.python, driver: config.driver },
-  extension: async (_request, pathname, json) => {
+  extension: async (request, pathname, json) => {
+    if (pathname === "/desktop/shutdown" && request.method === "POST") {
+      json(200, { ok: true });
+      setTimeout(() => void stop(), 50);
+      return true;
+    }
     if (pathname === "/capabilities" || pathname.startsWith("/sessions")) return false;
     json(404, { error: { message: "Desktop helper endpoint not found" } });
     return true;

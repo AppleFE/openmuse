@@ -97,6 +97,14 @@ const config = {
 };
 await writeFile(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
 const launch = join(bundle, "desktop-helper.mjs");
+// Stop a previous helper gracefully before changing its startup registration.
+// Older helpers lack this endpoint; Windows has a scoped process check below.
+await fetch(`http://127.0.0.1:${config.port}/desktop/shutdown`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${config.token}` },
+  signal: AbortSignal.timeout(3000),
+}).catch(() => {});
+await new Promise((resolve) => setTimeout(resolve, 300));
 if (win) {
   // Interactive logon, not Session 0. The requested elevated level applies only
   // to this user's existing administrator rights; UAC/secure desktop is excluded.
@@ -111,6 +119,7 @@ $trigger=New-ScheduledTaskTrigger -AtLogOn -User $user
 $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Highest
 $settings=New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
 Stop-ScheduledTask -TaskName 'OpenMuse Desktop' -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.ExecutablePath -eq ${psQuote(process.execPath)} -and $_.CommandLine.Contains(${psQuote(`"${launch}"`)}) -and $_.CommandLine.Contains(${psQuote(`"${configPath}"`)}) } | ForEach-Object { Stop-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
 Register-ScheduledTask -TaskName 'OpenMuse Desktop' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Start-ScheduledTask -TaskName 'OpenMuse Desktop'`);
 } else if (process.platform === "darwin") {

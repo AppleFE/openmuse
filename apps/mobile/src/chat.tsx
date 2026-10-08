@@ -108,16 +108,24 @@ export function WorkspaceTools() {
     name: "browser_use",
     description: "브라우저 조작",
     parameters: displayParameters,
-    render: ({ result, status }) => (
-      <ConnectorActionCard result={result} loading={status !== "complete"} />
+    render: ({ args, result, status }) => (
+      <AutomationToolCard
+        result={result}
+        loading={status !== "complete"}
+        sessionId={args.sessionId}
+      />
     ),
   });
   useRenderTool({
     name: "computer_use",
     description: "컴퓨터 조작",
     parameters: displayParameters,
-    render: ({ result, status }) => (
-      <ConnectorActionCard result={result} loading={status !== "complete"} />
+    render: ({ args, result, status }) => (
+      <AutomationToolCard
+        result={result}
+        loading={status !== "complete"}
+        sessionId={args.sessionId}
+      />
     ),
   });
   useRenderTool({
@@ -189,7 +197,9 @@ function AutomationToolCard({
   const session = workspace.browsers.find((b) => b.id === sessionId);
   return (
     <Card style={{ gap: 10 }}>
-      <Text style={s.heading}>{loading ? "?? ????? ??" : failed ? "?? ?? ??" : "?? ?? ??"}</Text>
+      <Text style={s.heading}>
+        {loading ? "화면 조작 중…" : failed ? "화면 작업 실패" : "화면 작업 완료"}
+      </Text>
       <ErrorNotice
         error={
           parsed?.error ||
@@ -204,7 +214,7 @@ function AutomationToolCard({
       />
       {session && (
         <Button small onPress={() => open({ type: "browser", browser: session })}>
-          ?? ?? ??
+          같은 화면 열기
         </Button>
       )}
     </Card>
