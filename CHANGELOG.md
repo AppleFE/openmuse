@@ -5,6 +5,7 @@
 - Accept `Win`/`WIN`/`Windows` shortcuts in computer use and report unsupported keys as input errors instead of generic browser failures.
 - Archive completed Host Agent shell receipts after 100 recent jobs so new commands continue to run. Archived operation IDs remain readable and cannot execute twice, including after restart.
 - Report specific host command validation/state errors without exposing internal failures.
+- Stop the logged-in desktop helper before updating its Python environment; use plain PowerShell output during installation.
 
 ## 0.10.0 — 2026-10-08
 
