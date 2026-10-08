@@ -9,7 +9,12 @@ import {
 import { type Config, normalizeOllamaBaseUrl } from "../config.ts";
 import type { Store } from "../db.ts";
 import { AppError } from "../errors.ts";
-import { discoveredCapabilities, discoveredModelId, OpenCodexCatalog } from "./model-discovery.ts";
+import {
+  discoveredCapabilities,
+  discoveredModelId,
+  discoveredVisionSupport,
+  OpenCodexCatalog,
+} from "./model-discovery.ts";
 
 const profileInputSchema = z.object({
   id: z
@@ -133,15 +138,24 @@ export class ModelRegistry {
       if (profile.provider !== "opencodex") return profile;
       const model = byModel.get(profile.model.replace(/^opencodex:/, "opencodex/"));
       if (!profile.enabled) return profile;
+      const visionSupport = model ? discoveredVisionSupport(model) : undefined;
       return model
         ? {
             ...profile,
+            visionSupport:
+              visionSupport === "unknown" && profile.capabilities.includes("vision")
+                ? ("supported" as const)
+                : visionSupport,
             capabilities: [
               ...new Set([
                 ...profile.capabilities,
                 ...(discoveredCapabilities(model).includes("vision") ? ["vision" as const] : []),
               ]),
-            ].filter((capability) => discoveredCapabilities(model).includes(capability)),
+            ].filter((capability) =>
+              capability === "vision"
+                ? visionSupport !== "unsupported"
+                : discoveredCapabilities(model).includes(capability),
+            ),
             available: true,
             unavailableReason: undefined,
           }
@@ -158,6 +172,7 @@ export class ModelRegistry {
           model: `opencodex/${model.id}`,
           provider: "opencodex",
           capabilities: discoveredCapabilities(model),
+          visionSupport: discoveredVisionSupport(model),
           available: true,
           enabled: true,
         };

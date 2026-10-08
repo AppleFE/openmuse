@@ -395,6 +395,7 @@ export async function executeModelTask(
       },
       model: selected.model,
       capabilities: selected.capabilities,
+      visionSupport: selected.visionSupport,
       dependencyContext: {},
       signal: toolSignal,
     };

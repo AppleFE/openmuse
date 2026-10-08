@@ -9,7 +9,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import type { ModelProfile } from "../../../../packages/domain/src/agent.ts";
+import { acceptsImageInput, type ModelProfile } from "../../../../packages/domain/src/agent.ts";
 import type { AttachmentImage } from "../attachments.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
@@ -369,7 +369,7 @@ export class PiAgentRunner {
       this.config,
       agentDir,
       input.request.model,
-      input.request.capabilities.includes("vision"),
+      acceptsImageInput(input.request),
     );
     const manager =
       input.sessionFile && existsSync(input.sessionFile)

@@ -267,65 +267,79 @@ test("automation keeps ownership, user control and conversation review/bypass on
   assert.equal(reopened.control, "user", "opening must preserve the user's control");
   assert.deepEqual(calls.slice(beforeReopen), ["/sessions"], "reattach without replaying input");
 });
-test("OpenAI-compatible Pi receives screenshot image content, while AG-UI excludes base64", async (t) => {
-  const id = randomUUID();
-  const worker = await browserFixture(t, (path) => ({
-    data: path.endsWith("/state") ? { tabs } : { result: { data: png, media_type: "image/png" } },
-  }));
-  const model: ModelProfile = {
-    id: "vision-test",
-    label: "Vision test",
-    provider: "openai",
-    model: "openai/gpt-4o-mini",
-    capabilities: ["chat", "coding", "tools", "vision"],
-    enabled: true,
-    available: true,
-  };
-  const protocol = await piProtocolFixture(t, [
-    {
-      tool: {
-        name: "browser_use",
-        arguments: { sessionId: id, actions: [{ action: "screenshot" }] },
+for (const visionSupport of ["supported", "unknown", "unsupported"] as const) {
+  test(`Pi screenshot transport with ${visionSupport} vision metadata keeps images out of AG-UI`, async (t) => {
+    const id = randomUUID();
+    const worker = await browserFixture(t, (path) => ({
+      data: path.endsWith("/state") ? { tabs } : { result: { data: png, media_type: "image/png" } },
+    }));
+    const model: ModelProfile = {
+      id: "vision-test",
+      label: "Vision test",
+      provider: "openai",
+      model: "openai/gpt-4o-mini",
+      capabilities:
+        visionSupport === "supported"
+          ? ["chat", "coding", "tools", "vision"]
+          : ["chat", "coding", "tools"],
+      visionSupport,
+      enabled: true,
+      available: true,
+    };
+    const protocol = await piProtocolFixture(t, [
+      {
+        tool: {
+          name: "browser_use",
+          arguments: { sessionId: id, actions: [{ action: "screenshot" }] },
+        },
       },
-    },
-    { text: "I can see the screenshot." },
-  ]);
-  const config = { ...worker.config, agentBackend: "model" as const, models: [model] };
-  const server = await createApp(worker.db, config);
-  t.after(async () => {
-    server.hostEvents.close();
-    await server.agent.stop();
+      { text: "I can see the screenshot." },
+    ]);
+    const config = { ...worker.config, agentBackend: "model" as const, models: [model] };
+    const server = await createApp(worker.db, config);
+    t.after(async () => {
+      server.hostEvents.close();
+      await server.agent.stop();
+    });
+    await worker.db.put("owner", "browsers", {
+      id,
+      title: "Fixture",
+      url: "https://example.com/",
+      status: "active",
+      control: "agent",
+      updatedAt: new Date().toISOString(),
+    });
+    const events: Record<string, unknown>[] = [];
+    await new Promise<void>((resolve, reject) =>
+      new ConversationAgent(config, server.agent, "owner", model)
+        .run({
+          threadId: "automation-images",
+          runId: randomUUID(),
+          messages: [
+            { id: randomUUID(), role: "user", content: "Look at the current screenshot." },
+          ],
+          state: {},
+          tools: [],
+          context: [],
+          forwardedProps: { modelId: model.id },
+        })
+        .subscribe({
+          next: (e) => events.push(e as unknown as Record<string, unknown>),
+          error: reject,
+          complete: resolve,
+        }),
+    );
+    assert.equal(events.at(-1)?.type, EventType.RUN_FINISHED, JSON.stringify(events));
+    assert.equal(protocol.requests.length, 2);
+    const input = JSON.stringify(protocol.requests[1].body.input);
+    if (visionSupport === "unsupported") {
+      assert.doesNotMatch(input, /input_image/);
+      assert.match(input, /image input is disabled by this model/);
+    } else {
+      assert.match(input, /input_image/);
+      assert.ok(input.includes(`data:image/png;base64,${png}`));
+      assert.doesNotMatch(input, /model does not support images|no vision capability/);
+    }
+    assert.ok(!JSON.stringify(events).includes(png), "UI events should not duplicate image bytes");
   });
-  await worker.db.put("owner", "browsers", {
-    id,
-    title: "Fixture",
-    url: "https://example.com/",
-    status: "active",
-    control: "agent",
-    updatedAt: new Date().toISOString(),
-  });
-  const events: Record<string, unknown>[] = [];
-  await new Promise<void>((resolve, reject) =>
-    new ConversationAgent(config, server.agent, "owner", model)
-      .run({
-        threadId: "automation-images",
-        runId: randomUUID(),
-        messages: [{ id: randomUUID(), role: "user", content: "Look at the current screenshot." }],
-        state: {},
-        tools: [],
-        context: [],
-        forwardedProps: { modelId: model.id },
-      })
-      .subscribe({
-        next: (e) => events.push(e as unknown as Record<string, unknown>),
-        error: reject,
-        complete: resolve,
-      }),
-  );
-  assert.equal(events.at(-1)?.type, EventType.RUN_FINISHED, JSON.stringify(events));
-  assert.equal(protocol.requests.length, 2);
-  const input = JSON.stringify(protocol.requests[1].body.input);
-  assert.match(input, /input_image/);
-  assert.ok(input.includes(`data:image/png;base64,${png}`));
-  assert.ok(!JSON.stringify(events).includes(png), "UI events should not duplicate image bytes");
-});
+}

@@ -2,6 +2,7 @@ import type {
   AgentTask,
   AgentTeamRole,
   ModelCapability,
+  VisionSupport,
 } from "../../../../packages/domain/src/agent.ts";
 
 export interface RoleRuntimeRequest {
@@ -10,6 +11,7 @@ export interface RoleRuntimeRequest {
   role: Readonly<AgentTeamRole>;
   model: string;
   capabilities: readonly ModelCapability[];
+  visionSupport?: VisionSupport;
   dependencyContext: Readonly<Record<string, string>>;
   signal: AbortSignal;
 }

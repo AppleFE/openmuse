@@ -2,6 +2,7 @@ import type { ToolDefinition as CopilotToolDefinition } from "@copilotkit/runtim
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
+import { acceptsImageInput } from "../../../../packages/domain/src/agent.ts";
 import { remoteCommandSchema } from "../../../../packages/domain/src/remote-host.ts";
 import { automationResultSchema } from "../automation-result.ts";
 import type { BrowserService } from "../browser.ts";
@@ -345,13 +346,13 @@ export function adaptCopilotTools(
               ["browser_use", "computer_use", "browser_input"].includes(tool.name) ? result : null,
             );
             if (rich.success) {
-              const canSee = request.capabilities.includes("vision");
+              const canSee = acceptsImageInput(request);
               return {
                 content: rich.data.content.map((block) =>
                   block.type === "image" && !canSee
                     ? {
                         type: "text" as const,
-                        text: "Screenshot captured, but this model has no vision capability. Select a vision model to inspect it.",
+                        text: "Screenshot captured, but image input is disabled by this model's configured/provider metadata. Select an image-capable model to inspect it.",
                       }
                     : block,
                 ),

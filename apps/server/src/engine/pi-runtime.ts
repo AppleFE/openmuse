@@ -22,6 +22,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { acceptsImageInput } from "../../../../packages/domain/src/agent.ts";
 import { skillPrompt } from "../../../../packages/domain/src/skills.ts";
 import { threadKnowledgePrompt } from "../../../../packages/domain/src/thread-knowledge.ts";
 import type { BrowserService } from "../browser.ts";
@@ -699,7 +700,12 @@ export class PiRuntimeHook implements CodingRuntimeHook {
   private async createSession(input: PiSessionInput): Promise<PiSession> {
     const agentDir = join(this.config.dataDir, "pi", "agent");
     await mkdir(agentDir, { recursive: true, mode: 0o700 });
-    const { runtime, model } = await configuredPiModel(this.config, agentDir, input.request.model);
+    const { runtime, model } = await configuredPiModel(
+      this.config,
+      agentDir,
+      input.request.model,
+      acceptsImageInput(input.request),
+    );
     const manager =
       input.checkpoint?.sessionFile && existsSync(input.checkpoint.sessionFile)
         ? SessionManager.open(input.checkpoint.sessionFile, input.sessionDir, input.cwd)

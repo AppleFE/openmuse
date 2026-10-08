@@ -1,6 +1,6 @@
 # 브라우저 유즈와 컴퓨터 유즈 (0.10.0)
 
-OpenMuse는 Anthropic의 [Browser Use SDK](https://platform.claude.com/docs/en/agents-and-tools/tool-use/browser-use-sdk)와 [TypeScript toolset helpers](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/browser-toolset.md)를 **도구 실행 계층**으로 사용합니다. 모델 호출은 기존 embedded Pi와 선택한 공급자를 사용합니다. Claude API 키나 Claude 모델을 요구하지 않으며 OpenCodex/OpenAI 호환 모델도 같은 도구를 사용합니다. 이미지 관찰에는 `vision` capability가 있는 모델이 필요합니다. 이미지 없는 모델은 브라우저 DOM 참조와 텍스트를 사용할 수 있습니다.
+OpenMuse는 Anthropic의 [Browser Use SDK](https://platform.claude.com/docs/en/agents-and-tools/tool-use/browser-use-sdk)와 [TypeScript toolset helpers](https://github.com/anthropics/anthropic-sdk-typescript/blob/main/browser-toolset.md)를 **도구 실행 계층**으로 사용합니다. 모델 호출은 기존 embedded Pi와 선택한 공급자를 사용합니다. Claude API 키나 Claude 모델을 요구하지 않으며 OpenCodex/OpenAI 호환 모델도 같은 도구를 사용합니다. 이미지 관찰에는 실제 이미지 입력을 처리하는 모델·연결 경로가 필요합니다. 0.10.5부터 제공자 목록에 비전 메타데이터가 없더라도 이미지를 차단하지 않습니다. 명시적으로 이미지 미지원인 모델은 브라우저 DOM 참조와 텍스트를 사용할 수 있습니다.
 
 ## 사용
 

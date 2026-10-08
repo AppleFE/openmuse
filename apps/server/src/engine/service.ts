@@ -346,6 +346,7 @@ export class AgentService {
                 provider: profile.provider,
                 model: profile.model,
                 capabilities: [...profile.capabilities],
+                visionSupport: profile.visionSupport,
               },
             };
           }),
@@ -392,6 +393,7 @@ export class AgentService {
             provider: selectedModel.provider,
             model: selectedModel.model,
             capabilities: [...selectedModel.capabilities],
+            visionSupport: selectedModel.visionSupport,
           }
         : undefined,
       teamId: team?.id,

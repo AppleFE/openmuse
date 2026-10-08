@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { ModelCapability, ModelCatalogStatus } from "../../../../packages/domain/src/agent.ts";
+import type {
+  ModelCapability,
+  ModelCatalogStatus,
+  VisionSupport,
+} from "../../../../packages/domain/src/agent.ts";
 import type { Config } from "../config.ts";
 import type { Store } from "../db.ts";
 
@@ -170,14 +174,18 @@ export class OpenCodexCatalog {
 export function discoveredModelId(id: string) {
   return `oc-${id.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 60)}-${createHash("sha256").update(id).digest("hex").slice(0, 16)}`;
 }
+export function discoveredVisionSupport(model: Catalog["data"][number]): VisionSupport {
+  const metadata = model.capabilities;
+  if (metadata?.supports_vision !== undefined)
+    return metadata.supports_vision ? "supported" : "unsupported";
+  if (metadata?.input_modalities?.length)
+    return metadata.input_modalities.includes("image") ? "supported" : "unsupported";
+  return "unknown";
+}
 export function discoveredCapabilities(model: Catalog["data"][number]): ModelCapability[] {
   const result: ModelCapability[] = ["chat"];
   // Compatible gateways that omit metadata retain the existing tool-capable default.
   if (model.capabilities?.supports_tool_use !== false) result.push("tools", "coding");
-  if (
-    model.capabilities?.supports_vision ||
-    model.capabilities?.input_modalities?.includes("image")
-  )
-    result.push("vision");
+  if (discoveredVisionSupport(model) === "supported") result.push("vision");
   return result;
 }

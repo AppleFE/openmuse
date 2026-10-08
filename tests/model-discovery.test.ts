@@ -10,6 +10,7 @@ import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
 import { ModelRegistry, parseModelCatalog } from "../apps/server/src/engine/models.ts";
+import { acceptsImageInput } from "../packages/domain/src/agent.ts";
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-model-discovery-"));
@@ -132,6 +133,58 @@ test("discovery merges more than 100 models, preserves configured IDs/defaults, 
     f.response({ data: [{ id: "existing" }] });
     await registry.discovery.refresh(true);
     assert.deepEqual(await registry.selection("owner"), selected);
+  } finally {
+    await registry.discovery.stop();
+    await f.close();
+  }
+});
+
+test("missing vision metadata allows image input without claiming support or erasing configured vision", async () => {
+  const f = await fixture();
+  const configured = f.config.models?.[0];
+  assert.ok(configured);
+  configured.capabilities.push("vision");
+  const registry = new ModelRegistry(f.db, f.config);
+  try {
+    f.response({
+      data: [
+        { id: "existing" },
+        { id: "unknown", capabilities: { supports_tool_use: true } },
+        { id: "empty", capabilities: { input_modalities: [] } },
+        { id: "vision", capabilities: { input_modalities: ["text", "image"] } },
+        { id: "text-only", capabilities: { input_modalities: ["text"] } },
+        {
+          id: "disabled-vision",
+          capabilities: { supports_vision: false, input_modalities: ["image"] },
+        },
+      ],
+    });
+    await registry.discovery.refresh();
+    const byName = (name: string) => {
+      const profile = registry.list().find((m) => m.model === `opencodex/${name}`);
+      assert.ok(profile);
+      return profile;
+    };
+    assert.ok(byName("existing").capabilities.includes("vision"));
+    assert.equal(byName("existing").visionSupport, "supported");
+    for (const id of ["unknown", "empty"]) {
+      const profile = byName(id);
+      assert.equal(profile.visionSupport, "unknown");
+      assert.ok(
+        !profile.capabilities.includes("vision"),
+        "unknown must not advertise confirmed vision",
+      );
+      assert.ok(acceptsImageInput(profile));
+      assert.ok(acceptsImageInput(registry.fromSnapshot(profile)));
+    }
+    assert.ok(byName("vision").capabilities.includes("vision"));
+    assert.ok(acceptsImageInput(byName("vision")));
+    for (const id of ["text-only", "disabled-vision"])
+      assert.equal(acceptsImageInput(byName(id)), false);
+    f.response({ data: [{ id: "existing", capabilities: { supports_vision: false } }] });
+    await registry.discovery.refresh(true);
+    assert.equal(acceptsImageInput(byName("existing")), false);
+    assert.ok(!byName("existing").capabilities.includes("vision"));
   } finally {
     await registry.discovery.stop();
     await f.close();

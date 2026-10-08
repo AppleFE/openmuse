@@ -6,6 +6,7 @@ import { defineTool } from "@copilotkit/runtime/v2";
 import { Observable } from "rxjs";
 import { z } from "zod";
 import {
+  acceptsImageInput,
   createTaskSchema,
   goalInputSchema,
   type ModelProfile,
@@ -429,7 +430,7 @@ export class ConversationAgent extends AbstractAgent {
       prompt: systemPrompt + runtimeInstructions(false),
     });
     return new Observable((subscriber) => {
-      if (attachments?.images.length && !profile?.capabilities.includes("vision")) {
+      if (attachments?.images.length && (!profile || !acceptsImageInput(profile))) {
         subscriber.next({
           type: EventType.RUN_ERROR,
           message:
@@ -497,6 +498,7 @@ export class ConversationAgent extends AbstractAgent {
               },
               model: profile.model,
               capabilities: profile.capabilities,
+              visionSupport: profile.visionSupport,
               dependencyContext: {},
               signal: piAbort.signal,
             };

@@ -29,6 +29,15 @@ export const modelProviderSchema = z.enum(["openai", "anthropic", "google", "ope
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 export const modelCapabilitySchema = z.enum(["chat", "tools", "vision", "coding"]);
 export type ModelCapability = z.infer<typeof modelCapabilitySchema>;
+export type VisionSupport = "supported" | "unsupported" | "unknown";
+/** Missing gateway metadata is not evidence that image input is unsupported. */
+export function acceptsImageInput(model: {
+  capabilities: readonly ModelCapability[];
+  visionSupport?: VisionSupport;
+}): boolean {
+  if (model.visionSupport) return model.visionSupport !== "unsupported";
+  return model.capabilities.includes("vision");
+}
 /** Public, secret-free model metadata returned to clients. */
 export interface ModelProfile {
   id: string;
@@ -36,6 +45,8 @@ export interface ModelProfile {
   provider: ModelProvider;
   model: string;
   capabilities: ModelCapability[];
+  /** Unknown models may receive images; only positive metadata earns the vision badge. */
+  visionSupport?: VisionSupport;
   enabled: boolean;
   /** Enabled with a credential; discovered models must still appear in the provider catalog. */
   available: boolean;
@@ -52,7 +63,7 @@ export interface ModelCatalogStatus {
 }
 export type ModelSnapshot = Pick<
   ModelProfile,
-  "id" | "label" | "provider" | "model" | "capabilities"
+  "id" | "label" | "provider" | "model" | "capabilities" | "visionSupport"
 >;
 export interface ModelSelection {
   id: "default";

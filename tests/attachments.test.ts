@@ -268,6 +268,16 @@ test("embedded Pi receives uploaded images and an explicitly selected skill toge
     );
     assert.ok(errors.some((e) => e.type === "RUN_ERROR"));
     assert.equal(calls.length, 1);
+    const unknown = { ...nonvision, visionSupport: "unknown" as const };
+    const resumed = await lastValueFrom(
+      new ConversationAgent(config, server.agent, "pi-image", unknown)
+        .run(original)
+        .pipe(toArray()),
+    );
+    assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].images?.[0].data, png.toString("base64"));
+    assert.equal(calls[1].request.visionSupport, "unknown");
   } finally {
     Object.defineProperty(server.agent, "pi", { configurable: true, value: pi });
   }

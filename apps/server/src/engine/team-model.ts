@@ -29,7 +29,12 @@ export class TeamModelExecutor {
     const profile = input.role.modelSnapshot
       ? this.models.fromSnapshot(input.role.modelSnapshot)
       : this.models.require(input.role.modelId);
-    const request = { ...input, model: profile.model, capabilities: profile.capabilities };
+    const request = {
+      ...input,
+      model: profile.model,
+      capabilities: profile.capabilities,
+      visionSupport: profile.visionSupport,
+    };
     const { preparation, executor } = await this.runtimeHooks.prepare(request);
     if (executor) return executor.execute?.({ ...request, ...preparation }) ?? { output: "" };
     const agent = tanstackAgent({

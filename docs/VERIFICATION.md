@@ -1,5 +1,27 @@
 # Release verification
 
+## OpenMuse 0.10.5 — 2026년 10월 8일
+
+- 일부 OpenCodex 모델 목록은 `supports_vision` / `input_modalities`를 생략합니다.
+  이전 OpenMuse는 이 누락을 이미지 미지원으로 처리해 첨부를 거부하고 도구 스크린샷을
+  설명 문장으로 대체했습니다. 이제 지원/미지원/미확인을 구분하고 미확인 모델에도
+  이미지 바이트를 전송합니다. 명시적인 미지원 정보는 유지합니다.
+- GLM-5.3 Flash는 OpenCodex 직접 호출에서 숫자와 도형을 읽었지만 기존 OpenMuse
+  카탈로그에는 `vision`이 없었습니다. 수동 비전 설정 보존, 채팅·작업·팀 스냅샷의
+  상태 전파와 팀 Pi 런타임의 이미지 입력 설정을 수정했습니다.
+- DeepSeek V4.1 Flash Ultrafast는 OpenGateway 직접 호출의 Responses 경로에서
+  이미지를 읽지 못했지만 동일 PNG를 Chat Completions 경로로 보내면 읽었습니다.
+  운영 OpenCodex의 OpenGateway 어댑터를 관리 API로 `openai-chat`으로 변경했습니다.
+  기존 설정을 보호된 백업에 보존하고 자격 증명·다른 제공자 옵션의 동일성을 확인했습니다.
+  OpenMuse의 클라이언트 API는 계속 OpenCodex `/v1/responses`를 사용합니다.
+- 실제 GPT-6 Luna, OpenGateway DeepSeek V4.1 Flash Ultrafast, ZAI-ZCode GLM-5.3 Flash로
+  합성 PNG의 6자리 숫자와 세 가지 색/도형을 검사했습니다. OpenMuse의 실제 Pi 호출과
+  자동화 SDK를 통과한 이미지 입력을 확인했으며, 브라우저 백엔드에는 같은 PNG를 반환하는
+  시험 fixture를 사용했습니다. 이 검사는 화면 탐색·클릭 수행 능력의 평가가 아닙니다.
+- 자동 회귀 검사 35개 통과: 모델 목록 누락/명시적 미지원, 수동 설정 보존, 첨부 입력,
+  Pi의 실제 Responses 요청 내 `input_image`, UI 이벤트에서 이미지 바이트 제외,
+  모델 스냅샷 및 대화 도구 실행을 검사했습니다. 서버·웹 타입 검사도 통과했습니다.
+
 ## OpenMuse 0.10.4 — 2026년 10월 8일
 
 - 0.10.3 적용 후 실제 `gpt-6-luna` 재시험에서도 목표 탭 조회가 실패했습니다.
