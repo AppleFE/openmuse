@@ -4,6 +4,7 @@ import { createStore } from "../apps/server/src/db.ts";
 import { scheduleTools } from "../apps/server/src/engine/schedule-tools.ts";
 import { nextScheduleDate, ScheduleService } from "../apps/server/src/engine/schedules.ts";
 import type { AgentTask } from "../packages/domain/src/agent.ts";
+import type { ScheduleRun } from "../packages/domain/src/schedules.ts";
 
 test("schedules survive restart, claim due work once across workers and isolate owners", async () => {
   const db = await createStore();
@@ -159,8 +160,10 @@ test("paused, changed or deleted schedules do not dispatch pending retry occurre
       clock += 15000;
       await service.tick();
       assert.equal(calls, before);
-      const run = (await db.list<any>("a", "schedule-runs")).find((r) => r.scheduleId === s.id);
-      assert.equal(run.status, "skipped");
+      const run = (await db.list<ScheduleRun>("a", "schedule-runs")).find(
+        (r) => r.scheduleId === s.id,
+      );
+      assert.equal(run?.status, "skipped");
       if (operation !== "delete") await service.remove("a", s.id);
     }
   } finally {
