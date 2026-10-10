@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import type { TestContext } from "node:test";
 
 export type PiProtocolTurn =
-  | { tool: { name: string; arguments: Record<string, unknown> } }
+  | { tool: { name: string; arguments: Record<string, unknown> }; argumentChunkSize?: number }
   | { text: string };
 
 export interface PiProtocolRequest {
@@ -73,22 +73,26 @@ export async function piProtocolFixture(t: TestContext, turns: readonly PiProtoc
         output_index: 0,
         item: { ...item, arguments: "" },
       });
-      writeEvent(response, "response.function_call_arguments.delta", 2, {
-        item_id: item.id,
-        output_index: 0,
-        delta: item.arguments,
-      });
-      writeEvent(response, "response.function_call_arguments.done", 3, {
+      let sequence = 2;
+      const size = turn.argumentChunkSize ?? item.arguments.length;
+      for (let offset = 0; offset < item.arguments.length; offset += size) {
+        writeEvent(response, "response.function_call_arguments.delta", sequence++, {
+          item_id: item.id,
+          output_index: 0,
+          delta: item.arguments.slice(offset, offset + size),
+        });
+      }
+      writeEvent(response, "response.function_call_arguments.done", sequence++, {
         item_id: item.id,
         output_index: 0,
         arguments: item.arguments,
       });
       const completed = { ...item, status: "completed" };
-      writeEvent(response, "response.output_item.done", 4, {
+      writeEvent(response, "response.output_item.done", sequence++, {
         output_index: 0,
         item: completed,
       });
-      writeEvent(response, "response.completed", 5, {
+      writeEvent(response, "response.completed", sequence++, {
         response: {
           ...base,
           status: "completed",

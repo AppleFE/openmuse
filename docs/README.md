@@ -14,6 +14,7 @@ The demos follow a request from chat to the agent's inline browser, then show ho
 - [Browser worker, API, persistence, and network boundary](../apps/worker/README.md)
 - [Linux computer, terminal, and workspace files](COMPUTER.md)
 - [Self-hosted rich threads](RICH-THREADS.md)
+- [Open Intelligent UI — 대화형 그래프·계산기·시뮬레이션](GENERATIVE-UI.md)
 - [Models, OpenCodex, and multi-model teams](MODELS-TEAMS.md)
 - [Jev policy and embedded pi runtime](JEV-PI.md)
 - [스킬 업로드와 채팅 슬래시 명령](SKILLS.md)

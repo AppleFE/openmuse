@@ -8,6 +8,7 @@ import { EventType, type RunAgentInput } from "@ag-ui/core";
 import { CopilotKitCore } from "@copilotkit/core";
 import { serve } from "@hono/node-server";
 import { runConversationTurn } from "../apps/mobile/src/conversation-run.ts";
+import { toolResultValue } from "../apps/mobile/src/tool-result.ts";
 import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
@@ -15,6 +16,7 @@ import { ConversationAgent } from "../apps/server/src/engine/conversation.ts";
 import { executeModelTask } from "../apps/server/src/engine/model.ts";
 import type { AgentTask, ModelProfile } from "../packages/domain/src/agent.ts";
 import { browserFixture } from "./helpers/browser.ts";
+import { interactiveAnswer } from "./helpers/generated-ui.ts";
 import { piProtocolFixture } from "./helpers/pi-protocol.ts";
 
 const profile: ModelProfile = {
@@ -37,6 +39,72 @@ const configFor = (dataDir: string): Config => ({
   googleRedirectUri: "http://localhost:8787/api/google/callback",
   allowedOrigins: ["http://localhost:8081"],
   models: [profile],
+});
+
+test("Open Intelligent UI streams through real Pi and replays from owned conversation history", async (t) => {
+  const fixture = await piProtocolFixture(t, [
+    { tool: { name: "generateSandboxedUi", arguments: interactiveAnswer }, argumentChunkSize: 37 },
+    { text: "기간을 조절해 결과를 비교해 보세요." },
+  ]);
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-generated-ui-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const config = configFor(directory);
+  const server = await createApp(db, config);
+  t.after(async () => {
+    server.hostEvents.close();
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const events: Array<{ type: string; [key: string]: unknown }> = [];
+  const input: RunAgentInput = {
+    threadId: "ui-thread",
+    runId: "ui-run",
+    messages: [{ id: "ui-user", role: "user", content: "복리 계산기를 만들어줘" }],
+    state: {},
+    tools: [],
+    context: [],
+  };
+  await new Promise<void>((resolve, reject) =>
+    server.conversations
+      .run({
+        threadId: input.threadId,
+        agent: new ConversationAgent(config, server.agent, "owner", profile),
+        input,
+      })
+      .subscribe({ next: (event) => events.push(event), error: reject, complete: resolve }),
+  );
+  assert.equal(
+    events.at(-1)?.type,
+    EventType.RUN_FINISHED,
+    JSON.stringify(events.filter((e) => e.type === EventType.RUN_ERROR)),
+  );
+  assert.equal(
+    events.filter((e) => e.type === EventType.TOOL_CALL_START).length,
+    1,
+    "execution must not emit a duplicate start after streaming",
+  );
+  assert.equal(events.filter((e) => e.type === EventType.TOOL_CALL_END).length, 1);
+  const deltas = events.filter((e) => e.type === EventType.TOOL_CALL_ARGS);
+  assert.ok(deltas.length > 10, "tool arguments must stream before execution");
+  assert.deepEqual(JSON.parse(deltas.map((e) => e.delta).join("")), interactiveAnswer);
+  assert.ok(
+    events.findIndex((e) => e.type === EventType.TOOL_CALL_END) <
+      events.findIndex((e) => e.type === EventType.TOOL_CALL_RESULT),
+  );
+  const stored = await server.conversations.get("owner", input.threadId);
+  assert.ok(fixture.requests.length === 2);
+  assert.match(JSON.stringify(fixture.requests[1]?.body.input), /generated-ui/);
+  const assistant = stored.messages.find(
+    (message) => message.role === "assistant" && message.toolCalls?.length,
+  );
+  assert.ok(assistant && assistant.role === "assistant");
+  assert.ok(assistant.toolCalls?.[0]);
+  assert.deepEqual(JSON.parse(assistant.toolCalls[0].function.arguments), interactiveAnswer);
+  const receipt = stored.messages.find((message) => message.role === "tool");
+  assert.ok(receipt && receipt.role === "tool");
+  assert.equal((toolResultValue(receipt.content) as { status: string }).status, "accepted");
+  await assert.rejects(() => server.conversations.get("other-owner", input.threadId), /not found/i);
 });
 
 test("report-only host delivery reaches the next real Pi turn once and stays thread-scoped", async (t) => {

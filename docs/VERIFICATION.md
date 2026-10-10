@@ -1,5 +1,29 @@
 # Release verification
 
+## OpenMuse 0.11.0 — 2026년 10월 10일
+
+- [Open Intelligent UI](GENERATIVE-UI.md)의 대화형 그래프·도표·계산기·시뮬레이션·3D 생성을
+  기존 모델 연결과 채팅 기록에 통합했습니다. 코드 생성 중 정적 미리보기, 검증 완료 후
+  조작, 독립 HTML 내보내기, 화면 접기·크기 조절·초기화를 제공합니다.
+- 실제 Pi SDK의 Responses 인수 스트리밍과 도구 실행을 확인했습니다. 도구 시작/끝 이벤트가
+  중복되지 않으며 소유자별 대화 기록에서 생성 코드와 결과를 복원합니다. 기존 병렬 도구,
+  중단, 대화 재접속과 Jev/Pi 관련 회귀 검사도 통과했습니다.
+- Chromium에서 슬라이더 계산, 질문 초안(자동 전송 없음), 저장 HTML의 독립 실행,
+  부모 DOM·쿠키·저장소 접근 차단, fetch 및 외부 마크업 요청 차단, 미완성 코드 실행 방지를
+  검사했습니다. 실제 웹 앱에서도 데스크톱/390px 모바일 화면, 다운로드, 접기, 초기화,
+  새로고침 후 복원을 확인했습니다.
+- 운영 OpenCodex에 연결한 격리된 시험 대화에서 GPT-6 Luna의 SVG 요금 비교 그래프와
+  OpenGateway DeepSeek V4.1 Flash Ultrafast의 Chart.js 그래프를 생성했습니다. Chromium에서
+  값을 변경해 그래프/결과가 갱신되는 것을 확인했습니다. Luna는 1,381개 인수 델타로
+  생성했고 DeepSeek은 완성된 인수를 한 번에 전달했습니다. 모델/제공자의 스트리밍 방식에
+  따라 미리보기가 달라집니다.
+- ZAI-ZCode GLM 5.3 Flash의 시뮬레이션 생성은 두 번 모두 도구 호출 없이 빈 응답으로
+  끝나 `Embedded pi returned no assistant output`으로 실패했습니다. 이 결과로 GLM의
+  시각화나 비전 능력 자체를 판정하지 않습니다. 모든 모델의 생성 성공을 보장하지 않습니다.
+- Chart.js, D3, Three.js, GSAP의 고정 CDN 로딩과 WebGL 큐브 렌더링도 확인했습니다.
+- 서버·웹 타입 검사와 서버/웹/iOS/Android 번들을 확인했습니다. 네이티브 기기에서의 WebView
+  조작 및 파일 공유는 실기기 검증 전입니다. 신규 라이브러리 의존성이나 API 키는 없습니다.
+
 ## OpenMuse 0.10.5 — 2026년 10월 8일
 
 - 일부 OpenCodex 모델 목록은 `supports_vision` / `input_modalities`를 생략합니다.

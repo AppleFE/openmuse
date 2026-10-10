@@ -47,6 +47,7 @@ The computer combines **persistent Chromium and an optional Linux workspace**. T
 | Surface | What runs in this alpha |
 | --- | --- |
 | **Chat** | CopilotKit headless chat with streamed AG-UI events, mailbox search and reading, send/stop in one input pill, a visible follow-up queue, retained drafts, delegated tasks, and inline email, browser, PDF, plan, and finance cards. |
+| **Open Intelligent UI** | Model-generated interactive charts, diagrams, calculators, simulations and 3D inside chat; streaming previews, isolated execution, saved conversation replay and HTML export. Uses the existing model connection. [Guide](docs/GENERATIVE-UI.md) |
 | **Agent computer** | Persistent browser profiles and takeover console; optional isolated Linux terminal, saved command receipts, editable workspace files, and PDF transfer. |
 | **Activity** | Durable task plans, progress, input requests, pause/resume/cancel/retry, approvals, and saved receipts. SQL leases recover interrupted work. |
 | **Ideas** | Suggestions with source evidence; edit, accept, or dismiss. Sent replies and completed matching work are excluded. |

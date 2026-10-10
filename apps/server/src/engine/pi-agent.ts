@@ -62,6 +62,7 @@ export interface PiAgentRunCallbacks {
   onUsage?(usage: Omit<UsageRecord, "id">): void;
   onTextDelta?(delta: string): void;
   onToolStart?(id: string, name: string, args: unknown): void;
+  onUiArguments?(id: string, delta: string, done: boolean): void;
   onToolEnd?(id: string, name: string, result: unknown, isError: boolean): void;
 }
 
@@ -339,6 +340,21 @@ export class PiAgentRunner {
   }
 
   private forwardEvent(event: AgentSessionEvent, callbacks: PiAgentRunCallbacks) {
+    if (event.type === "message_update") {
+      const update = event.assistantMessageEvent;
+      if (update.type === "toolcall_delta" || update.type === "toolcall_end") {
+        const call =
+          update.type === "toolcall_end"
+            ? update.toolCall
+            : update.partial.content[update.contentIndex];
+        if (call?.type === "toolCall" && call.name === "generateSandboxedUi" && call.id)
+          callbacks.onUiArguments?.(
+            call.id,
+            update.type === "toolcall_delta" ? update.delta : "",
+            update.type === "toolcall_end",
+          );
+      }
+    }
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta")
       callbacks.onTextDelta?.(event.assistantMessageEvent.delta);
     else if (event.type === "tool_execution_start")
