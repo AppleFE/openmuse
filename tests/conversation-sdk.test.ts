@@ -69,6 +69,21 @@ test("a stale second client adopts server chronology before replying and on reco
     return messages.map((m) => m.id);
   }
   await send(first, "initial");
+  const runs = await db.list<{ id: string; runId: string }>("local-user", "conversation-runs");
+  assert.equal(runs.length, 1);
+  const runPath = `/api/copilotkit/threads/two-clients/runs/${runs[0].runId}`;
+  const runResponse = await server.app.request(runPath, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(runResponse.status, 200);
+  assert.deepEqual(await runResponse.json(), { status: "completed" });
+  await assert.rejects(
+    server.conversations.runStatus("another-owner", "two-clients", runs[0].runId),
+  );
+  const absent = await server.app.request(`${runPath}-missing`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(absent.status, 404);
   await second.core.connectAgent({ agent: second.agent });
   assert.deepEqual(
     second.agent.messages.map((m) => m.id),

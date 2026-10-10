@@ -35,7 +35,14 @@ import { ChatNotebook } from "./chat-notebook";
 import { ChatUsage, useChatUsage } from "./chat-usage";
 import { conversationHistorySubscriber } from "./conversation-history";
 import { ConversationQueue, type QueuedMessage } from "./conversation-queue";
-import { runConversationTurn } from "./conversation-run";
+import {
+  type ConversationRunStatus,
+  isConversationConnectionError,
+  recoverConversationRun,
+  runConversationTurn,
+  ServerRunError,
+} from "./conversation-run";
+import { conversationFetch } from "./conversation-transport";
 import { GeneratedUiCard } from "./generated-ui-card";
 import { useHostEvents } from "./host-events";
 import { MailToolCard } from "./mail-tool-card";
@@ -338,7 +345,7 @@ export function ChatScreen({
   thread?: Selection;
   active?: boolean;
 }) {
-  const { workspace: w, refresh, navigate } = useWorkspace();
+  const { workspace: w, api, refresh, navigate } = useWorkspace();
   const { data: agentWorkspace, refresh: refreshAgent } = useAgentWorkspace();
   const { mainId, claimPrompt } = useMuseThread();
   const selection = thread || { id: "local", existing: false };
@@ -349,6 +356,15 @@ export function ChatScreen({
   const appliedHostVersion = useRef(0);
   const agentId = `openmuse-${threadId}`;
   const { agent, isReady } = useAgent({ agentId, runtimeAgentId: "default", threadId });
+  useEffect(() => {
+    if (!("fetch" in agent) || typeof agent.fetch !== "function") return;
+    const original = agent.fetch as typeof fetch;
+    const transport = conversationFetch(original);
+    agent.fetch = transport;
+    return () => {
+      if (agent.fetch === transport) agent.fetch = original;
+    };
+  }, [agent]);
   const { copilotkit } = useCopilotKit();
   useEffect(() => {
     const subscription = agent.subscribe(conversationHistorySubscriber);
@@ -369,6 +385,14 @@ export function ChatScreen({
   const [inputHeight, setInputHeight] = useState(44);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [recoveryRunId, setRecoveryRunId] = useState<string>();
+  const [reconnecting, setReconnecting] = useState(false);
+  const connectionLifetime = useRef(new AbortController());
+  useEffect(() => {
+    const controller = new AbortController();
+    connectionLifetime.current = controller;
+    return () => controller.abort();
+  }, []);
   const [loaded, setLoaded] = useState(false);
   const [picking, setPicking] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -434,6 +458,7 @@ export function ChatScreen({
     async (message?: QueuedMessage) => {
       if (runLock.current || agent.isRunning || !isReady || !loaded)
         throw new Error("아직 대화를 준비하지 못했습니다.");
+      if (message && recoveryRunId) throw new Error("먼저 기존 답변의 연결을 복구하세요.");
       runLock.current = true;
       setBusy(true);
       setError("");
@@ -444,27 +469,76 @@ export function ChatScreen({
           content: message.content ?? message.text,
         });
       try {
-        await runConversationTurn(
-          agentId,
-          () =>
-            copilotkit.runAgent({
-              agent,
-              forwardedProps: selectedModelId ? { modelId: selectedModelId } : undefined,
-            }),
-          (onError) => copilotkit.subscribe({ onError }),
-        );
-        await Promise.all([refresh(), refreshAgent()]);
+        const restore = async (runId: string) => {
+          setRecoveryRunId(runId);
+          setReconnecting(true);
+          try {
+            await recoverConversationRun({
+              status: () =>
+                api.request<ConversationRunStatus>(
+                  `/api/copilotkit/threads/${threadId}/runs/${runId}`,
+                ),
+              connect: () =>
+                runConversationTurn(
+                  agentId,
+                  () => copilotkit.connectAgent({ agent }),
+                  (onError) => copilotkit.subscribe({ onError }),
+                ),
+              signal: connectionLifetime.current.signal,
+            });
+            setRecoveryRunId(undefined);
+          } catch (e) {
+            if (e instanceof ServerRunError) setRecoveryRunId(undefined);
+            throw e;
+          } finally {
+            setReconnecting(false);
+          }
+        };
+        if (recoveryRunId) await restore(recoveryRunId);
+        else {
+          const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          try {
+            await runConversationTurn(
+              agentId,
+              () =>
+                copilotkit.runAgent({
+                  agent,
+                  runId,
+                  forwardedProps: selectedModelId ? { modelId: selectedModelId } : undefined,
+                }),
+              (onError) => copilotkit.subscribe({ onError }),
+            );
+          } catch (e) {
+            if (!isConversationConnectionError(e)) throw e;
+            await restore(runId);
+          }
+        }
+        // A failed usage/workspace refresh must not turn a completed answer into
+        // a failed turn and offer to execute its tools a second time.
+        await Promise.allSettled([refresh(), refreshAgent()]);
       } finally {
         runLock.current = false;
         setBusy(false);
       }
     },
-    [agent, agentId, copilotkit, isReady, loaded, refresh, refreshAgent, queue, selectedModelId],
+    [
+      agent,
+      agentId,
+      api,
+      threadId,
+      copilotkit,
+      isReady,
+      loaded,
+      refresh,
+      refreshAgent,
+      recoveryRunId,
+      selectedModelId,
+    ],
   );
   const flush = useCallback(() => {
-    if (!loaded || !isReady || runLock.current || agent.isRunning) return;
+    if (!loaded || !isReady || runLock.current || agent.isRunning || recoveryRunId) return;
     void queue.flush(run).catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [agent, isReady, loaded, queue, run]);
+  }, [agent, isReady, loaded, queue, run, recoveryRunId]);
   const enqueue = useCallback(
     (text: string, files: ChatAttachment[] = []) => {
       queue.enqueue({
@@ -485,16 +559,6 @@ export function ChatScreen({
     if (active && prompt && isReady && loaded && claimPrompt(prompt.id) && prompt.text.trim())
       enqueue(prompt.text);
   }, [active, prompt, isReady, loaded, enqueue, claimPrompt]);
-  useEffect(() => {
-    const subscription = copilotkit.subscribe({
-      onError: (event) => {
-        if (event.context?.agentId && event.context.agentId !== agentId) return;
-        const failure = event.error instanceof Error ? event.error : new Error(String(event.error));
-        setError(failure.message);
-      },
-    });
-    return () => subscription.unsubscribe();
-  }, [copilotkit, agentId, queue]);
   async function stop() {
     queue.pause();
     try {
@@ -505,7 +569,14 @@ export function ChatScreen({
   }
   function send() {
     const text = draft.trim();
-    if ((!text && !uploads.selected.length) || !isReady || !loaded || !uploads.ready()) return;
+    if (
+      (!text && !uploads.selected.length) ||
+      !isReady ||
+      !loaded ||
+      !uploads.ready() ||
+      recoveryRunId
+    )
+      return;
     const matches = skillSuggestions(skills, text);
     if (matches.length && text !== `/${matches[0].name}` && text !== `/skill:${matches[0].name}`) {
       selectSkill(matches[0].name);
@@ -734,6 +805,11 @@ export function ChatScreen({
             ))}
           </View>
         )}
+        {reconnecting && (
+          <Text style={s.muted}>
+            연결을 복구하고 있습니다. 서버에서 진행 중인 답변을 다시 불러옵니다.
+          </Text>
+        )}
         <ErrorNotice error={error} />
         {!!error && (
           <Button
@@ -748,7 +824,7 @@ export function ChatScreen({
                 .catch((e) => setError(e instanceof Error ? e.message : String(e)));
             }}
           >
-            답변 다시 시도
+            {recoveryRunId ? "기존 답변 다시 연결" : "답변 다시 시도"}
           </Button>
         )}
       </ScrollView>
@@ -1019,7 +1095,11 @@ export function ChatScreen({
               accessibilityLabel={replying ? "답변 중지" : "메시지 전송"}
               disabled={
                 !replying &&
-                ((!draft.trim() && !uploads.selected.length) || uploads.busy || !loaded || !isReady)
+                ((!draft.trim() && !uploads.selected.length) ||
+                  uploads.busy ||
+                  !loaded ||
+                  !isReady ||
+                  !!recoveryRunId)
               }
               onPress={replying ? () => void stop() : send}
               style={({ pressed }) => ({

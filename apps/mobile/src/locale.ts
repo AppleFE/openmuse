@@ -233,6 +233,8 @@ const errors: Record<string, string> = {
   "Session expired. Sign in again.": "세션이 만료됐습니다. 다시 로그인하세요.",
   "Could not open your workspace.": "워크스페이스를 열 수 없습니다.",
   "Failed to fetch": "서버에 연결할 수 없습니다. 연결 상태를 확인하세요.",
+  "Load failed":
+    "서버와의 연결이 끊겼습니다. 연결 상태를 확인한 뒤 다시 연결하세요. 저장된 대화는 유지됩니다.",
   "Network request failed": "네트워크 요청에 실패했습니다. 연결 상태를 확인하세요.",
   "Request failed. Check the server setup and try again.":
     "요청에 실패했습니다. 서버 설정을 확인한 뒤 다시 시도하세요.",

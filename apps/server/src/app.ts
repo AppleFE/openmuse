@@ -18,6 +18,7 @@ import { agentConfigured, makeConversationAgent, makeRuntime } from "./agent.ts"
 import { attachmentRoutes } from "./attachments.ts";
 import { createAuth } from "./auth.ts";
 import { BrowserService } from "./browser.ts";
+import { chatStreamResponse } from "./chat-stream.ts";
 import { ComputerService, type DockerRunner } from "./computer.ts";
 import { computerRoutes } from "./computer-routes.ts";
 import type { Config } from "./config.ts";
@@ -414,6 +415,9 @@ export async function createApp(
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));
     return c.json({ messages: thread.messages });
   });
+  app.get("/api/copilotkit/threads/:id/runs/:runId", async (c) =>
+    c.json(await conversations.runStatus(c.get("owner"), c.req.param("id"), c.req.param("runId"))),
+  );
   app.get("/api/usage", async (c) =>
     c.json(await new UsageService(db).summary(c.get("owner"), c.req.query("threadId"))),
   );
@@ -609,17 +613,7 @@ export async function createApp(
         "Configure a model and provider API key, or a valid AG-UI endpoint, to start chat",
         503,
       );
-    const response = await runtime.fetch(c.req.raw);
-    // Runtime 1.70 emits SSE strings; a WHATWG Response body requires byte chunks.
-    const encoder = new TextEncoder();
-    const body = response.body?.pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(typeof chunk === "string" ? encoder.encode(chunk) : chunk);
-        },
-      }),
-    );
-    return new Response(body, { status: response.status, headers: response.headers });
+    return chatStreamResponse(await runtime.fetch(c.req.raw));
   });
   app.get("/", (c) =>
     c.json({ name: "OpenMuse", app: "http://localhost:8081", health: "/api/health" }),

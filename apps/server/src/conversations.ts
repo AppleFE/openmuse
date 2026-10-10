@@ -982,6 +982,31 @@ export class ConversationStoreRunner extends AgentRunner {
     });
   }
 
+  async runStatus(owner: string, threadId: string, runId: string) {
+    await this.get(owner, threadId);
+    assertThreadId(runId);
+    const run = await this.db.get<ConversationRun>(
+      owner,
+      "conversation-runs",
+      `${threadId}:${runId}`,
+    );
+    if (!run)
+      throw new AppError(
+        "서버에서 이 요청의 실행 기록을 찾을 수 없습니다. 대화를 다시 열어 확인하세요.",
+        404,
+      );
+    const failed = run.events.findLast((event) => event.type === EventType.RUN_ERROR);
+    return {
+      status:
+        run.status === "completed" && failed
+          ? failed.code === "abort"
+            ? "stopped"
+            : "failed"
+          : run.status,
+      ...(run.error || failed?.message ? { error: run.error || String(failed?.message) } : {}),
+    };
+  }
+
   async isRunning(request: { threadId: string }) {
     return [...this.active.values()].some((active) => active.threadId === request.threadId);
   }
