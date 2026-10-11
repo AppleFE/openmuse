@@ -32,7 +32,9 @@ test("Docker Chromium opens public sites, renders, navigates and restores its sa
     const observed = await (await api(`/sessions/${id}/read`)).json();
     assert.equal(observed.url, "https://example.com/");
     assert.equal(observed.title, "Example Domain");
-    assert.match(observed.text, /Example Domain/);
+    // The live IANA page no longer repeats its title in visible body text.
+    // Keep asserting the source's actual content rather than an obsolete heading.
+    assert.match(observed.text, /documentation examples/);
     assert.equal(observed.truncated, false);
     const image = Buffer.from(await (await api(`/sessions/${id}/screenshot`)).arrayBuffer());
     assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
