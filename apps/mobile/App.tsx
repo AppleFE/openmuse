@@ -44,6 +44,7 @@ import {
 import { ChatScreen, WorkspaceTools } from "./src/chat";
 import { ComputerEntry } from "./src/computer";
 import { ComputerDraftProvider } from "./src/computer-drafts";
+import { DesktopGate } from "./src/desktop";
 import { Details } from "./src/details";
 import { HostEventsProvider } from "./src/host-events";
 import { UI_LOCALE, uiLabel } from "./src/locale";
@@ -80,7 +81,9 @@ const titles: Partial<Record<Section, { title: string; subtitle: string }>> = {
 export default function App() {
   return (
     <ThemeProvider>
-      <MuseApp />
+      <DesktopGate>
+        <MuseApp />
+      </DesktopGate>
     </ThemeProvider>
   );
 }

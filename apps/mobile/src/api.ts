@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
 export const API_URL = (
+  (typeof window !== "undefined" ? window.openmuseDesktop?.apiUrl : undefined) ||
   process.env.EXPO_PUBLIC_API_URL ||
   (Platform.OS === "android" ? "http://10.0.2.2:8787" : "http://localhost:8787")
 ).replace(/\/$/, "");
@@ -86,6 +87,8 @@ export class SessionError extends Error {
 export async function createSession(
   accessKey?: string,
 ): Promise<{ token: string; mode: "sample" | "live" }> {
+  if (typeof window !== "undefined" && window.openmuseDesktop)
+    return window.openmuseDesktop.session();
   const response = await fetch(`${API_URL}/api/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

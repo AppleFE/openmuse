@@ -2,6 +2,8 @@ packages:
   - apps/mobile
   - apps/worker
 allowBuilds:
+  electron: true
+  electron-winstaller: false
   esbuild: true
   '@biomejs/biome': true
   '@scarf/scarf': false

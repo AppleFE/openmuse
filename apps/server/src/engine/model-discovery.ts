@@ -10,6 +10,7 @@ import type { Store } from "../db.ts";
 
 const intervalMs = 60_000;
 const modelSchema = z.object({
+  display_name: z.string().max(200).optional(),
   id: z
     .string()
     .trim()

@@ -111,7 +111,11 @@ Stop-Transcript | Out-Null
 export function hostInstallerRoutes(db: Store, config: Config, connectors: ConnectorService) {
   const app = new Hono<{ Variables: { owner: string } }>();
   const archive = () =>
-    readFile(resolve(`dist/openmuse-host-agent-${version}.tar.gz`)).catch(() => {
+    readFile(
+      import.meta.url.endsWith(".js")
+        ? new URL(`../../../openmuse-host-agent-${version}.tar.gz`, import.meta.url)
+        : resolve(`dist/openmuse-host-agent-${version}.tar.gz`),
+    ).catch(() => {
       throw new AppError("Host Agent 설치 패키지가 준비되지 않았습니다", 503);
     });
   const invitation = async (ticket: string) => {

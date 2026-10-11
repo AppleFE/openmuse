@@ -1,0 +1,37 @@
+name: Windows installer
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:desktop
+      - run: pnpm typecheck
+      - run: pnpm build:windows
+      - run: pnpm test:desktop:app
+      - name: Installer checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -LiteralPath dist/windows -Filter 'OpenMuse-Setup-*-x64.exe' | Select-Object -First 1
+          $checksum = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$checksum  $($installer.Name)" | Set-Content -LiteralPath dist/windows/SHA256SUMS.txt -Encoding utf8
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: OpenMuse-Windows-x64
+          path: |
+            dist/windows/OpenMuse-Setup-*-x64.exe
+            dist/windows/SHA256SUMS.txt
+          if-no-files-found: error

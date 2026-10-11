@@ -9,6 +9,8 @@ Built with CopilotKit React Native for iOS, Android, and web.
 
 [Quick start](#quick-start) · [Demo](#demo) · [Features](#features) · [Architecture](#architecture) · [Docs](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
+**Windows 설치 앱:** [설치 및 ChatGPT 로그인 안내](docs/WINDOWS.md). 각 PC에서 자체 워크스페이스를 실행하고 사용자의 ChatGPT 계정으로 연결합니다.
+
 [![CI](https://github.com/AppleFE/openmuse/actions/workflows/ci.yml/badge.svg)](https://github.com/AppleFE/openmuse/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 

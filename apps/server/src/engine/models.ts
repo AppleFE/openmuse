@@ -168,7 +168,7 @@ export class ModelRegistry {
         while (configuredIds.has(id)) id = discoveredModelId(id);
         return {
           id,
-          label: model.id,
+          label: model.display_name || model.id,
           model: `opencodex/${model.id}`,
           provider: "opencodex",
           capabilities: discoveredCapabilities(model),

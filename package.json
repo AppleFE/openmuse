@@ -1,7 +1,14 @@
 {
   "name": "openmuse",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "private": true,
+  "files": [
+    "dist/apps/server",
+    "dist/apps/worker",
+    "dist/packages",
+    "dist/openmuse-host-agent-*.tar.gz",
+    "LICENSE"
+  ],
   "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@11.19.0",
@@ -22,6 +29,9 @@
     "build:server": "tsc -p tsconfig.build.json",
     "start": "node dist/apps/server/src/index.js",
     "build:web": "pnpm --dir apps/mobile build:web",
+    "build:windows": "node infra/desktop/build.mjs",
+    "test:desktop": "node --test apps/desktop/*.test.mjs",
+    "test:desktop:app": "node infra/desktop/smoke.mjs",
     "build:ios": "pnpm --dir apps/mobile build:ios",
     "build:android": "pnpm --dir apps/mobile build:android",
     "dev:worker": "tsx apps/server/src/worker-entry.ts",
@@ -73,6 +83,10 @@
     "@types/ssh2": "1.15.5",
     "@types/ws": "^8.18.2",
     "@types/yauzl": "2.10.3",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.25.12",
+    "jose": "6.1.3",
     "playwright": "1.62.1",
     "tsx": "^4.20.0",
     "typescript": "~5.9.2"

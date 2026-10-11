@@ -9,6 +9,7 @@ import type {
   TeamInput,
 } from "../../../packages/domain/src/agent";
 import { useAgentWorkspace } from "./agent-workspace";
+import { desktopBridge } from "./desktop";
 import { uiLabel } from "./locale";
 import { executionDependencies, modelAvailabilityLabel } from "./settings-core";
 import { Button, Card, colors, ErrorNotice, Field, SectionHeading, Sheet, s } from "./ui";
@@ -22,7 +23,7 @@ function modelDetail(model: ModelProfile) {
   const capabilities = model.capabilities.length
     ? ` · ${model.capabilities.map(uiLabel).join(", ")}`
     : "";
-  return `${model.provider} · ${model.model}${capabilities}`;
+  return `${desktopBridge ? "ChatGPT" : model.provider} · ${model.label}${capabilities}`;
 }
 
 function ModelCatalogRefresh() {
@@ -49,8 +50,8 @@ function ModelCatalogRefresh() {
       <View style={[s.row, { flexWrap: "wrap", gap: 10 }]}>
         <Text style={[s.small, { flex: 1, minWidth: 140 }]}>
           {status.lastSyncedAt
-            ? `OpenCodex ${status.modelCount}개 · ${new Date(status.lastSyncedAt).toLocaleTimeString("ko-KR")} 갱신`
-            : "OpenCodex 모델 목록 확인 중"}
+            ? `${desktopBridge ? "ChatGPT" : "OpenCodex"} ${status.modelCount}개 · ${new Date(status.lastSyncedAt).toLocaleTimeString("ko-KR")} 갱신`
+            : "모델 목록 확인 중"}
           {` · ${status.refreshIntervalSeconds}초마다 자동 갱신`}
         </Text>
         <Button small icon={RefreshCw} busy={busy} onPress={() => void sync()}>
@@ -446,7 +447,9 @@ export function ModelTeamSettings() {
         <SectionHeading title="기본 모델" />
         <Text style={s.muted}>
           {data?.modelCatalog?.enabled
-            ? "OpenCodex 모델은 연결된 서버에서 자동으로 가져옵니다."
+            ? desktopBridge
+              ? "로그인한 ChatGPT 계정의 모델을 자동으로 가져옵니다."
+              : "OpenCodex 모델은 연결된 서버에서 자동으로 가져옵니다."
             : "서버에 설정된 모델 목록입니다."}{" "}
           비활성화됐거나 사용할 수 없는 모델은 선택할 수 없습니다.
         </Text>

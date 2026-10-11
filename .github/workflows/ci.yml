@@ -24,6 +24,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm test:desktop
       - run: pnpm --dir apps/worker typecheck
       - name: Install Chromium for the noVNC client integration test
         run: pnpm exec playwright install --with-deps chromium

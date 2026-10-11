@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0 — 2026-10-11
+
+- Add a Windows x64 installer with an embedded local server, database and web interface; no external Node.js or shared OpenCodex service is required.
+- Add per-installation Sign in with ChatGPT using the official public-client OAuth flow, account selection, renewal, logout and account-specific model discovery.
+- Encrypt account credentials and the workspace encryption key using Windows DPAPI. Keep OAuth tokens in the main process and bind internal services to loopback with private credentials.
+- Preserve Responses tool calls, image input, streaming output and usage through a local ChatGPT plan adapter. Keep existing server/OpenCodex deployments supported.
+- Package from a runtime allowlist and the production dependency lockfile, excluding developer configuration, credentials and conversations.
+
 ## 0.10.6 — 2026-10-08
 
 - Add “모두 확인” to the chat update banner and notification list, with unread/all filters and Korean task-error titles. Bulk reads use explicit notification IDs so later arrivals remain unread.

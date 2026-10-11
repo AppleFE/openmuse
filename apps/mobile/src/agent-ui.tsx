@@ -38,6 +38,7 @@ import type {
 import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { ConnectorSettings } from "./connector-settings";
+import { DesktopAccountSettings } from "./desktop";
 import { HostEventsButton } from "./host-events";
 import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
@@ -1278,6 +1279,7 @@ export function GoalsScreen() {
   return (
     <View style={{ gap: 22 }}>
       <AgentStatus />
+      <DesktopAccountSettings />
       <View style={{ gap: 8 }}>
         <View style={[s.between, { marginBottom: 5 }]}>
           <View style={[s.row, { gap: 10 }]}>
