@@ -16,6 +16,7 @@ if (process.isMainFrame && /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
       select: (id) => call("select-account", id),
       signOut: () => call("sign-out"),
       usage: () => call("usage"),
+      importGoogleClient: () => call("google-import"),
     }),
   );
 }

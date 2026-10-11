@@ -26,6 +26,7 @@ interface OAuthState {
   verifier: string;
   scopes: string[];
   generation: string;
+  clientId?: string;
 }
 interface Credential {
   id: string;
@@ -43,6 +44,60 @@ export class GoogleAuth {
     return Boolean(
       this.config.googleClientId && this.config.googleClientSecret && this.config.encryptionKey,
     );
+  }
+  private async client(owner: string) {
+    const stored = this.config.desktop
+      ? await this.db.get<{ id: string; secret: string }>(owner, "credentials", "google-client")
+      : null;
+    if (stored && this.config.encryptionKey)
+      return JSON.parse(decryptSecret(stored.secret, this.config.encryptionKey)) as {
+        clientId: string;
+        clientSecret: string;
+      };
+    return { clientId: this.config.googleClientId, clientSecret: this.config.googleClientSecret };
+  }
+  async clientStatus(owner: string) {
+    const client = await this.client(owner);
+    return {
+      configured: Boolean(client.clientId && client.clientSecret && this.config.encryptionKey),
+    };
+  }
+  async importClient(owner: string, input: unknown) {
+    if (!this.config.desktop)
+      throw new AppError("설치 앱에서만 OAuth 파일을 등록할 수 있습니다", 403);
+    if (!this.config.encryptionKey) throw new AppError("암호화 저장소를 사용할 수 없습니다", 503);
+    const value = z
+      .object({
+        installed: z.object({
+          client_id: z
+            .string()
+            .max(512)
+            .regex(/^[\w.-]+\.apps\.googleusercontent\.com$/),
+          client_secret: z.string().min(1).max(512),
+          auth_uri: z.literal("https://accounts.google.com/o/oauth2/auth").optional(),
+          token_uri: z.literal("https://oauth2.googleapis.com/token").optional(),
+        }),
+      })
+      .safeParse(input);
+    if (!value.success)
+      throw new AppError(
+        "Google Cloud에서 다운로드한 데스크톱 앱용 OAuth JSON 파일을 선택하세요",
+        400,
+      );
+    if (await this.tokens(owner))
+      throw new AppError("Google 연결을 해제한 뒤 OAuth 설정을 변경하세요", 409);
+    await this.rotateGeneration(owner, true);
+    await this.db.put(owner, "credentials", {
+      id: "google-client",
+      secret: encryptSecret(
+        JSON.stringify({
+          clientId: value.data.installed.client_id,
+          clientSecret: value.data.installed.client_secret,
+        }),
+        this.config.encryptionKey,
+      ),
+    });
+    return { configured: true };
   }
   async tokens(owner: string): Promise<Tokens | null> {
     return this.decodeTokens(await this.db.get<Credential>(owner, "credentials", "google"));
@@ -98,9 +153,12 @@ export class GoogleAuth {
     }
   }
   async connect(owner: string, write: boolean) {
-    if (!this.configured())
+    const client = await this.client(owner);
+    if (!client.clientId || !client.clientSecret || !this.config.encryptionKey)
       throw new AppError(
-        "Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY to connect Google",
+        this.config.desktop
+          ? "Google OAuth 설정이 필요합니다. 데스크톱 앱용 OAuth JSON 파일을 등록한 뒤 연결하세요."
+          : "Google OAuth 클라이언트와 토큰 암호화 키를 서버에 설정하세요.",
         503,
       );
     const state = randomBytes(32).toString("base64url"),
@@ -128,10 +186,11 @@ export class GoogleAuth {
       verifier,
       scopes,
       generation,
+      clientId: client.clientId,
     });
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     url.search = new URLSearchParams({
-      client_id: this.config.googleClientId ?? "",
+      client_id: client.clientId,
       redirect_uri: this.config.googleRedirectUri,
       response_type: "code",
       scope: scopes.join(" "),
@@ -151,12 +210,15 @@ export class GoogleAuth {
     const credential = await this.db.get<Credential>(state.owner, "credentials", "google");
     if (!state.generation || credential?.generation !== state.generation)
       throw new AppError("Google sign-in changed or was disconnected. Connect again.", 409);
+    const client = await this.client(state.owner);
+    if (state.clientId && state.clientId !== client.clientId)
+      throw new AppError("Google OAuth 설정이 변경됐습니다. 다시 연결하세요", 409);
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: this.config.googleClientId ?? "",
-        client_secret: this.config.googleClientSecret ?? "",
+        client_id: client.clientId ?? "",
+        client_secret: client.clientSecret ?? "",
         redirect_uri: this.config.googleRedirectUri,
         grant_type: "authorization_code",
         code,
@@ -204,12 +266,13 @@ export class GoogleAuth {
   }
   private async refresh(owner: string, tokens: Tokens) {
     if (!tokens.refreshToken) throw new AppError("Google session expired. Connect again.", 401);
+    const client = await this.client(owner);
     const response = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        client_id: this.config.googleClientId ?? "",
-        client_secret: this.config.googleClientSecret ?? "",
+        client_id: client.clientId ?? "",
+        client_secret: client.clientSecret ?? "",
         grant_type: "refresh_token",
         refresh_token: tokens.refreshToken,
       }),

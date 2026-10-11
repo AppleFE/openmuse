@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -47,6 +47,19 @@ run(pnpm, ["build:host-agent"]);
 run(pnpm, ["--filter", "openmuse", "deploy", "--legacy", "--prod", stage]);
 await cp(join(root, "artifacts/desktop-web"), join(stage, "web"), { recursive: true });
 await cp(join(root, "apps/desktop/preload.cjs"), join(stage, "preload.cjs"));
+// Ship the matching Chromium runtime, so users need no Docker, Node or first-run download.
+run(
+  process.execPath,
+  [
+    join(dirname(createRequire(import.meta.url).resolve("playwright/package.json")), "cli.js"),
+    "install",
+    "chromium",
+    "--only-shell",
+  ],
+  {
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(root, "artifacts/desktop-browsers") },
+  },
+);
 await build({
   entryPoints: [join(root, "apps/desktop/main.mjs")],
   outfile: join(stage, "main.mjs"),

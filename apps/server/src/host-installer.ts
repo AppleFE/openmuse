@@ -9,7 +9,7 @@ import type { ConnectorService } from "./connector-service.ts";
 import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 
-const version = "0.10.2",
+const version = "0.10.3",
   nodeVersion = "24.21.0";
 const hash = (v: string | Buffer) => createHash("sha256").update(v).digest("hex");
 type Invitation = { id: string; owner: string; name: string; expiresAt: number; used: boolean };
@@ -142,11 +142,13 @@ export function hostInstallerRoutes(db: Store, config: Config, connectors: Conne
     const base = `${new URL(config.publicUrl).origin}/api/host-agent/install/${ticket}`;
     return c.json({
       expiresAt,
-      windows: `irm '${base}/install.ps1' | iex`,
+      windows: `irm '${base}/install.ps1' | iex;\n`,
       posix: `curl -fsSL '${base}/install.sh' | sh`,
       privileges: "Linux·macOS: root 서비스 · Windows: SYSTEM 관리자 작업",
       network:
-        "Tailscale 주소를 우선 사용합니다. 서버에서 대상 호스트의 8791 포트에 접근할 수 있어야 합니다.",
+        new URL(config.publicUrl).hostname === "127.0.0.1"
+          ? "설치 앱은 이 PC만 연결할 수 있습니다. 다른 PC는 접근 가능한 OpenMuse 서버 주소가 필요합니다."
+          : "Tailscale 주소를 우선 사용합니다. 서버에서 대상 호스트의 8791 포트에 접근할 수 있어야 합니다.",
     });
   });
   app.get("/install/:ticket/:file", async (c) => {

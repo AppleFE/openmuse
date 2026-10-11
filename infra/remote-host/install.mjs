@@ -50,7 +50,14 @@ await mkdir(root, { recursive: true, mode: 0o700 });
 let config;
 try {
   config = JSON.parse(await readFile(configPath, "utf8"));
-  if (config.enrollmentOrigin && config.enrollmentOrigin !== invitation.origin)
+  // Desktop 0.12.0 used an ephemeral API port. A fresh local invitation may migrate
+  // that installation to the durable port without treating it as a different server.
+  const local = (url) => ["127.0.0.1", "localhost"].includes(new URL(url).hostname);
+  if (
+    config.enrollmentOrigin &&
+    config.enrollmentOrigin !== invitation.origin &&
+    !(local(config.enrollmentOrigin) && local(invitation.origin))
+  )
     throw Error("다른 OpenMuse에 연결된 설치입니다. 기존 연결을 먼저 해제하세요");
 } catch (e) {
   if (e.code !== "ENOENT") throw e;
@@ -64,6 +71,9 @@ const isTailscale = (ip) => {
   return a === 100 && b >= 64 && b <= 127;
 };
 const address =
+  (invitation.hostname === "127.0.0.1" || invitation.hostname === "localhost"
+    ? "127.0.0.1"
+    : undefined) ??
   addresses.find(isTailscale) ??
   addresses.find((ip) => ip.startsWith("192.168.") || ip.startsWith("10.")) ??
   addresses[0];

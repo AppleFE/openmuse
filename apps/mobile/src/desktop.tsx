@@ -19,6 +19,7 @@ interface DesktopBridge {
   select(id: string): Promise<AccountStatus>;
   signOut(): Promise<AccountStatus>;
   usage(): Promise<void>;
+  importGoogleClient(): Promise<{ configured?: boolean; canceled?: boolean }>;
 }
 declare global {
   interface Window {

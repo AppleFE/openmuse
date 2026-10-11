@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.1 — 2026-10-12
+
+- Bundle a loopback browser worker and matching Chromium in the Windows installer. Shared browser viewing, control and browser-use tools work without Docker or a separate worker installation.
+- Add Google Desktop OAuth JSON import to the Google connection screen, with encrypted per-workspace storage, PKCE and system-browser login. Google Cloud registration and enabled Gmail/Calendar APIs are still required.
+- Persist the desktop API port across restarts so enrolled Host Agent callbacks keep the same address.
+- Connect locally installed Host Agents over loopback, and separate copied PowerShell commands to prevent accidental `iexirm` concatenation. Ship Host Agent 0.10.3.
+
 ## 0.12.0 — 2026-10-11
 
 - Add a Windows x64 installer with an embedded local server, database and web interface; no external Node.js or shared OpenCodex service is required.

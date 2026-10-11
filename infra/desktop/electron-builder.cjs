@@ -6,6 +6,7 @@ module.exports = {
   npmRebuild: false,
   asar: true,
   asarUnpack: ["**/*.node", "**/*.wasm", "**/*.data"],
+  extraResources: [{ from: "artifacts/desktop-browsers", to: "browsers", filter: ["**/*"] }],
   files: ["main.mjs", "preload.cjs", "package.json", "LICENSE", "dist/**", "web/**", "!**/*.map"],
   win: {
     target: "nsis",

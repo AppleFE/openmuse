@@ -40,6 +40,7 @@ import type {
 } from "../../../packages/domain/src";
 import { API_URL } from "./api";
 import { localDateTime, zonedInstant } from "./date-time";
+import { desktopBridge } from "./desktop";
 import { UI_LOCALE, uiLabel } from "./locale";
 import { ScheduleManager } from "./schedules";
 import {
@@ -1310,6 +1311,43 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                 ))}
               </View>
               <ErrorNotice error={error} />
+              {desktopBridge && (
+                <Card style={{ gap: 10 }}>
+                  <Text style={s.heading}>Google OAuth 설정</Text>
+                  <Text style={s.muted}>
+                    처음 연결할 때 Google Cloud의 데스크톱 앱용 OAuth JSON 파일을 등록하세요. Gmail
+                    API와 Google Calendar API를 켜고, 테스트 단계에서는 사용할 계정을 테스트
+                    사용자로 추가하세요. 설정은 이 PC에 암호화 저장됩니다. 연결된 계정의 설정을
+                    바꾸려면 먼저 연결을 해제하세요.
+                  </Text>
+                  <Button
+                    busy={busy}
+                    icon={Upload}
+                    onPress={() => {
+                      setBusy(true);
+                      setError("");
+                      void desktopBridge
+                        ?.importGoogleClient()
+                        .then((result) => {
+                          if (result.configured)
+                            notify("OAuth 설정을 저장했습니다. Google 연결을 누르세요.");
+                        })
+                        .catch((e) => setError(e.message))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    OAuth JSON 파일 등록
+                  </Button>
+                  <Button
+                    small
+                    onPress={() =>
+                      void Linking.openURL("https://console.cloud.google.com/auth/clients")
+                    }
+                  >
+                    Google Cloud 설정 열기
+                  </Button>
+                </Card>
+              )}
               <Button busy={busy} primary icon={Link2} onPress={() => void connect("read")}>
                 Google 연결
               </Button>

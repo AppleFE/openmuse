@@ -53,7 +53,8 @@ export function HostInstaller({ onRegistered }: { onRegistered: () => Promise<vo
             <Text style={s.muted}>
               대상 PC의 터미널에서 명령 하나를 실행하세요. 관리자 인증 후 백그라운드 서비스를
               등록하고 OpenMuse에 자동 연결합니다. 재부팅 후 자동 시작하며 에이전트의 셸 실행을
-              허용합니다.
+              허용합니다. 설치 완료 메시지가 나오면 다시 실행할 필요가 없습니다. 재설치할 때는 새
+              설치 명령을 만드세요.
             </Text>
             {instruction && (
               <>

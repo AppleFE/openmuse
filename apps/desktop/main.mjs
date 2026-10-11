@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, utilityProcess } from "electron";
 import { startGateway } from "./gateway.mjs";
@@ -120,7 +120,12 @@ else {
       );
       backend = utilityProcess.fork(join(root, "dist/apps/server/src/desktop-entry.js"), [], {
         cwd: dataDir,
-        env,
+        env: {
+          ...env,
+          PLAYWRIGHT_BROWSERS_PATH: app.isPackaged
+            ? join(process.resourcesPath, "browsers")
+            : resolve(root, "../desktop-browsers"),
+        },
         stdio: "pipe",
         serviceName: "OpenMuse local workspace",
       });
@@ -185,6 +190,32 @@ else {
         return result;
       });
       handle("usage", () => shell.openExternal("https://chatgpt.com/settings/usage"));
+      handle("google-import", async () => {
+        const result = await dialog.showOpenDialog(window, {
+          title: "Google 데스크톱 OAuth 설정 파일 선택",
+          properties: ["openFile"],
+          filters: [{ name: "Google OAuth JSON", extensions: ["json"] }],
+        });
+        if (result.canceled) return { canceled: true };
+        const raw = await readFile(result.filePaths[0], "utf8");
+        if (Buffer.byteLength(raw) > 65536) throw new Error("OAuth 파일이 너무 큽니다.");
+        let payload;
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          throw new Error("JSON 파일을 읽을 수 없습니다.");
+        }
+        const current = await session();
+        const response = await fetch(`${apiUrl}/api/google/client`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${current.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const value = await response.json();
+        if (!response.ok)
+          throw new Error(value.error ?? "Google OAuth 설정을 저장하지 못했습니다.");
+        return value;
+      });
       window = new BrowserWindow({
         width: 1220,
         height: 900,

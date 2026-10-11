@@ -1,11 +1,14 @@
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { createWorkerServer } from "../../worker/src/server.ts";
 import { createApp } from "./app.ts";
 import { attachBrowserStreams } from "./browser-stream.ts";
 import type { Config } from "./config.ts";
 import { createStore } from "./db.ts";
+import { listenDesktop } from "./desktop-listener.ts";
 
 // Electron's utility process runs this entry with a clean environment and an isolated cwd.
 const parent = (
@@ -32,10 +35,25 @@ const server: Server = createServer((req, res) => {
   if (handler) handler(req, res);
   else res.writeHead(503).end();
 });
-await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+const publicUrl = await listenDesktop(server, options.dataDir);
 const address = server.address();
 if (!address || typeof address === "string") throw new Error("Local server could not start");
-const publicUrl = `http://127.0.0.1:${address.port}`;
+const workerToken = randomBytes(32).toString("hex");
+const worker = await createWorkerServer({
+  token: workerToken,
+  dataDir: `${options.dataDir}/browser-profiles`,
+  desktop: {},
+});
+await new Promise<void>((resolve, reject) => {
+  worker.server.once("error", reject);
+  worker.server.listen(0, "127.0.0.1", () => {
+    worker.server.removeListener("error", reject);
+    resolve();
+  });
+});
+const workerAddress = worker.server.address();
+if (!workerAddress || typeof workerAddress === "string")
+  throw new Error("Browser worker could not start");
 const config: Config = {
   mode: "live",
   host: "127.0.0.1",
@@ -52,6 +70,9 @@ const config: Config = {
   agentBackend: "model",
   taskWorkerEnabled: true,
   computerEnabled: false,
+  desktop: true,
+  workerUrl: `http://127.0.0.1:${workerAddress.port}`,
+  workerToken,
   googleRedirectUri: `${publicUrl}/api/google/callback`,
   allowedOrigins: [publicUrl],
 };
@@ -86,6 +107,7 @@ async function shutdown() {
   streams.close();
   server.close();
   await runtime.agent.stop();
+  await worker.close();
   await db.close();
   process.exit(0);
 }

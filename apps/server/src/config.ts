@@ -61,6 +61,8 @@ export interface Config {
   googleClientId?: string;
   googleClientSecret?: string;
   googleRedirectUri: string;
+  /** Installed desktop app: allow importing the user's Google Desktop OAuth client. */
+  desktop?: boolean;
   workerUrl?: string;
   workerToken?: string;
   taskWorkerEnabled?: boolean;

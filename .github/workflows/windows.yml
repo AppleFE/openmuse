@@ -21,6 +21,8 @@ jobs:
       - run: pnpm test:desktop
       - run: pnpm typecheck
       - run: pnpm build:windows
+      - run: pnpm install --frozen-lockfile --prod=false
+      - run: pnpm exec tsx --test tests/desktop-runtime.test.ts tests/oauth.test.ts tests/google.test.ts tests/host-installer.test.ts
       - run: pnpm test:desktop:app
       - name: Installer checksum
         shell: pwsh

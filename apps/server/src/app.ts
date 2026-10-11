@@ -484,6 +484,10 @@ export async function createApp(
     const body = z.object({ reference: z.string() }).parse(await c.req.json());
     return c.json(await workspace.importAttachment(c.get("owner"), body.reference), 201);
   });
+  app.get("/api/google/client", async (c) => c.json(await google.clientStatus(c.get("owner"))));
+  app.post("/api/google/client", async (c) =>
+    c.json(await google.importClient(c.get("owner"), await c.req.json())),
+  );
   app.post("/api/google/connect", async (c) => {
     const body = z.object({ capability: z.enum(["read", "write"]) }).parse(await c.req.json());
     if (config.mode === "sample") {

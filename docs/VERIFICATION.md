@@ -1,5 +1,35 @@
 # Release verification
 
+## OpenMuse 0.12.1 — 2026년 10월 12일
+
+- Desktop 인증·게이트웨이 10개, Google OAuth/메일/캘린더 및 데스크톱 포트 35개,
+  Host Agent 설치 3개, 브라우저/noVNC/호스트 호출 29개 테스트를 통과했습니다.
+  서버·모바일 타입 검사와 린트 오류 검사를 통과했습니다.
+- Windows 앱 통합 검증에서 테스트 OAuth/JWKS/Responses 응답을 사용해 로그인 →
+  실제 `open_host_browser` 실행 → 실제 Chromium의 `browser_use` 스크린샷/DOM 읽기 →
+  모델 요청으로 실제 이미지 전달 → 최종 답변까지 확인했습니다. Google OAuth JSON
+  파일 선택과 암호화 저장도 앱 IPC를 통해 검증했습니다. 이 검증의 OAuth 계정은
+  테스트용이며 실제 ChatGPT 요금제나 Google 계정의 동의를 소비하지 않았습니다.
+- 패키징된 EXE에서 `https://discord.com/login`을 열어 한국어 로그인 문구와 실제
+  520,601바이트 스크린샷을 읽었습니다. 사용자 제어 전환 및 noVNC 콘솔 응답,
+  종료 후 재실행 시 같은 API 주소 유지, 인증 없는 설정 요청의 401을 확인했습니다.
+- app.asar 37,527개 항목을 검사했습니다. 개발자 환경설정·계정·워크스페이스 파일과
+  기존 Mac/OpenCodex 서버 주소는 포함되지 않았습니다. 일치하는 Playwright Chromium
+  런타임을 resources/browsers에 별도 포함했습니다.
+- NSIS 설치 프로그램을 검증용 경로에 설치하고 종료 코드 0을 확인했습니다.
+  설치된 EXE에서도 Discord 로그인 화면 읽기/스크린샷과 재실행 후 동일 주소를
+  확인했으며 검증용 설치를 제거했습니다. 설치 파일 SHA-256:
+  `7067954c136a14195dce07824ad59356c72a440bc802c1a657b98b6ca721b0c5`.
+- Google은 배포자용 OAuth 클라이언트가 아직 등록되어 있지 않습니다. 사용자는
+  Google Cloud 데스크톱 앱용 OAuth JSON을 등록해야 하며 Gmail/Calendar API 활성화와
+  동의 화면·테스트 사용자 설정이 필요합니다. 실제 사용자 계정의 Gmail 읽기는
+  수행하지 않았습니다. 설정 없이 로그인하는 공개 앱은 별도의 등록·검증이 필요합니다.
+- Host Agent는 0.10.3을 배포합니다. 0.12.0의 가변 로컬 주소는 새 설치 명령으로
+  갱신하며 같은 PC의 로컬 포트 변경을 지원합니다. `iexirm`은 두 명령을 이어 붙인
+  PowerShell 오류이고 사용자 제보의 첫 설치 로그는 성공입니다.
+- 기존 Mac 서버를 업데이트하지 않고 Windows 설치 앱을 배포합니다. 설치 파일은
+  코드 서명되지 않았으며 OpenMuse 종료 중에는 로컬 서버/브라우저가 작동하지 않습니다.
+
 ## OpenMuse 0.12.0 — 2026년 10월 11일
 
 - Windows 10/11 x64용 NSIS 설치 프로그램을 생성했습니다. 새 데이터 디렉터리로

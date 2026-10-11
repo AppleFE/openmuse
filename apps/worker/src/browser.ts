@@ -229,7 +229,7 @@ export async function createBrowserManager(options: {
       await rm(tempDirectory, { recursive: true, force: true });
       throw new WorkerError(
         "BROWSER_UNAVAILABLE",
-        "Chromium could not start. Rebuild the browser-worker image and check its resource limits.",
+        "Chromium을 시작하지 못했습니다. 설치 앱을 업데이트하거나 브라우저 워커의 Chromium 설치를 확인하세요.",
         503,
       );
     }
