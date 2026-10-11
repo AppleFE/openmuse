@@ -12,7 +12,7 @@ import {
 } from "./downloads.ts";
 import { WorkerError } from "./errors.ts";
 import { createFrameStream } from "./frame-stream.ts";
-import { validatePublicUrl } from "./network.ts";
+import { validatePublicUrl, validatePublicWebSocket } from "./network.ts";
 import { startEgressProxy } from "./proxy.ts";
 
 export interface Session {
@@ -257,7 +257,16 @@ export async function createBrowserManager(options: {
           await route.abort("blockedbyclient").catch(() => {});
         }
       });
-      await context.routeWebSocket("**/*", (socket) => socket.close());
+      await context.routeWebSocket("**/*", async (socket) => {
+        try {
+          await validatePublicWebSocket(socket.url());
+          // Chromium connects through the same IP-pinning egress proxy as HTTPS.
+          // connectToServer forwards both directions and close events by default.
+          socket.connectToServer();
+        } catch {
+          await socket.close({ code: 1008, reason: "Destination blocked" }).catch(() => {});
+        }
+      });
       for (const old of context.pages()) await old.close();
       const page = await context.newPage();
       page.setDefaultTimeout(10_000);

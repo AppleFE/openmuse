@@ -53,7 +53,8 @@ export async function startEgressProxy() {
       if (client.destroyed) return;
       const upstream = connect({ host: target.address, port: 443, family: target.family });
       sockets.add(upstream);
-      upstream.setTimeout(60_000, () => upstream.destroy());
+      // WebSocket sessions may be quiet while awaiting user input (e.g. login/QR).
+      // They are bounded by browser-session lifecycle and closed with the proxy.
       upstream.on("close", () => {
         sockets.delete(upstream);
         client.destroy();

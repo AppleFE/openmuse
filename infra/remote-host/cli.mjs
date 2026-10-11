@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
-const version = "0.10.3";
+const version = "0.10.4";
 const output = (data) => process.stdout.write(JSON.stringify({ ok: true, data }) + "\n");
 const fail = (message, code = "INVALID_INPUT", exitCode = 2) =>
   Object.assign(new Error(message), { code, exitCode });

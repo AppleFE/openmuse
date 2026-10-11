@@ -37,7 +37,7 @@ test("self-hosted installers issue expiring single-use enrollment without exposi
   const base = /curl -fsSL '([^']+)\/install.sh'/.exec(commands.posix)![1];
   const manifest = await (await app.request(base + "/manifest")).json();
   assert.match(manifest.sha256, /^[a-f0-9]{64}$/);
-  assert.equal(manifest.version, "0.10.3");
+  assert.equal(manifest.version, "0.10.4");
   const bootstrap = await app.request(base + "/install.ps1");
   assert.equal(bootstrap.status, 200);
   assert.match(await bootstrap.text(), /install.ps1\?worker=1/);
@@ -110,7 +110,8 @@ test("Windows piped bootstrap isolates caller state, preserves Korean text, clea
     assert.equal(request.url, "/install.ps1?worker=1");
     response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     response.end(
-      `$ErrorActionPreference='Stop'\n[IO.File]::WriteAllText(${quote(report)},(@{ text='한글 설치'; hash=(Get-FileHash -LiteralPath ${quote(fixture)} -Algorithm SHA256).Hash; file=$PSCommandPath } | ConvertTo-Json))\nexit ${failing ? 9 : 0}`,
+      // CI's PowerShell 7 parent can pass a module path that lacks Windows PowerShell modules.
+      `$ErrorActionPreference='Stop'\nImport-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility')\n[IO.File]::WriteAllText(${quote(report)},(@{ text='한글 설치'; hash=(Get-FileHash -LiteralPath ${quote(fixture)} -Algorithm SHA256).Hash; file=$PSCommandPath } | ConvertTo-Json))\nexit ${failing ? 9 : 0}`,
     );
   });
   server.listen(0, "127.0.0.1");

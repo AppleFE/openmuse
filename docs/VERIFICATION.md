@@ -1,5 +1,25 @@
 # Release verification
 
+## OpenMuse 0.12.2 — 2026년 10월 12일
+- Discord 로그인 화면에서 모든 WebSocket을 닫던 브라우저 정책을 재현했습니다.
+  수정 전 remote-auth 연결은 3회 모두 송수신 없이 종료됐고 QR이 없었습니다.
+  수정 후 인증 서버 연결이 유지되고 메시지 송신 2회·수신 3회와 QR 이미지 생성을 확인했습니다.
+  실제 production browser manager에서도 QR이 표시되는 스크린샷을 확인했습니다.
+- 공개 WSS의 443 포트만 허용하며 HTTPS와 같은 DNS 검증·IP 고정 프록시를 사용합니다.
+  WS, 내부 IP, 혼합 DNS, URL 인증 정보 및 다른 포트 차단 테스트 2개가 통과했습니다.
+  CONNECT 터널의 60초 유휴 종료를 제거하고 브라우저 세션 종료 시 연결 정리를 유지합니다.
+- 브라우저/noVNC 테스트 21개, Host Agent 설치·메트릭 테스트 7개, 서버 타입 검사와 린트 오류 검사를 통과했습니다.
+  Host Agent는 동일한 브라우저 수정을 포함하는 0.10.4로 갱신합니다.
+- 사용자 계정의 이메일·비밀번호 입력이나 Discord 로그인 승인은 수행하지 않았습니다.
+  실제 계정의 CAPTCHA·2단계 인증 및 로그인 완료까지는 검증하지 않았습니다.
+- 패키징된 Windows EXE에서도 Discord QR 스크린샷과 `QR 코드 로그인 준비 완료`를 확인했습니다.
+  noVNC 사용자 제어 전환, 앱 재시작 후 API 주소 유지, 테스트 OAuth와 모델 이미지·도구 호출도 통과했습니다.
+  app.asar 37,528개 항목을 검사했으며 개발자 인증 정보·서버 주소·워크스페이스는 포함되지 않았습니다.
+- 이전 CI의 Host Agent 버전 기대값과 PowerShell 테스트 fixture의 모듈 경로 문제도 수정합니다.
+- NSIS 설치 종료 코드 0을 확인하고 설치된 EXE에서도 Discord QR과 앱 재시작을 확인했습니다.
+  Windows 설치 파일 SHA-256:
+  `e53409cbb301dd384ea57dbe421a4a8b3729f8fcd3ff84921160ea0868a7d809`.
+
 ## OpenMuse 0.12.1 — 2026년 10월 12일
 
 - Desktop 인증·게이트웨이 10개, Google OAuth/메일/캘린더 및 데스크톱 포트 35개,

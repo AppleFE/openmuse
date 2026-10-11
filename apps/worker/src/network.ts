@@ -43,6 +43,15 @@ export function isPublicIp(address: string): boolean {
 
 export type Resolver = (hostname: string) => Promise<LookupAddress[]>;
 
+/** WSS shares HTTPS's validated, pinned CONNECT tunnel; insecure WS is not supported. */
+export function validatePublicWebSocket(value: string, resolve?: Resolver) {
+  const url = new URL(value);
+  if (url.protocol !== "wss:" || (url.port && url.port !== "443"))
+    throw new WorkerError("BLOCKED_URL", "Only public secure WebSocket destinations are allowed.");
+  url.protocol = "https:";
+  return validatePublicUrl(url.href, resolve);
+}
+
 export async function validatePublicUrl(
   value: string,
   resolve: Resolver = (hostname) => lookup(hostname, { all: true, verbatim: true }),

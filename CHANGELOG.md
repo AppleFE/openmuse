@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2 — 2026-10-12
+
+- Allow public secure WebSockets in shared Chromium sessions through the same validated, IP-pinned HTTPS proxy. Previously every WebSocket was closed, preventing Discord QR authentication and breaking other real-time applications.
+- Keep proxy tunnels alive while a browser session is open, including quiet login/QR sessions. Private networks, credentials in URLs, insecure WebSockets and nonstandard ports remain blocked.
+- Include the fix in the Windows browser worker and Host Agent 0.10.4. Verify Discord QR generation without signing into a user's account.
+
 ## 0.12.1 — 2026-10-12
 
 - Bundle a loopback browser worker and matching Chromium in the Windows installer. Shared browser viewing, control and browser-use tools work without Docker or a separate worker installation.

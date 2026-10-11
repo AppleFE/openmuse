@@ -110,7 +110,7 @@ export class HostMetricsCollector {
     data.arch = arch();
     data.os = `${process.platform} ${release()}`;
     data.uptime = uptime();
-    data.agentVersion = "0.10.3";
+    data.agentVersion = "0.10.4";
     data.memory.total = totalmem();
     const perCore = cores.map(({ times }) => ({
       total: Object.values(times).reduce((a, b) => a + b, 0),
