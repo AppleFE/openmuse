@@ -80,6 +80,7 @@ export interface PiAgentRunInput extends PiAgentRunCallbacks {
   abortTools?(): void;
   completion?: {
     isTerminal(): boolean;
+    terminalOutput?(): string;
     retryPrompt: string;
   };
 }
@@ -256,6 +257,7 @@ export class PiAgentRunner {
       while (iteration < hardIterations) {
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
+        const previousToolCalls = toolCalls;
         await session.prompt(
           iteration === 0 && !existing
             ? clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)
@@ -269,7 +271,31 @@ export class PiAgentRunner {
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
         iteration += 1;
         output = clipped(session.getLastAssistantText()?.trim() ?? "", 128 * 1024);
-        if (!output) throw new Error("Embedded pi returned no assistant output");
+        const terminal = input.completion?.isTerminal() ?? false;
+        if (!output && terminal)
+          output = clipped(
+            input.completion?.terminalOutput?.().trim() ||
+              "A terminal task tool outcome was recorded; no additional assistant text was returned.",
+            128 * 1024,
+          );
+        if (!output) {
+          if (toolCalls <= previousToolCalls)
+            throw new Error("Embedded pi returned no assistant output");
+          // A tool-only turn is progress, not task completion. Resume the same session,
+          // retaining receipts and the original iteration/tool/time budgets.
+          await toolCheckpoint;
+          await this.persist(input.owner, {
+            id: checkpointId,
+            sessionKey: input.sessionKey,
+            sessionFile: session.sessionFile,
+            iteration,
+            toolCalls,
+            status: "running",
+            output,
+            updatedAt: new Date().toISOString(),
+          });
+          continue;
+        }
         const termination = await this.jev.termination(
           runtimeRequest,
           iteration,
@@ -280,7 +306,6 @@ export class PiAgentRunner {
         let effective =
           termination.value === "block" ? "block" : localBudget ? "complete" : termination.value;
         if (input.completion) {
-          const terminal = input.completion.isTerminal();
           if (!terminal && effective === "complete") effective = "continue";
           else if (terminal && effective === "continue") effective = "complete";
         }

@@ -487,6 +487,8 @@ export async function executeModelTask(
       abortTools: () => piToolAbort.abort(),
       completion: {
         isTerminal: () => outcome !== undefined,
+        terminalOutput: () =>
+          outcome?.result ?? outcome?.question ?? "The task is waiting for action approval.",
         retryPrompt:
           "The delegated task is not complete. Do not narrate, imitate, or claim tool calls. Use the registered tools now and verify their returned evidence. End only by calling finish_task after the requested work is actually complete, or ask_user if essential information is missing.",
       },

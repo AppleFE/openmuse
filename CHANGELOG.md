@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.4 — 2026-10-13
+
+- Accept a recorded task terminal-tool receipt when embedded Pi returns no trailing assistant text. Use the actual saved completion/question/approval outcome instead of marking completed tool work failed.
+- Continue tool-only turns in the same durable session within the original iteration, tool and time limits. Empty turns with no tools and runs without a terminal task outcome still fail; no external actions are replayed or claimed complete.
+
 ## 0.12.3 — 2026-10-13
 
 - Give scheduled/delegated tasks the same shared browser and native desktop tools as chat, with task cancellation, ordered execution, write approvals and durable failure evidence. Reject formal completion after an unresolved screen-action failure.

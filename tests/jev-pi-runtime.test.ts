@@ -1006,6 +1006,80 @@ test("formal task completion reprompts narrative-only pi output until a terminal
   }
 });
 
+for (const scenario of [
+  "terminal",
+  "tool-only-then-terminal",
+  "empty",
+  "tool-only-exhausted",
+] as const) {
+  test(`Pi empty assistant text: ${scenario} preserves terminal receipts and execution bounds`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-empty-turn-"));
+    const db = await createStore({ dataDir: join(directory, "db") });
+    try {
+      const config = configFor(directory);
+      const settings = new RuntimeSettingsService(db, config);
+      await settings.update("owner", { pi: { maxIterations: 2 } });
+      let terminal = false,
+        prompts = 0;
+      const runner = new PiAgentRunner(db, config, new JevRuntime(settings), async (options) => ({
+        prompt: async () => {
+          prompts++;
+          if (scenario !== "empty") await options.onToolCall();
+          terminal =
+            scenario === "terminal" || (scenario === "tool-only-then-terminal" && prompts === 2);
+        },
+        abort: async () => {},
+        dispose: () => {},
+        getLastAssistantText: () => "",
+        subscribe: () => () => {},
+      }));
+      const task = { ...standaloneTask(), id: `empty-${scenario}` };
+      const run = runner.run({
+        owner: "owner",
+        profile: model,
+        request: {
+          owner: "owner",
+          task,
+          role: {
+            id: "agent",
+            label: "agent",
+            kind: "coder",
+            modelId: model.id,
+            systemPrompt: "Use tools",
+            dependsOn: [],
+          },
+          model: model.model,
+          capabilities: model.capabilities,
+          dependencyContext: {},
+          signal: new AbortController().signal,
+        },
+        sessionKey: task.id,
+        runKey: task.id,
+        systemPrompt: "Use tools",
+        prompt: task.prompt,
+        tools: [],
+        completion: {
+          isTerminal: () => terminal,
+          terminalOutput: () => "Actual recorded terminal receipt",
+          retryPrompt: "Continue from recorded tools, never repeat writes.",
+        },
+      });
+      if (scenario === "empty") await assert.rejects(run, /no assistant output/);
+      else if (scenario === "tool-only-exhausted") await assert.rejects(run, /2-iteration limit/);
+      else assert.equal(await run, "Actual recorded terminal receipt");
+      assert.equal(
+        prompts,
+        ["tool-only-then-terminal", "tool-only-exhausted"].includes(scenario) ? 2 : 1,
+      );
+      const [checkpoint] = await db.list<{ status: string }>("owner", "pi-agent-runs");
+      assert.equal(checkpoint.status, terminal ? "succeeded" : "failed");
+    } finally {
+      await db.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
 test("formal task completion fails at the existing iteration bound without a terminal tool", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-formal-bound-"));
   const db = await createStore({ dataDir: join(directory, "db") });
