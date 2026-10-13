@@ -1,6 +1,6 @@
 # Windows 설치 앱
 
-Windows 10/11 x64에서 `OpenMuse-Setup-0.12.4-x64.exe`를 실행하고 설치 위치를 선택합니다. 시작 메뉴 또는 바탕화면의 OpenMuse를 열면 자체 서버와 데이터베이스, 브라우저 워커가 함께 시작됩니다. Node.js, Docker 또는 다른 사람의 OpenCodex 서버를 설치하거나 연결할 필요가 없습니다.
+Windows 10/11 x64에서 `OpenMuse-Setup-0.12.5-x64.exe`를 실행하고 설치 위치를 선택합니다. 시작 메뉴 또는 바탕화면의 OpenMuse를 열면 자체 서버와 데이터베이스, 브라우저 워커가 함께 시작됩니다. Node.js, Docker 또는 다른 사람의 OpenCodex 서버를 설치하거나 연결할 필요가 없습니다.
 
 ## ChatGPT 연결
 
@@ -49,6 +49,8 @@ OpenMuse의 연결 → Gmail 또는 Google 캘린더 → **OAuth JSON 파일 등
 앱을 다시 열면 새 버전으로 실행됩니다. 업데이트 중에는 채팅·계정·워크스페이스 데이터를 삭제하지 않습니다.
 
 자동 업데이트를 끄면 **업데이트 확인 → 다운로드 → 앱 종료 후 업데이트 설치**로 수동 갱신합니다.
+0.12.5부터 다운로드는 최대 30분 제한과 3회 자동 재시도를 사용합니다. 중단된 파일은 다음 시도에서
+이어받으며 완성 파일의 크기·SHA-256을 검증합니다. 오류 화면의 다운로드 버튼으로 다시 시도할 수 있습니다.
 0.12.2 이하에는 업데이트 기능이 없으므로 0.12.3 설치 파일로 한 번 직접 업데이트해야 합니다.
 GitHub 접속 실패나 설치 파일 검증 실패 시 기존 버전을 유지하고 오류를 표시합니다.
 다운로드 대상은 AppleFE/openmuse의 정식 릴리스이며 사전 릴리스·이전 버전은 설치하지 않습니다.
@@ -61,6 +63,6 @@ pnpm build:windows
 pnpm test:desktop:app
 ```
 
-결과는 `dist/windows/OpenMuse-Setup-0.12.4-x64.exe`에 생성됩니다. `pnpm build:windows --dir`는 설치 프로그램 대신 실행 폴더만 생성합니다. Electron에는 Node.js 런타임이 포함되며, 별도의 프로세스에서 API와 PGlite를 실행합니다. 개발 환경의 `.env`와 API 키는 이 프로세스에 전달하지 않습니다.
+결과는 `dist/windows/OpenMuse-Setup-0.12.5-x64.exe`에 생성됩니다. `pnpm build:windows --dir`는 설치 프로그램 대신 실행 폴더만 생성합니다. Electron에는 Node.js 런타임이 포함되며, 별도의 프로세스에서 API와 PGlite를 실행합니다. 개발 환경의 `.env`와 API 키는 이 프로세스에 전달하지 않습니다.
 
 ChatGPT 로그인은 공개된 OAuth 프로토콜에 따라 직접 구현했습니다. DevKit 코드를 포함하지 않습니다. PKCE, state/nonce, JWKS 서명·issuer·audience·subject 검사, 암호화 저장, 회전 토큰의 직렬 갱신 및 취소 처리를 포함합니다. 실사용 OAuth 승인은 사용자의 기본 브라우저에서만 이루어집니다.

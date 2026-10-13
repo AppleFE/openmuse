@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.5 — 2026-10-13
+
+- Extend Windows update downloads from five to thirty minutes. Retry interrupted transfers up to three times and resume saved partial downloads with validated HTTP Range responses.
+- Stream SHA-256 verification without loading the whole installer into memory. Distinguish network/HTTP, timeout, disk-space, file-permission, range and checksum failures and expose download retry/verification state in settings.
+- Verify real v0.12.3 → v0.12.4 download success. The originally reported intermittent failure cannot be classified from the older generic error message.
+
 ## 0.12.4 — 2026-10-13
 
 - Accept a recorded task terminal-tool receipt when embedded Pi returns no trailing assistant text. Use the actual saved completion/question/approval outcome instead of marking completed tool work failed.

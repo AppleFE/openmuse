@@ -87,3 +87,71 @@ test("bad checksum and truncated download never become executable updates; check
   assert.equal((await updater.check(true)).status, "error");
   await assert.rejects(updater.verifiedInstaller());
 });
+
+test("interrupted downloads resume with a validated Range and verify the complete file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-update-resume-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const split = 12;
+  let downloads = 0;
+  const updater = new DesktopUpdates({
+    directory,
+    version: "0.12.3",
+    retryDelayMs: 0,
+    fetcher: async (url, options) => {
+      if (url.includes("api.github.com")) return Response.json(release());
+      downloads++;
+      if (downloads === 1)
+        return {
+          ok: true,
+          status: 200,
+          url,
+          headers: new Headers(),
+          body: (async function* () {
+            yield bytes.subarray(0, split);
+            throw new TypeError("connection interrupted");
+          })(),
+        };
+      assert.equal(options.headers.Range, `bytes=${split}-`);
+      return new Response(bytes.subarray(split), {
+        status: 206,
+        headers: { "content-range": `bytes ${split}-${bytes.length - 1}/${bytes.length}` },
+      });
+    },
+  });
+  await updater.load();
+  assert.equal((await updater.check(true)).status, "ready");
+  assert.equal(downloads, 2);
+  assert.deepEqual(await readFile(await updater.verifiedInstaller()), bytes);
+});
+
+test("bad resume ranges are refused and offline errors expose a retry reason", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-update-resume-error-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "OpenMuse-Setup-0.13.0-x64.exe.part"), bytes.subarray(0, 12));
+  const updater = new DesktopUpdates({
+    directory,
+    version: "0.12.3",
+    retryDelayMs: 0,
+    fetcher: async (url) =>
+      url.includes("api.github.com")
+        ? Response.json(release())
+        : new Response(bytes, {
+            status: 206,
+            headers: { "content-range": `bytes 0-${bytes.length - 1}/${bytes.length}` },
+          }),
+  });
+  await updater.load();
+  const result = await updater.check(true);
+  assert.equal(result.status, "error");
+  assert.match(result.error, /이어받기/);
+  await assert.rejects(updater.verifiedInstaller());
+  const offline = new DesktopUpdates({
+    directory,
+    version: "0.12.3",
+    fetcher: async () => {
+      throw new TypeError("offline");
+    },
+  });
+  await offline.load();
+  assert.match((await offline.check()).error, /GitHub 업데이트 정보/);
+});

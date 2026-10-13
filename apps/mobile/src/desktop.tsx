@@ -68,7 +68,7 @@ export function DesktopUpdateSettings() {
     setError("");
     void action().catch(() => setError("업데이트 작업에 실패했습니다. 다시 시도하세요."));
   };
-  const busy = ["checking", "downloading"].includes(status.status);
+  const busy = ["checking", "downloading", "verifying"].includes(status.status);
   return (
     <Card style={{ gap: 12 }}>
       <Text style={s.heading}>OpenMuse 업데이트</Text>
@@ -90,6 +90,7 @@ export function DesktopUpdateSettings() {
       {status.status === "downloading" && (
         <Text style={s.muted}>다운로드 중 {status.progress}%</Text>
       )}
+      {status.status === "verifying" && <Text style={s.muted}>설치 파일 검증 중…</Text>}
       {status.status === "ready" && (
         <Text style={s.muted}>업데이트 설치 준비가 완료되었습니다.</Text>
       )}
@@ -98,7 +99,7 @@ export function DesktopUpdateSettings() {
         <Button disabled={busy} onPress={() => run(() => bridge.checkUpdate())}>
           업데이트 확인
         </Button>
-        {status.status === "available" && (
+        {(status.status === "available" || (status.status === "error" && status.latestVersion)) && (
           <Button primary onPress={() => run(() => bridge.downloadUpdate())}>
             다운로드
           </Button>
