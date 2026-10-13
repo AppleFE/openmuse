@@ -24,6 +24,7 @@ import {
   PiAgentRunner,
   type PiAgentSessionFactory,
 } from "../apps/server/src/engine/pi-agent.ts";
+import { piAssistantFailure } from "../apps/server/src/engine/pi-response.ts";
 import {
   configuredPiModel,
   PiRuntimeHook,
@@ -815,6 +816,10 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
 
     const cancelController = new AbortController();
     let rejectPrompt: ((error: Error) => void) | undefined;
+    let markPromptStarted: () => void = () => {};
+    const promptStarted = new Promise<void>((resolve) => {
+      markPromptStarted = resolve;
+    });
     let aborts = 0;
     const cancelledTask = { ...roleRequest.task, id: "cancelled-runtime-task" };
     const cancelled = new PiRuntimeHook(
@@ -827,6 +832,7 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
         prompt: () =>
           new Promise<void>((_resolve, reject) => {
             rejectPrompt = reject;
+            markPromptStarted();
           }),
         abort: async () => {
           aborts++;
@@ -841,7 +847,8 @@ test("pi interruption is cancelled and a retry resumes the durable bounded itera
       task: cancelledTask,
       signal: cancelController.signal,
     });
-    setTimeout(() => cancelController.abort(), 10);
+    await promptStarted;
+    cancelController.abort();
     await assert.rejects(running, /cancelled by task signal/);
     assert.equal(aborts, 1);
   } finally {
@@ -1127,7 +1134,7 @@ for (const scenario of [
       else assert.equal(await run, "Actual recorded terminal receipt");
       assert.equal(
         prompts,
-        ["tool-only-then-terminal", "tool-only-exhausted"].includes(scenario) ? 2 : 1,
+        ["tool-only-then-terminal", "tool-only-exhausted", "empty"].includes(scenario) ? 2 : 1,
       );
       const [checkpoint] = await db.list<{ status: string }>("owner", "pi-agent-runs");
       assert.equal(checkpoint.status, terminal ? "succeeded" : "failed");
@@ -1137,6 +1144,177 @@ for (const scenario of [
     }
   });
 }
+
+test("chat empty-response recovery uses the same session and preserves provider failures instead of stale success", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-chat-empty-recovery-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", { pi: { maxIterations: 3 } });
+    for (const failure of [false, true]) {
+      let calls = 0;
+      let listener: Parameters<
+        import("../apps/server/src/engine/pi-agent.ts").PiAgentSession["subscribe"]
+      >[0];
+      const prompts: string[] = [];
+      const runner = new PiAgentRunner(db, config, new JevRuntime(settings), async () => ({
+        prompt: async (prompt) => {
+          prompts.push(prompt);
+          calls++;
+          listener({
+            type: "message_end",
+            message: {
+              role: "assistant",
+              content:
+                calls === 2 && !failure
+                  ? [{ type: "text", text: "Recovered from the existing receipts." }]
+                  : [],
+              api: "openai-responses",
+              provider: "openai",
+              model: "test",
+              timestamp: Date.now(),
+              stopReason: failure ? "error" : "stop",
+              errorMessage: failure ? "401 unauthorized secret=DO_NOT_ECHO" : undefined,
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              },
+            },
+          });
+        },
+        abort: async () => {},
+        dispose: () => {},
+        getLastAssistantText: () => "Old request succeeded", // must not be used for this empty/error turn
+        subscribe: (value) => {
+          listener = value;
+          return () => {};
+        },
+      }));
+      const task = standaloneTask();
+      const request = runner.run({
+        owner: "owner",
+        profile: model,
+        request: {
+          owner: "owner",
+          task,
+          role: {
+            id: "conversation",
+            label: "conversation",
+            kind: "coder",
+            modelId: model.id,
+            systemPrompt: "Use receipts",
+            dependsOn: [],
+          },
+          model: model.model,
+          capabilities: model.capabilities,
+          dependencyContext: {},
+          signal: new AbortController().signal,
+        },
+        sessionKey: "chat:actual-recovery-session",
+        runKey: `chat:empty-${failure}`,
+        systemPrompt: "Use actual receipts",
+        prompt: "Check again",
+        tools: [],
+      });
+      if (failure) {
+        await assert.rejects(request, (error: Error) => {
+          assert.match(error.message, /인증 또는 접근 권한/);
+          assert.ok(!error.message.includes("DO_NOT_ECHO"));
+          return true;
+        });
+        assert.equal(calls, 1);
+      } else {
+        assert.equal(await request, "Recovered from the existing receipts.");
+        assert.equal(calls, 2);
+        assert.match(prompts[1], /Do not repeat completed external actions/);
+      }
+    }
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Pi provider diagnostics classify errors without exposing provider response payloads", () => {
+  for (const [error, reason] of [
+    ["429 quota token=SECRET", "한도"],
+    ["502 ChatGPT 인증이 만료되었습니다 SECRET", "인증"],
+    ["502 ChatGPT 사용 한도에 도달했습니다 SECRET", "한도"],
+    ["maximum context length SECRET", "컨텍스트"],
+    ["503 network SECRET", "연결"],
+    ["bad response SECRET", "생성 오류"],
+  ]) {
+    const message = piAssistantFailure({ stopReason: "error", errorMessage: error });
+    assert.ok(message?.includes(reason));
+    assert.ok(!message?.includes("SECRET"));
+  }
+  assert.equal(piAssistantFailure({ stopReason: "stop" }), undefined);
+});
+
+test("team Pi continues tool-only output without replay and reports provider errors", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-team-empty-recovery-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  try {
+    const config = configFor(directory);
+    const settings = new RuntimeSettingsService(db, config);
+    await settings.update("owner", { pi: { maxIterations: 3 } });
+    for (const failure of [false, true]) {
+      let prompts = 0,
+        writes = 0;
+      const hook = new PiRuntimeHook(
+        db,
+        config,
+        {} as ComputerService,
+        undefined,
+        new JevRuntime(settings),
+        async (options) => ({
+          prompt: async () => {
+            prompts++;
+            if (!failure && prompts === 1) {
+              await options.onToolCall();
+              writes++;
+            }
+          },
+          abort: async () => {},
+          dispose: () => {},
+          getLastAssistantText: () =>
+            failure ? "Stale success" : prompts === 2 ? "Read the saved successful receipt." : "",
+          getLastAssistantFailure: () =>
+            failure
+              ? piAssistantFailure({ stopReason: "error", errorMessage: "429 quota" })
+              : undefined,
+        }),
+      );
+      const role = team().roles[0];
+      assert.ok(role);
+      const request = hook.execute({
+        owner: "owner",
+        task: { ...task(), id: `team-empty-${failure}` },
+        role,
+        model: model.model,
+        capabilities: model.capabilities,
+        dependencyContext: {},
+        signal: new AbortController().signal,
+      });
+      if (failure) {
+        await assert.rejects(request, /호출 한도/);
+        assert.equal(prompts, 1);
+      } else {
+        assert.match((await request).output, /saved successful receipt/);
+        assert.equal(prompts, 2);
+        assert.equal(writes, 1);
+      }
+    }
+  } finally {
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("formal task completion fails at the existing iteration bound without a terminal tool", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-formal-bound-"));

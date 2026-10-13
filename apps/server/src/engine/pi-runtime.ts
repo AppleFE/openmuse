@@ -33,6 +33,7 @@ import type { Store } from "../db.ts";
 import { Skills } from "../skills.ts";
 import { UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
+import { emptyPiRecoveryPrompt, piAssistantFailure } from "./pi-response.ts";
 import { createPiTools } from "./pi-tools.ts";
 import type {
   CodingRuntimeHook,
@@ -58,6 +59,7 @@ export interface PiSession {
   abort(): Promise<void>;
   dispose(): void;
   getLastAssistantText(): string | undefined;
+  getLastAssistantFailure?(): string | undefined;
 }
 
 export interface PiSessionInput {
@@ -569,6 +571,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     let toolCalls = existing?.toolCalls ?? 0;
     let iteration = existing?.iteration ?? 0;
     let output = existing?.output ?? "";
+    let recoverEmpty = false;
     let toolCheckpoint = Promise.resolve();
     let session: PiSession;
     session = await this.sessionFactory({
@@ -609,6 +612,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Team role interrupted");
         const nextIteration = iteration + 1;
+        const previousToolCalls = toolCalls;
         await this.db.put(request.owner, "pi-runtime", {
           id,
           sessionFile: session.sessionFile,
@@ -619,17 +623,39 @@ export class PiRuntimeHook implements CodingRuntimeHook {
           updatedAt: new Date().toISOString(),
         } satisfies PiCheckpoint);
         await session.prompt(
-          nextIteration === 1 && !existing
-            ? this.initialPrompt(runtimeRequest, context.profile)
-            : existing?.iteration === 0 && iteration === 0
-              ? `Recover this interrupted role from its durable session without repeating completed side effects. Re-evaluate the original bounded context:\n\n${this.initialPrompt(runtimeRequest, context.profile)}`
-              : "Continue this role from the durable session. Finish or verify the requested result without repeating completed side effects.",
+          recoverEmpty
+            ? emptyPiRecoveryPrompt
+            : nextIteration === 1 && !existing
+              ? this.initialPrompt(runtimeRequest, context.profile)
+              : existing?.iteration === 0 && iteration === 0
+                ? `Recover this interrupted role from its durable session without repeating completed side effects. Re-evaluate the original bounded context:\n\n${this.initialPrompt(runtimeRequest, context.profile)}`
+                : "Continue this role from the durable session. Finish or verify the requested result without repeating completed side effects.",
         );
+        recoverEmpty = false;
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Team role interrupted");
         iteration = nextIteration;
+        const providerFailure = session.getLastAssistantFailure?.();
+        if (providerFailure) throw new Error(providerFailure);
         output = clipped(session.getLastAssistantText()?.trim() ?? "", 128 * 1024);
-        if (!output) throw new Error("Embedded pi returned no assistant output");
+        if (!output) {
+          if (toolCalls <= previousToolCalls) {
+            if (iteration !== 1 || iteration >= hardIterations)
+              throw new Error("Embedded pi returned no assistant output after bounded recovery");
+            recoverEmpty = true;
+          }
+          await toolCheckpoint;
+          await this.db.put(request.owner, "pi-runtime", {
+            id,
+            sessionFile: session.sessionFile,
+            iteration,
+            toolCalls,
+            status: "running",
+            output,
+            updatedAt: new Date().toISOString(),
+          } satisfies PiCheckpoint);
+          continue;
+        }
         const termination = await this.jev.termination(
           runtimeRequest,
           iteration,
@@ -743,6 +769,8 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     let writes = Promise.resolve(),
       started = Date.now(),
       firstTokenAt = 0;
+    let turnText: string | undefined;
+    let turnFailure: string | undefined;
     const unsubscribe = session.subscribe((event) => {
       if (event.type === "message_start" && event.message.role === "assistant") {
         started = Date.now();
@@ -757,6 +785,11 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       if (event.type === "message_end" && event.message.role === "assistant") {
         const message = event.message,
           usage = message.usage;
+        turnText = message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("");
+        turnFailure = piAssistantFailure(message);
         const key = `team-pi:${session.sessionFile}:${message.timestamp}:${createHash("sha256").update(JSON.stringify(message.content)).digest("hex")}`;
         writes = writes
           .then(() =>
@@ -783,6 +816,8 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     return {
       sessionFile: session.sessionFile,
       prompt: async (text) => {
+        turnText = undefined;
+        turnFailure = undefined;
         try {
           await session.prompt(text);
         } finally {
@@ -794,7 +829,8 @@ export class PiRuntimeHook implements CodingRuntimeHook {
         unsubscribe();
         session.dispose();
       },
-      getLastAssistantText: () => session.getLastAssistantText(),
+      getLastAssistantText: () => turnText ?? session.getLastAssistantText(),
+      getLastAssistantFailure: () => turnFailure,
     };
   }
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.8 — 2026-10-13
+
+- Inspect the current Pi assistant event rather than falling back to an earlier successful response when the latest turn is empty or aborted. Classify provider authentication, quota, context and connection failures without exposing raw provider payloads.
+- Recover a normal empty response once in the same durable session within the existing iteration/time budgets, keeping tool receipts and instructing against replaying completed external actions. Continue tool-only team turns as the shared runner already does; preserve actual terminal task receipts and never treat persistent emptiness as success.
+
 ## 0.12.7 — 2026-10-13
 
 - Give explicitly delegated repair jobs agent_status and control_task, matching chat's existing-task controls. Previously only chat had these tools, so background repairs could incorrectly report they could not inspect or stop a blocker. Reject self-control and retain owner and approval checks; recurring occurrences can inspect status but cannot control other jobs.

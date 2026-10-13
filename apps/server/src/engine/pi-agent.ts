@@ -17,6 +17,7 @@ import { Skills } from "../skills.ts";
 import { type UsageRecord, UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
 import { type PiHostReport, syncPiHostReports } from "./pi-host-reports.ts";
+import { emptyPiRecoveryPrompt, piAssistantFailure } from "./pi-response.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
 import { adaptCopilotTools } from "./pi-tools.ts";
 import type { RoleRuntimeRequest } from "./runtime-hooks.ts";
@@ -162,6 +163,7 @@ export class PiAgentRunner {
     let toolCalls = existing?.toolCalls ?? 0;
     let iteration = existing?.iteration ?? 0;
     let output = existing?.output ?? "";
+    let recoverEmpty = false;
     let toolCheckpoint = Promise.resolve();
     let session: PiAgentSession;
     session = await this.sessionFactory({
@@ -199,6 +201,8 @@ export class PiAgentRunner {
     let usageWrites = Promise.resolve();
     let generationStart = Date.now(),
       firstTokenAt = 0;
+    let turnText: string | undefined;
+    let turnFailure: string | undefined;
     const unsubscribe = session.subscribe((event) => {
       if (event.type === "message_start" && event.message.role === "assistant") {
         generationStart = Date.now();
@@ -212,6 +216,11 @@ export class PiAgentRunner {
         firstTokenAt = Date.now();
       if (event.type === "message_end" && event.message.role === "assistant") {
         const message = event.message;
+        turnText = message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("");
+        turnFailure = piAssistantFailure(message);
         const usage = message.usage;
         const value = {
           threadId: input.sessionKey.startsWith("chat:") ? input.sessionKey.slice(5) : null,
@@ -258,20 +267,26 @@ export class PiAgentRunner {
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
         const previousToolCalls = toolCalls;
+        turnText = undefined;
+        turnFailure = undefined;
         await session.prompt(
-          iteration === 0 && !existing
-            ? clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)
-            : existing?.iteration === 0 && iteration === 0
-              ? `Recover this interrupted run from its durable session without repeating completed side effects. Original bounded request:\n\n${clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)}`
-              : (input.completion?.retryPrompt ??
-                "Continue from the durable session. Use the registered tools required by the request, then finish or verify the result without repeating completed side effects."),
+          recoverEmpty
+            ? emptyPiRecoveryPrompt
+            : iteration === 0 && !existing
+              ? clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)
+              : existing?.iteration === 0 && iteration === 0
+                ? `Recover this interrupted run from its durable session without repeating completed side effects. Original bounded request:\n\n${clipped(input.prompt, contextProfile === "full" ? 24000 : 12000)}`
+                : (input.completion?.retryPrompt ??
+                  "Continue from the durable session. Use the registered tools required by the request, then finish or verify the result without repeating completed side effects."),
           iteration === 0 && input.images?.length ? { images: input.images } : undefined,
         );
+        recoverEmpty = false;
         if (signal.aborted)
           throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
         iteration += 1;
-        output = clipped(session.getLastAssistantText()?.trim() ?? "", 128 * 1024);
         const terminal = input.completion?.isTerminal() ?? false;
+        if (turnFailure && !terminal) throw new Error(turnFailure);
+        output = clipped((turnText ?? session.getLastAssistantText())?.trim() ?? "", 128 * 1024);
         if (!output && terminal)
           output = clipped(
             input.completion?.terminalOutput?.().trim() ||
@@ -279,8 +294,13 @@ export class PiAgentRunner {
             128 * 1024,
           );
         if (!output) {
-          if (toolCalls <= previousToolCalls)
-            throw new Error("Embedded pi returned no assistant output");
+          if (toolCalls <= previousToolCalls) {
+            if (iteration !== 1 || iteration >= hardIterations)
+              throw new Error(
+                "Embedded pi returned no assistant output: 모델이 빈 응답을 반환했습니다. 도구 실행 기록을 확인하세요. 작업 완료로 처리하지 않았습니다.",
+              );
+            recoverEmpty = true;
+          }
           // A tool-only turn is progress, not task completion. Resume the same session,
           // retaining receipts and the original iteration/tool/time budgets.
           await toolCheckpoint;
