@@ -214,6 +214,22 @@ export function ScheduleManager() {
                       결과
                     </Button>
                   )}
+                  {run.task && ["failed", "waiting_input", "paused"].includes(run.task.status) && (
+                    <Button
+                      small
+                      disabled={busy}
+                      onPress={() =>
+                        void action(async () => {
+                          await api.request(`/api/agent/tasks/${run.task!.id}/control`, {
+                            action: run.task!.status === "paused" ? "resume" : "retry",
+                          });
+                          setRuns(await api.request(`/api/agent/schedules/${item.id}/runs`));
+                        })
+                      }
+                    >
+                      다시 실행
+                    </Button>
+                  )}
                 </View>
               ))}
             </View>

@@ -363,6 +363,23 @@ export class ConversationAgent extends AbstractAgent {
         execute: async () => this.service.snapshot(this.owner),
       }),
       defineTool({
+        name: "control_task",
+        description:
+          "Control an EXISTING task after the user requests it. First agent_status to identify the actual task ID and status. retry requeues failed or waiting_input work with its saved evidence, resume is for paused work, pause/cancel stop work. This never creates a schedule or task, changes timing, supplies missing facts, or bypasses pending approval. For 'rerun the existing schedule', use schedule_runs to find its blocked task, then retry that task; do not delegate a replacement or create a new schedule. A queued receipt is not completed execution.",
+        parameters: z.object({
+          id: z.string().min(1).max(200),
+          action: z.enum(["pause", "resume", "cancel", "retry"]),
+        }),
+        execute: async ({ id, action }) => {
+          browserAbort.signal.throwIfAborted();
+          try {
+            return await this.service.control(this.owner, id, action);
+          } catch (error) {
+            return { error: error instanceof Error ? error.message : "작업 제어 실패" };
+          }
+        },
+      }),
+      defineTool({
         name: "create_goal",
         description: "Save an outcome and milestones requested by the user",
         parameters: goalInputSchema,

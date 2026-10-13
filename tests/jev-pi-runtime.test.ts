@@ -942,6 +942,64 @@ test("shared pi runner persists non-team sessions, reuses completed runs, and re
   }
 });
 
+test("retrying waiting-input work uses a fresh Pi run key with the same task and session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-retry-key-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  const keys: string[] = [],
+    sessions: string[] = [];
+  const cached = new Map<string, string>();
+  Object.defineProperty(server.agent, "pi", {
+    value: {
+      supports: async () => true,
+      run: async (input: PiAgentRunInput) => {
+        keys.push(input.runKey);
+        sessions.push(input.sessionKey);
+        if (cached.has(input.runKey)) return cached.get(input.runKey)!;
+        const tool = input.tools.find(
+          (t) => t.name === (keys.length === 1 ? "ask_user" : "finish_task"),
+        );
+        assert.ok(tool?.execute);
+        await tool.execute(
+          keys.length === 1
+            ? { question: "Need current access" }
+            : { summary: "Verified access after retry" },
+        );
+        const output = keys.length === 1 ? "Waiting for access" : "Verified access after retry";
+        cached.set(input.runKey, output);
+        return output;
+      },
+    },
+  });
+  try {
+    let current: AgentTask = { ...standaloneTask(), id: "same-retry-task" };
+    await db.put("owner", "tasks", current);
+    const context = {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      event: async () => {},
+      checkpoint: async (patch: Partial<AgentTask>) => {
+        current = { ...current, ...patch };
+        await db.put("owner", "tasks", current);
+        return current;
+      },
+    };
+    current = { ...current, ...(await executeModelTask(server.agent, "owner", current, context)) };
+    await db.put("owner", "tasks", current);
+    assert.equal(current.status, "waiting_input");
+    current = await server.agent.control("owner", current.id, "retry");
+    const result = await executeModelTask(server.agent, "owner", current, context);
+    assert.equal(result.status, "succeeded");
+    assert.notEqual(keys[0], keys[1]);
+    assert.equal(sessions[0], sessions[1]);
+    assert.equal((await db.list("owner", "tasks")).length, 1);
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("formal task completion reprompts narrative-only pi output until a terminal tool outcome", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-formal-completion-"));
   const db = await createStore({ dataDir: join(directory, "db") });
@@ -1428,6 +1486,13 @@ test("coding-capable standalone task and conversation paths select the shared pi
         profile.capabilities.includes("coding"),
       run: async (input: PiAgentRunInput) => {
         calls.push(input);
+        if (input.sessionKey === "chat:pi-chat") {
+          const control = input.tools.find((tool) => tool.name === "control_task");
+          assert.ok(control?.execute);
+          const receipt = (await control.execute({ id: current.id, action: "retry" })) as AgentTask;
+          assert.equal(receipt.id, current.id);
+          assert.equal(receipt.status, "queued");
+        }
         input.onTextDelta?.("streamed by pi");
         input.onToolStart?.("pi-tool", "agent_status", {});
         input.onToolStart?.("pi-tool-parallel", "runtime_status", {});
@@ -1454,6 +1519,7 @@ test("coding-capable standalone task and conversation paths select the shared pi
       true,
     );
     assert.equal(taskResult.status, "waiting_input");
+    await db.put("owner", "tasks", { ...current, ...taskResult });
 
     const events: Array<{ type: string; [key: string]: unknown }> = [];
     await new Promise<void>((resolve, reject) => {
@@ -1474,6 +1540,7 @@ test("coding-capable standalone task and conversation paths select the shared pi
         });
     });
     assert.equal(calls[1]?.sessionKey, "chat:pi-chat");
+    assert.ok(calls[1]?.tools.some((tool) => tool.name === "control_task"));
     assert.equal(
       calls[1]?.tools.some((tool) => tool.name === "agent_status"),
       true,

@@ -482,7 +482,7 @@ export function TaskDetail({ taskId }: { taskId: string }) {
                 다시 시작
               </Button>
             )}
-            {task.status === "failed" && (
+            {["failed", "waiting_input"].includes(task.status) && (
               <Button
                 small
                 icon={RefreshCw}

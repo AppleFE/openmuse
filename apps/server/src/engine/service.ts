@@ -433,8 +433,8 @@ export class AgentService {
     const task = await this.getTask(owner, id);
     if (action === "cancel" && task.status === "succeeded")
       throw new AppError("This task is already complete", 409);
-    if (action === "retry" && task.status !== "failed")
-      throw new AppError("Only failed tasks can be retried", 409);
+    if (action === "retry" && !["failed", "waiting_input"].includes(task.status))
+      throw new AppError("실패 또는 입력 대기 작업만 다시 실행할 수 있습니다", 409);
     if (action === "resume" && task.status !== "paused")
       throw new AppError("Only paused tasks can be resumed", 409);
     if (action === "pause" && (terminal.has(task.status) || task.status === "paused")) return task;
@@ -493,6 +493,7 @@ export class AgentService {
         leaseId: null,
         leaseUntil: null,
         error: null,
+        ...(action === "retry" ? { state: { ...task.state, retryGeneration: randomUUID() } } : {}),
         ...(teamContext ? { teamContext } : {}),
         updatedAt: date(),
         result:

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.6 — 2026-10-13
+
+- Show retry for waiting-input tasks, and add rerun buttons to schedule execution history for failed/waiting-input/paused tasks.
+- Expose control_task in chat so an explicit request can requeue the existing task without creating a replacement schedule/job or changing timing. Pending approvals and owner boundaries remain enforced.
+- Give explicit retries a new Pi run generation while keeping the same task/session and saved evidence. Reuse of the prior completed waiting-input checkpoint no longer prevents re-execution; untouched runs retain their original keys.
+
 ## 0.12.5 — 2026-10-13
 
 - Extend Windows update downloads from five to thirty minutes. Retry interrupted transfers up to three times and resume saved partial downloads with validated HTTP Range responses.

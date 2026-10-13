@@ -467,6 +467,7 @@ export async function executeModelTask(
       .update(
         JSON.stringify({
           answer: task.state.answer ?? null,
+          ...(task.state.retryGeneration ? { retryGeneration: task.state.retryGeneration } : {}),
           approvalStatus: approval?.status ?? null,
           approvalResult: task.state.approvalResult ?? approval?.result ?? null,
         }),

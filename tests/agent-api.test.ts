@@ -77,6 +77,37 @@ test("agent API requires a session and reports the actual worker state", async (
   assert.equal(workspace.identity.tone, "warm");
 });
 
+test("retry requeues the same waiting-input task with saved evidence and never bypasses approval", async () => {
+  const task = await server.agent.createTask("local-user", { prompt: "Retry existing work" });
+  await db.put("local-user", "tasks", {
+    ...task,
+    status: "waiting_input",
+    state: { operations: { verified: "saved receipt" } },
+  });
+  const count = (await db.list("local-user", "tasks")).length;
+  const retried = await read<AgentTask>(`/tasks/${task.id}/control`, { action: "retry" });
+  assert.equal(retried.id, task.id);
+  assert.equal(retried.status, "queued");
+  assert.deepEqual(retried.state.operations, { verified: "saved receipt" });
+  assert.equal(typeof retried.state.retryGeneration, "string");
+  assert.equal((await db.list("local-user", "tasks")).length, count);
+  await read(`/tasks/${task.id}/control`, { action: "retry" }, 409);
+  await db.put("other-user", "tasks", {
+    ...task,
+    id: "foreign-retry-task",
+    status: "waiting_input",
+  });
+  await read("/tasks/foreign-retry-task/control", { action: "retry" }, 404);
+  await db.put("local-user", "actions", { id: "pending-retry-action", status: "executing" });
+  await db.put("local-user", "tasks", {
+    ...task,
+    status: "waiting_input",
+    actionId: "pending-retry-action",
+  });
+  await read(`/tasks/${task.id}/control`, { action: "retry" }, 409);
+  assert.equal((await server.agent.getTask("local-user", task.id)).status, "waiting_input");
+});
+
 test("bulk notification read only marks the selected owner's snapshot", async () => {
   for (const owner of ["local-user", "other-user"])
     for (const id of ["bulk-old", "bulk-new"])
