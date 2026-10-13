@@ -1,6 +1,16 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { Button, Card, colors, ErrorNotice, s } from "./ui";
+import { Button, Card, CheckRow, colors, ErrorNotice, s } from "./ui";
+
+type UpdateStatus = {
+  currentVersion: string;
+  latestVersion?: string;
+  enabled: boolean;
+  automatic: boolean;
+  status: string;
+  progress: number;
+  error?: string;
+};
 
 type AccountStatus = {
   busy: boolean;
@@ -20,6 +30,11 @@ interface DesktopBridge {
   signOut(): Promise<AccountStatus>;
   usage(): Promise<void>;
   importGoogleClient(): Promise<{ configured?: boolean; canceled?: boolean }>;
+  updateStatus(): Promise<UpdateStatus>;
+  checkUpdate(): Promise<UpdateStatus>;
+  downloadUpdate(): Promise<UpdateStatus>;
+  automaticUpdates(value: boolean): Promise<UpdateStatus>;
+  installUpdate(): Promise<void>;
 }
 declare global {
   interface Window {
@@ -27,6 +42,76 @@ declare global {
   }
 }
 export const desktopBridge = typeof window !== "undefined" ? window.openmuseDesktop : undefined;
+export function DesktopUpdateSettings() {
+  const [status, setStatus] = useState<UpdateStatus>();
+  const [error, setError] = useState("");
+  const bridge = desktopBridge;
+  useEffect(() => {
+    if (!bridge?.updateStatus) return;
+    let active = true;
+    const refresh = () =>
+      bridge
+        .updateStatus()
+        .then((value) => {
+          if (active) setStatus(value);
+        })
+        .catch(() => {});
+    void refresh();
+    const timer = setInterval(() => void refresh(), 1500);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [bridge]);
+  if (!bridge?.updateStatus || !status?.enabled) return null;
+  const run = (action: () => Promise<unknown>) => {
+    setError("");
+    void action().catch(() => setError("업데이트 작업에 실패했습니다. 다시 시도하세요."));
+  };
+  const busy = ["checking", "downloading"].includes(status.status);
+  return (
+    <Card style={{ gap: 12 }}>
+      <Text style={s.heading}>OpenMuse 업데이트</Text>
+      <Text style={s.muted}>
+        현재 v{status.currentVersion}
+        {status.latestVersion ? ` · 최신 v${status.latestVersion}` : ""}
+      </Text>
+      <CheckRow
+        label="자동 업데이트"
+        checked={status.automatic}
+        onPress={() => run(() => bridge.automaticUpdates(!status.automatic))}
+      />
+      <Text style={s.small}>
+        켜면 시작 시와 4시간마다 GitHub 릴리스를 확인하고 다운로드합니다. 준비된 업데이트는 앱을
+        종료할 때 설치합니다. 기존 채팅과 설정은 유지됩니다.
+      </Text>
+      {status.status === "current" && <Text style={s.muted}>최신 버전입니다.</Text>}
+      {status.status === "checking" && <Text style={s.muted}>업데이트 확인 중…</Text>}
+      {status.status === "downloading" && (
+        <Text style={s.muted}>다운로드 중 {status.progress}%</Text>
+      )}
+      {status.status === "ready" && (
+        <Text style={s.muted}>업데이트 설치 준비가 완료되었습니다.</Text>
+      )}
+      <ErrorNotice error={error || status.error || ""} />
+      <View style={[s.row, { gap: 8, flexWrap: "wrap" }]}>
+        <Button disabled={busy} onPress={() => run(() => bridge.checkUpdate())}>
+          업데이트 확인
+        </Button>
+        {status.status === "available" && (
+          <Button primary onPress={() => run(() => bridge.downloadUpdate())}>
+            다운로드
+          </Button>
+        )}
+        {status.status === "ready" && (
+          <Button primary onPress={() => run(() => bridge.installUpdate())}>
+            앱 종료 후 업데이트 설치
+          </Button>
+        )}
+      </View>
+    </Card>
+  );
+}
 const AccountContext = createContext<{
   status?: AccountStatus;
   error: string;

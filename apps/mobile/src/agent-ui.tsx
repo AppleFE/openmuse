@@ -38,7 +38,7 @@ import type {
 import { useAgentWorkspace } from "./agent-workspace";
 import { AssistantResponse } from "./assistant-response";
 import { ConnectorSettings } from "./connector-settings";
-import { DesktopAccountSettings } from "./desktop";
+import { DesktopAccountSettings, DesktopUpdateSettings } from "./desktop";
 import { HostEventsButton } from "./host-events";
 import { UI_LOCALE, uiLabel } from "./locale";
 import { ModelChoices, ModelTeamSettings } from "./model-team-settings";
@@ -1945,6 +1945,7 @@ export function AppsScreen() {
       <ModelTeamSettings />
       <SkillsSettings />
       <RuntimeSettings />
+      <DesktopUpdateSettings />
       <Button onPress={() => setSettings(!settings)}>
         {settings ? "에이전트 설정 닫기" : "성격과 기억"}
       </Button>

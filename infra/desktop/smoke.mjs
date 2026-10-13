@@ -133,6 +133,20 @@ try {
     return { id: session.id, status: session.status, url: state.url, screenshot: true };
   });
   console.log("BUNDLED_BROWSER_OK", browser);
+  const updates = await page.evaluate(async () => {
+    const bridge = window.openmuseDesktop;
+    const initial = await bridge.updateStatus();
+    if (initial.enabled) throw new Error("Development QA must not install updates");
+    await bridge.automaticUpdates(false);
+    const checked = await bridge.checkUpdate();
+    if (checked.automatic !== false) throw new Error("Update preference IPC failed");
+    return {
+      version: checked.currentVersion,
+      enabled: checked.enabled,
+      automatic: checked.automatic,
+    };
+  });
+  console.log("UPDATE_BRIDGE_OK", updates);
   await page.screenshot({ path: "artifacts/desktop-e2e.png" });
   console.log("END_TO_END_OK");
 } catch (error) {

@@ -10,9 +10,9 @@ test("schedules survive restart, claim due work once across workers and isolate 
   const db = await createStore();
   let clock = Date.parse("2026-10-05T00:00:00Z"),
     calls = 0;
-  const launch = async (owner: string, input: any, key: string) => {
+  const launch = async (owner: string, input: any, key: string, sourceThreadId?: string) => {
     calls++;
-    const task = { id: key, status: "queued", ...input } as AgentTask;
+    const task = { id: key, status: "queued", ...input, sourceThreadId } as AgentTask;
     await db.insertIfAbsent(owner, "tasks", task);
     return task;
   };
@@ -26,6 +26,7 @@ test("schedules survive restart, claim due work once across workers and isolate 
         timing: { type: "cron", expression: "1 9 * * *", timeZone: "Asia/Seoul" },
       },
       "turn",
+      "origin-chat",
     );
     assert.equal(s.nextRunAt, "2026-10-05T00:01:00.000Z");
     assert.equal(
@@ -47,6 +48,7 @@ test("schedules survive restart, claim due work once across workers and isolate 
     await Promise.all([a.tick(), b.tick()]);
     assert.equal(calls, 1);
     assert.equal((await a.runs("alice", s.id))[0].status, "dispatched");
+    assert.equal((await a.runs("alice", s.id))[0].task?.sourceThreadId, "origin-chat");
     await assert.rejects(a.get("bob", s.id), { status: 404 });
     clock += 86400000;
     await b.tick();

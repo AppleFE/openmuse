@@ -28,7 +28,12 @@ export class ScheduleService {
   private running = false;
   constructor(
     private db: Store,
-    private createTask: (owner: string, input: unknown, key: string) => Promise<AgentTask>,
+    private createTask: (
+      owner: string,
+      input: unknown,
+      key: string,
+      sourceThreadId?: string,
+    ) => Promise<AgentTask>,
     private validate: (owner: string, input: ScheduleInput) => Promise<void> = async () => {},
     private now: () => number = Date.now,
   ) {}
@@ -67,7 +72,7 @@ export class ScheduleService {
       })),
     );
   }
-  async create(owner: string, raw: unknown, key?: string) {
+  async create(owner: string, raw: unknown, key?: string, sourceThreadId?: string) {
     const input = scheduleInputSchema.parse(raw),
       id = key ? hash(`schedule:${key}`) : randomUUID();
     const existing = await this.db.get<AgentSchedule>(owner, "schedules", id);
@@ -85,6 +90,7 @@ export class ScheduleService {
     const now = new Date(this.now()).toISOString(),
       value: AgentSchedule = {
         ...input,
+        ...(sourceThreadId ? { sourceThreadId } : {}),
         id,
         version: 1,
         nextRunAt: input.enabled ? nextRunAt : null,
@@ -138,6 +144,7 @@ export class ScheduleService {
           id: hash(`${s.id}:${s.nextRunAt}`),
           scheduleId: s.id,
           scheduleVersion: s.version,
+          sourceThreadId: s.sourceThreadId,
           scheduledFor: s.nextRunAt,
           title: s.title,
           prompt: s.prompt,
@@ -240,6 +247,7 @@ export class ScheduleService {
               input: { scheduleId: r.scheduleId, scheduledFor: r.scheduledFor },
             },
             `schedule:${r.id}`,
+            r.sourceThreadId,
           );
           await this.db.compareAndSwap(
             owner,

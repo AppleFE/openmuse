@@ -204,7 +204,7 @@ export class ConversationAgent extends AbstractAgent {
         ? this.service.attachments.tools(this.owner, input.threadId)
         : []),
       ...(this.service.skills ? skillTools(this.service.skills, this.owner, skill) : []),
-      ...scheduleTools(this.service.schedules, this.owner, key),
+      ...scheduleTools(this.service.schedules, this.owner, key, { sourceThreadId: input.threadId }),
       defineTool({
         name: "runtime_status",
         description:

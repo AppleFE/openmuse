@@ -22,7 +22,8 @@ const tabs = [{ tab_id: "t1", title: "Fixture", url: "https://example.com/", act
 test("native screenshot reattaches a lost helper session; input and authorization failures never replay", async (t) => {
   const calls: string[] = [];
   let missing = true,
-    status = 404;
+    status = 404,
+    closed = false;
   const { service, db } = await browserFixture(t, (path, body) => {
     calls.push(path);
     if (path === "/sessions") {
@@ -40,7 +41,14 @@ test("native screenshot reattaches a lost helper session; input and authorizatio
       ? {
           status,
           data: {
-            error: { message: status === 409 ? "Desktop not found" : "Session unavailable" },
+            error: {
+              message:
+                status === 409
+                  ? closed
+                    ? "Open the desktop first"
+                    : "Desktop not found"
+                  : "Session unavailable",
+            },
           },
         }
       : { data: { result: { data: png, media_type: "image/png" } } };
@@ -71,6 +79,15 @@ test("native screenshot reattaches a lost helper session; input and authorizatio
     actions: [{ action: "screenshot" }],
   });
   assert.equal(legacy.isError, false);
+  assert.equal(calls.filter((p) => p === "/sessions").length, 1);
+  missing = true;
+  closed = true;
+  calls.length = 0;
+  const reopened = await service.runAutomation("owner", {
+    sessionId: id,
+    actions: [{ action: "screenshot" }],
+  });
+  assert.equal(reopened.isError, false);
   assert.equal(calls.filter((p) => p === "/sessions").length, 1);
   await assert.rejects(
     service.runAutomation("other", { sessionId: id, actions: [{ action: "screenshot" }] }),

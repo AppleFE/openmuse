@@ -170,7 +170,8 @@ export class BrowserService {
                   !(
                     error.upstreamStatus === 404 ||
                     // Older Host Agents wrap the helper's missing-session response as 409.
-                    (error.upstreamStatus === 409 && error.message === "Desktop not found")
+                    (error.upstreamStatus === 409 &&
+                      ["Desktop not found", "Open the desktop first"].includes(error.message))
                   ) ||
                   session.desktopMode !== "native" ||
                   session.status !== "active" ||

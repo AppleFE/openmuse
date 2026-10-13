@@ -24,6 +24,7 @@ export const scheduleInputSchema = z
   .refine((v) => !(v.modelId && v.teamId), "모델과 팀 중 하나를 선택하세요");
 export type ScheduleInput = z.infer<typeof scheduleInputSchema>;
 export interface AgentSchedule extends ScheduleInput {
+  sourceThreadId?: string;
   id: string;
   version: number;
   nextRunAt: string | null;
@@ -32,6 +33,7 @@ export interface AgentSchedule extends ScheduleInput {
   updatedAt: string;
 }
 export interface ScheduleRun {
+  sourceThreadId?: string;
   id: string;
   scheduleId: string;
   scheduleVersion?: number;

@@ -10,7 +10,7 @@ export function scheduleTools(
   service: ScheduleService,
   owner: string,
   key: (name: string, value: unknown) => string,
-  options: { readOnly?: boolean } = {},
+  options: { readOnly?: boolean; sourceThreadId?: string } = {},
 ) {
   return [
     defineTool({
@@ -20,7 +20,7 @@ export function scheduleTools(
       parameters: scheduleInputSchema,
       execute: async (input) => {
         try {
-          return await service.create(owner, input, key("schedule", input));
+          return await service.create(owner, input, key("schedule", input), options.sourceThreadId);
         } catch (e) {
           return { error: e instanceof Error ? e.message : "스케줄 등록 실패" };
         }

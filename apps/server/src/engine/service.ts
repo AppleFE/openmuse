@@ -89,7 +89,8 @@ export class AgentService {
     this.pi = new PiAgentRunner(db, config, jev);
     this.schedules = new ScheduleService(
       db,
-      (owner, input, key) => this.createTask(owner, input, key),
+      (owner, input, key, sourceThreadId) =>
+        this.createTask(owner, input, key, false, sourceThreadId),
       async (owner, input) => {
         if (input.teamId) await this.getTeam(owner, input.teamId);
         else await this.models.resolve(owner, input.modelId);

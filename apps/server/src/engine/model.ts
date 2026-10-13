@@ -7,7 +7,12 @@ import type { AgentTask } from "../../../../packages/domain/src/agent.ts";
 import { emailDraftSchema, eventDraftSchema } from "../../../../packages/domain/src/index.ts";
 import { skillPrompt } from "../../../../packages/domain/src/skills.ts";
 import { threadKnowledgePrompt } from "../../../../packages/domain/src/thread-knowledge.ts";
-import { desktopInstructions } from "../browser-tools.ts";
+import {
+  browserBatchSchema,
+  desktopBatchSchema,
+  observationActions,
+} from "../../../worker/src/automation-schema.ts";
+import { browserTools, desktopInstructions } from "../browser-tools.ts";
 import { computerInstructions, computerTools } from "../computer-tools.ts";
 import { connectorInstructions, connectorTools } from "../connector-tools.ts";
 import { skillInstructions, skillTools } from "../skill-tools.ts";
@@ -103,7 +108,51 @@ export async function executeModelTask(
   };
   const piToolAbort = new AbortController();
   const toolSignal = AbortSignal.any([ctx.signal, piToolAbort.signal]);
+  const taskBrowserTools = browserTools(
+    service.browser,
+    owner,
+    task.sourceThreadId ?? task.id,
+    toolSignal,
+    {
+      before: async () => {
+        if (outcome) throw new Error("Task is waiting or finished; do not perform more actions");
+        await ctx.guard();
+      },
+      automation: async (raw, kind) => {
+        const data = (kind === "desktop" ? desktopBatchSchema : browserBatchSchema).parse(raw);
+        if (data.actions.every((a) => observationActions.has(a.action)))
+          return service.browser.runAutomation(owner, data, undefined, toolSignal);
+        const key = createHash("sha256").update(JSON.stringify(data)).digest("hex");
+        const action = await service.prepare(
+          owner,
+          task,
+          { kind: "automation.write", data },
+          key,
+          ctx,
+        );
+        if (action.status === "succeeded" && action.result) return JSON.parse(action.result);
+        outcome = { status: "waiting_approval", actionId: action.id };
+        return { status: "waiting_approval", actionId: action.id };
+      },
+    },
+  ).map((tool) => ({
+    ...tool,
+    execute: (input: unknown) =>
+      serial(async () => {
+        const result = await (tool.execute as (args: unknown) => Promise<unknown>)(input);
+        const value = result as { error?: unknown; isError?: boolean };
+        if (value?.error || value?.isError) {
+          operations.browserFailure = tool.name;
+          await checkpoint();
+        } else if (["browser_use", "computer_use", "read_browser"].includes(tool.name)) {
+          delete operations.browserFailure;
+          await checkpoint();
+        }
+        return result;
+      }),
+  }));
   const tools = [
+    ...taskBrowserTools,
     ...threadKnowledgeTools(task.threadKnowledge),
     ...(task.sourceThreadId && service.attachments
       ? service.attachments.tools(owner, task.sourceThreadId)
@@ -114,7 +163,7 @@ export async function executeModelTask(
       owner,
       (name, value) =>
         `${task.id}:${name}:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`,
-      { readOnly: typeof task.input.scheduleId === "string" },
+      { readOnly: typeof task.input.scheduleId === "string", sourceThreadId: task.sourceThreadId },
     ),
     ...computerTools(service.computer, service.files, owner, `task:${task.id}`, {
       signal: toolSignal,
@@ -337,6 +386,12 @@ export async function executeModelTask(
       "Finish only when the requested outcome is actually achieved",
       z.object({ summary: z.string().min(1).max(8000) }),
       async ({ summary }) => {
+        if (operations.browserFailure)
+          return {
+            complete: false,
+            error:
+              "A browser/desktop action failed. Reopen the same target if needed, verify a successful observation, or ask_user. Do not claim the requested work succeeded.",
+          };
         const computerEvidence = await service.computer.completionEvidence(
           owner,
           `task:${task.id}`,

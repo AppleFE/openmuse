@@ -17,6 +17,11 @@ if (process.isMainFrame && /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
       signOut: () => call("sign-out"),
       usage: () => call("usage"),
       importGoogleClient: () => call("google-import"),
+      updateStatus: () => call("update-status"),
+      checkUpdate: () => call("update-check"),
+      downloadUpdate: () => call("update-download"),
+      automaticUpdates: (value) => call("update-automatic", value),
+      installUpdate: () => call("update-install"),
     }),
   );
 }

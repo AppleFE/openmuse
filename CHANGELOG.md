@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.3 — 2026-10-13
+
+- Give scheduled/delegated tasks the same shared browser and native desktop tools as chat, with task cancellation, ordered execution, write approvals and durable failure evidence. Reject formal completion after an unresolved screen-action failure.
+- Preserve the origin chat, its knowledge and approval mode for new AI-created schedules. Existing schedules remain valid and use review when no origin is available.
+- Reattach closed native desktop helpers for screenshots/zoom on the same owned host, without replaying input or taking user control.
+- Add Windows updates from the public GitHub release: automatic checks/downloads and install on exit, plus manual check/download/install in settings. Verify stable version, upstream asset, byte length and SHA-256 before execution; retain user data.
+
 ## 0.12.2 — 2026-10-12
 
 - Allow public secure WebSockets in shared Chromium sessions through the same validated, IP-pinned HTTPS proxy. Previously every WebSocket was closed, preventing Discord QR authentication and breaking other real-time applications.

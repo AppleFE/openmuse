@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +30,100 @@ import {
   type PiSessionFactory,
 } from "../apps/server/src/engine/pi-runtime.ts";
 import { adaptCopilotTools } from "../apps/server/src/engine/pi-tools.ts";
+
+test("scheduled Pi tasks receive browser tools and cannot finish after a failed screen action", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-scheduled-browser-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  const sessionId = randomUUID();
+  const calls: string[] = [];
+  let failed = true;
+  Object.defineProperty(server.agent, "browser", {
+    value: {
+      observeForThread: async (
+        _owner: string,
+        _thread: string,
+        url: string,
+        _signal: AbortSignal,
+        connectorId: string,
+      ) => {
+        calls.push(`open:${connectorId}`);
+        return { id: sessionId, url };
+      },
+      runAutomation: async (_owner: string, data: { sessionId: string }) => {
+        assert.equal(data.sessionId, sessionId);
+        calls.push("read");
+        return {
+          type: "openmuse.automation-result",
+          isError: failed,
+          content: [{ type: "text", text: failed ? "Session closed" : "No new messages" }],
+        };
+      },
+    },
+  });
+  Object.defineProperty(server.agent, "pi", {
+    value: {
+      supports: async () => true,
+      run: async (input: PiAgentRunInput) => {
+        for (const name of [
+          "open_host_browser",
+          "browser_use",
+          "open_computer_desktop",
+          "computer_use",
+        ])
+          assert.ok(
+            input.tools.some((tool) => tool.name === name),
+            name,
+          );
+        const open = input.tools.find((tool) => tool.name === "open_host_browser");
+        const read = input.tools.find((tool) => tool.name === "browser_use");
+        const finish = input.tools.find((tool) => tool.name === "finish_task");
+        assert.ok(open?.execute);
+        assert.ok(read?.execute);
+        assert.ok(finish?.execute);
+        await open.execute({
+          url: "https://discord.com/channels/@me",
+          connectorId: "authorized-host",
+        });
+        await read.execute({ sessionId, actions: [{ action: "read_page" }] });
+        assert.equal(
+          ((await finish.execute({ summary: "Incorrect success" })) as { complete: boolean })
+            .complete,
+          false,
+        );
+        failed = false;
+        await read.execute({ sessionId, actions: [{ action: "read_page" }] });
+        assert.deepEqual(await finish.execute({ summary: "Checked: no new messages" }), {
+          complete: true,
+        });
+        return "Checked: no new messages";
+      },
+    },
+  });
+  try {
+    let current: AgentTask = {
+      ...standaloneTask(),
+      id: "scheduled-browser",
+      input: { scheduleId: "existing-schedule" },
+    };
+    const result = await executeModelTask(server.agent, "owner", current, {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      event: async () => {},
+      checkpoint: async (patch) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+    });
+    assert.equal(result.status, "succeeded");
+    assert.deepEqual(calls, ["open:authorized-host", "read", "read"]);
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 import { RuntimeHookPipeline } from "../apps/server/src/engine/runtime-hooks.ts";
 import { TeamModelExecutor } from "../apps/server/src/engine/team-model.ts";
 import { createTeamTaskContext, TeamEngine } from "../apps/server/src/engine/teams.ts";

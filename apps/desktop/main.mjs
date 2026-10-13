@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -5,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell, utilityProcess } from "electron";
 import { startGateway } from "./gateway.mjs";
 import { ChatGPTAccounts } from "./oauth.mjs";
+import { DesktopUpdates } from "./updates.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -14,7 +16,10 @@ else {
     gateway,
     accounts,
     apiUrl,
-    stopping = false;
+    stopping = false,
+    updates,
+    updateTimer,
+    installUpdate = false;
   const accessKey = randomBytes(32).toString("hex");
   const gatewayKey = randomBytes(32).toString("hex");
   let appSession;
@@ -57,14 +62,37 @@ else {
   app.on("before-quit", (event) => {
     if (stopping) return;
     stopping = true;
+    clearInterval(updateTimer);
     event.preventDefault();
     accounts?.cancelSignIn();
     accounts?.cancelRequests();
     gateway?.close();
+    let finished = false;
     const finish = () =>
       void Promise.resolve(accounts?.refreshing)
         .catch(() => {})
-        .then(() => app.quit());
+        .then(async () => {
+          if (finished) return;
+          finished = true;
+          if (updates?.view().status === "ready" && (installUpdate || updates.view().automatic)) {
+            try {
+              const installer = await updates.verifiedInstaller();
+              const child = spawn(installer, ["/S", "--no-launch"], {
+                detached: true,
+                stdio: "ignore",
+                windowsHide: true,
+              });
+              child.on("error", () => {});
+              child.unref();
+            } catch {
+              dialog.showErrorBox(
+                "OpenMuse 업데이트",
+                "설치 파일 검증에 실패했습니다. 기존 앱과 데이터는 유지됩니다. 다음 실행에서 다시 확인하세요.",
+              );
+            }
+          }
+          app.quit();
+        });
     if (!backend) {
       finish();
       return;
@@ -82,6 +110,12 @@ else {
       app.setAppUserModelId("ai.openmuse.desktop");
       const dataDir = app.getPath("userData");
       await mkdir(dataDir, { recursive: true });
+      updates = new DesktopUpdates({
+        directory: join(dataDir, "updates"),
+        version: app.getVersion(),
+        enabled: app.isPackaged && process.platform === "win32" && process.arch === "x64",
+      });
+      await updates.load();
       if (!safeStorage.isEncryptionAvailable())
         throw new Error("Windows 보안 저장소를 사용할 수 없습니다.");
       const encryption = {
@@ -160,6 +194,23 @@ else {
       if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(apiUrl))
         throw new Error("로컬 서버 주소가 올바르지 않습니다.");
       handle("session", session);
+      handle("update-status", () => updates.view());
+      handle("update-check", () => updates.check(false));
+      handle("update-download", () => updates.check(true));
+      handle("update-automatic", (value) => updates.configure(value));
+      handle("update-install", async () => {
+        await updates.verifiedInstaller();
+        installUpdate = true;
+        app.quit();
+      });
+      updateTimer = setInterval(
+        () => {
+          if (updates.view().automatic) void updates.check(true);
+        },
+        4 * 60 * 60 * 1000,
+      );
+      updateTimer.unref();
+      if (updates.view().automatic) void updates.check(true);
       handle("account-status", () => accounts.status());
       handle("sign-in", async (id) => {
         if (id !== undefined && typeof id !== "string") throw new Error("잘못된 계정 ID입니다.");
