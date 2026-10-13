@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.7 — 2026-10-13
+
+- Give explicitly delegated repair jobs agent_status and control_task, matching chat's existing-task controls. Previously only chat had these tools, so background repairs could incorrectly report they could not inspect or stop a blocker. Reject self-control and retain owner and approval checks; recurring occurrences can inspect status but cannot control other jobs.
+- Retain older nonterminal task receipts alongside the latest 30 schedule runs, so repeated skips no longer hide the task which blocks future occurrences. Verify that ending the existing blocker allows the next occurrence without creating a replacement schedule.
+
 ## 0.12.6 — 2026-10-13
 
 - Show retry for waiting-input tasks, and add rerun buttons to schedule execution history for failed/waiting-input/paused tasks.

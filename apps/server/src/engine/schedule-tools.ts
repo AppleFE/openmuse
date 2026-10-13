@@ -6,7 +6,7 @@ export const scheduleInstructions =
   "When the user asks to rerun an existing blocked schedule, inspect schedule_runs and use control_task retry for its failed/waiting_input task or resume for its paused task. Never replace it with a new schedule or delegate a duplicate verification task. Queued/running/waiting_approval work must not be retried or claimed completed. " +
   "For explicit reminders or recurring work, first list_schedules and reuse an existing registration for the same purpose; use update_schedule for changes, never create another on a retry or status report. Only create_schedule for a new explicit user scheduling request. Convert natural-language timing to a five-field minute/hour/day/month/weekday cron and an IANA timezone (default Asia/Seoul), or a future ISO datetime with offset for one-time work. Ask for an exact time if essential timing is ambiguous. Tell the user the returned nextRunAt/timezone and job prompt; do not claim a schedule exists before the tool succeeds. Scheduled jobs run while the server is online; downtime is coalesced into one catch-up job. They use normal connected tools and native external-write review. list_schedules and schedule_runs show registrations and task receipts. Pause/resume via update_schedule; delete_schedule stops future launches, existing tasks remain in Activity.";
 export const scheduledOccurrenceInstructions =
-  "This task is ONE occurrence of an ALREADY REGISTERED schedule. Perform the requested check/work once and finish_task with its actual outcome. The scheduler handles future occurrences. Do not create, update, delete or re-register schedules, even if timing is mentioned in the prompt or earlier context. Do not ask another agent or host shell to create a replacement schedule.";
+  "This task is ONE occurrence of an ALREADY REGISTERED schedule. Perform the requested check/work once and finish_task with its actual outcome. The scheduler handles future occurrences. agent_status and schedule_runs provide actual task receipts, including older blockers. Task-control tools are intentionally unavailable to recurring occurrences; do not stop/retry other jobs or claim these tools are absent from normal chat or explicit repair jobs. Do not create, update, delete or re-register schedules, even if timing is mentioned in the prompt or earlier context. Do not ask another agent or host shell to create a replacement schedule.";
 export function scheduleTools(
   service: ScheduleService,
   owner: string,
@@ -35,7 +35,8 @@ export function scheduleTools(
     }),
     defineTool({
       name: "schedule_runs",
-      description: "Read recent scheduled task receipts and actual task status.",
+      description:
+        "Read recent scheduled task receipts and actual task status, plus older nonterminal tasks that still block future occurrences.",
       parameters: z.object({ id: z.string().min(1).max(200) }),
       execute: async ({ id }) => service.runs(owner, id),
     }),

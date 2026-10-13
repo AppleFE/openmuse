@@ -63,13 +63,17 @@ export class ScheduleService {
     await this.get(owner, id);
     const runs = (await this.db.list<ScheduleRun>(owner, "schedule-runs"))
       .filter((r) => r.scheduleId === id)
-      .sort((a, b) => b.scheduledFor.localeCompare(a.scheduledFor))
-      .slice(0, 30);
-    return Promise.all(
+      .sort((a, b) => b.scheduledFor.localeCompare(a.scheduledFor));
+    const receipts = await Promise.all(
       runs.map(async (r) => ({
         ...r,
         task: r.taskId ? await this.db.get<AgentTask>(owner, "tasks", r.taskId) : null,
       })),
+    );
+    // Repeated skips must not hide the older task which still blocks this schedule.
+    return receipts.filter(
+      (r, index) =>
+        index < 30 || (r.task && !["succeeded", "failed", "cancelled"].includes(r.task.status)),
     );
   }
   async create(owner: string, raw: unknown, key?: string, sourceThreadId?: string) {

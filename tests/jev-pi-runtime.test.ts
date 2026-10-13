@@ -1575,6 +1575,84 @@ test("coding-capable standalone task and conversation paths select the shared pi
   }
 });
 
+test("delegated repair can inspect and control an existing blocker without controlling itself or another owner", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openmuse-worker-task-control-"));
+  const db = await createStore({ dataDir: join(directory, "db") });
+  const server = await createApp(db, configFor(directory));
+  try {
+    const blocker: AgentTask = {
+      ...standaloneTask(),
+      id: "old-schedule-blocker",
+      status: "waiting_input",
+      question: "Recover existing work",
+      state: { savedEvidence: "keep" },
+    };
+    await db.put("owner", "tasks", blocker);
+    await db.put("other", "tasks", { ...blocker, id: "foreign-blocker" });
+    let current = { ...standaloneTask(), id: "explicit-repair" };
+    await db.put("owner", "tasks", current);
+    Object.defineProperty(server.agent, "pi", {
+      value: {
+        supports: async () => true,
+        run: async (input: PiAgentRunInput) => {
+          const status = input.tools.find((tool) => tool.name === "agent_status");
+          assert.ok(status?.execute);
+          const snapshot = (await status.execute({})) as { tasks: AgentTask[] };
+          assert.ok(snapshot.tasks.some((t) => t.id === blocker.id));
+          assert.ok(!snapshot.tasks.some((t) => t.id === "foreign-blocker"));
+          const control = input.tools.find((tool) => tool.name === "control_task");
+          if (current.input.scheduleId) {
+            assert.equal(control, undefined);
+            return "Scheduled occurrences can inspect status but cannot control other jobs.";
+          }
+          assert.ok(control?.execute);
+          assert.match(
+            JSON.stringify(await control.execute({ id: current.id, action: "cancel" })),
+            /currently executing task/,
+          );
+          assert.ok(
+            (
+              (await control.execute({ id: "foreign-blocker", action: "retry" })) as {
+                error: string;
+              }
+            ).error,
+          );
+          const receipt = (await control.execute({ id: blocker.id, action: "retry" })) as AgentTask;
+          assert.equal(receipt.id, blocker.id);
+          assert.equal(receipt.status, "queued");
+          assert.equal(receipt.state.savedEvidence, "keep");
+          assert.ok(receipt.state.retryGeneration);
+          const cancelled = (await control.execute({
+            id: blocker.id,
+            action: "cancel",
+          })) as AgentTask;
+          assert.equal(cancelled.status, "cancelled");
+          return "The existing blocker was retried and cancelled; no replacement was created.";
+        },
+      },
+    });
+    const context = {
+      signal: new AbortController().signal,
+      guard: async () => {},
+      checkpoint: async (patch: Partial<AgentTask>) => {
+        current = { ...current, ...patch };
+        return current;
+      },
+      event: async () => {},
+    };
+    await executeModelTask(server.agent, "owner", current, context);
+    assert.equal((await db.list("owner", "tasks")).length, 2);
+    assert.equal((await server.agent.getTask("owner", current.id)).status, "running");
+    assert.equal((await server.agent.getTask("other", "foreign-blocker")).status, "waiting_input");
+    current = { ...current, input: { ...current.input, scheduleId: "existing-schedule" } };
+    await executeModelTask(server.agent, "owner", current, context);
+  } finally {
+    await server.agent.stop();
+    await db.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("formal finish rejects durable failed computer evidence until a later recovery", async () => {
   const directory = await mkdtemp(join(tmpdir(), "openmuse-pi-completion-evidence-"));
   const db = await createStore({ dataDir: join(directory, "db") });

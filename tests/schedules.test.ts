@@ -79,6 +79,55 @@ test("schedules survive restart, claim due work once across workers and isolate 
     await db.close();
   }
 });
+test("older waiting tasks remain visible after thirty skips and cancelling them unblocks the next occurrence", async () => {
+  const db = await createStore();
+  let clock = Date.parse("2026-10-13T00:00:00Z");
+  let calls = 0;
+  const service = new ScheduleService(
+    db,
+    async (owner, input, key) => {
+      calls++;
+      const task = { ...(input as object), id: key, status: "queued" } as AgentTask;
+      await db.put(owner, "tasks", task);
+      return task;
+    },
+    undefined,
+    () => clock,
+  );
+  try {
+    const schedule = await service.create("owner", {
+      title: "existing recurring work",
+      prompt: "Read a channel once",
+      timing: { type: "cron", expression: "* * * * *", timeZone: "Asia/Seoul" },
+    });
+    clock += 60000;
+    await service.tick();
+    const first = (await service.runs("owner", schedule.id))[0];
+    assert.ok(first.task);
+    await db.put("owner", "tasks", { ...first.task, status: "waiting_input" });
+    for (let i = 0; i < 35; i++) {
+      clock += 60000;
+      await service.tick();
+    }
+    const receipts = await service.runs("owner", schedule.id);
+    assert.equal(receipts.length, 31);
+    assert.equal(receipts[0].status, "skipped");
+    assert.equal(receipts[30].task?.id, first.task.id);
+    assert.equal(receipts[30].task?.status, "waiting_input");
+    assert.equal(calls, 1);
+    await assert.rejects(service.runs("other", schedule.id), { status: 404 });
+    await db.put("owner", "tasks", { ...first.task, status: "cancelled" });
+    clock += 60000;
+    await service.tick();
+    assert.equal(calls, 2);
+    assert.equal((await service.runs("owner", schedule.id))[0].status, "dispatched");
+    assert.equal((await service.list("owner")).length, 1);
+    assert.equal((await service.get("owner", schedule.id)).timing.type, "cron");
+  } finally {
+    await db.close();
+  }
+});
+
 test("cron timezone handles DST and rejects seconds, invalid zones and past one-shot times", async () => {
   const input = {
     title: "x",
