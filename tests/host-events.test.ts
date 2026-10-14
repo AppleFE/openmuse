@@ -451,3 +451,108 @@ test("local gateway rejects browser/rebinding calls; durable retries and CLI fil
     ),
   );
 });
+
+class ReplyAgent extends AbstractAgent {
+  prompts: string[] = [];
+  constructor(readonly openMuseOwner: string) {
+    super({ agentId: "default" });
+  }
+  clone() {
+    return this;
+  }
+  run(i: RunAgentInput) {
+    const last = i.messages.at(-1);
+    this.prompts.push(typeof last?.content === "string" ? last.content : "");
+    return new Observable<BaseEvent>((s) => {
+      const messageId = randomUUID();
+      s.next({ type: EventType.RUN_STARTED, threadId: i.threadId, runId: i.runId });
+      s.next({ type: EventType.TEXT_MESSAGE_START, messageId, role: "assistant" });
+      s.next({
+        type: EventType.TEXT_MESSAGE_CONTENT,
+        messageId,
+        delta: "충전소 3곳을 찾았습니다.",
+      });
+      s.next({ type: EventType.TEXT_MESSAGE_END, messageId });
+      s.next({ type: EventType.RUN_FINISHED, threadId: i.threadId, runId: i.runId });
+      s.complete();
+    });
+  }
+}
+
+test("finished chat-delegated tasks post one report into the source chat and the model replies there", async (t) => {
+  const f = await browserFixture(t, () => ({ data: hostStatus })),
+    a = await createApp(f.db, f.config);
+  t.after(() => {
+    a.hostEvents.close();
+    return a.agent.stop();
+  });
+  a.hostEvents.close();
+  const agent = new ReplyAgent("local-user");
+  const reports = new HostEventService(f.db, a.connectors, a.conversations, async () => agent);
+  t.after(() => reports.close());
+  const published: HostEvent[] = [];
+  reports.subscribe("local-user", (e) => published.push(e));
+  const threadId = "delegating-chat";
+  await a.conversations.ensure("local-user", threadId);
+  const now = new Date().toISOString();
+  const task = {
+    id: "task-ev",
+    sourceThreadId: threadId,
+    title: "충전소 검색",
+    prompt: "근처 충전소 찾기",
+    kind: "agent",
+    status: "succeeded",
+    result: "A, B, C 충전소",
+    attempts: 1,
+    plan: [],
+    state: {},
+    createdAt: now,
+    updatedAt: now,
+  } as unknown as Parameters<HostEventService["acceptTask"]>[1];
+  await reports.acceptTask("local-user", task);
+  await reports.acceptTask("local-user", task);
+  const [event] = await until(
+    () => reports.list("local-user"),
+    (v) => v.length === 1 && v[0].status === "delivered",
+  );
+  assert.equal(event.origin, "task");
+  assert.equal(event.taskId, "task-ev");
+  assert.ok(published.some((e) => e.id === event.id && e.status === "delivered"));
+  assert.equal(agent.prompts.length, 1);
+  assert.match(
+    agent.prompts[0],
+    /^\[백그라운드 작업 보고 · 완료\]\n작업: 충전소 검색\n\nA, B, C 충전소$/,
+  );
+  const messages = (await a.conversations.get("local-user", threadId)).messages;
+  const report = messages.find((m) => m.id === event.messageId);
+  assert.equal(report?.role, "user");
+  assert.equal((report as { name?: string }).name, "작업 · 충전소 검색");
+  assert.ok(event.messageId.startsWith("task-report-"));
+  assert.equal(messages.at(-1)?.role, "assistant");
+  assert.equal(messages.at(-1)?.content, "충전소 3곳을 찾았습니다.");
+  // Only live outcomes of chat-delegated, non-archived conversations are reported.
+  await reports.acceptTask("local-user", { ...task, id: "no-thread", sourceThreadId: undefined });
+  await reports.acceptTask("local-user", {
+    ...task,
+    id: "stale",
+    updatedAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  });
+  await reports.acceptTask("local-user", { ...task, id: "running", status: "running" });
+  await reports.acceptTask("local-user", { ...task, id: "gone", sourceThreadId: "missing-chat" });
+  assert.equal((await reports.list("local-user")).length, 1);
+  // A later outcome of the same task (e.g. a retry that failed) is a new report.
+  await reports.acceptTask("local-user", {
+    ...task,
+    status: "failed",
+    attempts: 2,
+    error: "사이트 응답 없음",
+  });
+  const failed = await until(
+    () => reports.list("local-user"),
+    (v) => v.length === 2 && v.every((e) => e.status === "delivered"),
+  );
+  assert.equal(
+    failed.find((e) => e.type === "error")?.message,
+    "작업이 실패했습니다.\n사이트 응답 없음",
+  );
+});

@@ -115,7 +115,9 @@ export function HostEventsProvider({ children }: { children: ReactNode }) {
 export function HostEventsButton() {
   const { open } = useWorkspace(),
     { events } = useHostEvents();
-  const pending = events.filter((e) => e.type === "question" || e.type === "error").length;
+  const pending = events.filter(
+    (e) => e.origin !== "task" && (e.type === "question" || e.type === "error"),
+  ).length;
   return (
     <Button icon={Radio} onPress={() => open({ type: "host-events" })}>
       호스트 호출{pending ? ` · 질문·문제 ${pending}` : ""}
@@ -125,6 +127,7 @@ export function HostEventsButton() {
 export function HostEventsSheet() {
   const { close } = useWorkspace(),
     { events, connected } = useHostEvents(),
+    hostReports = events.filter((e) => e.origin !== "task"),
     { selection, select, refetch } = useMuseThread();
   const command = `openmuse send --source codex --target ${selection.id} --type completed --message "작업 완료: 테스트 통과" --idempotency-key 작업ID-complete`;
   return (
@@ -153,8 +156,8 @@ export function HostEventsSheet() {
             재시도할 때 중복 방지 키를 그대로 사용하세요.
           </Text>
         </Card>
-        {!events.length && <Text style={s.muted}>아직 받은 보고가 없습니다.</Text>}
-        {events.map((e) => (
+        {!hostReports.length && <Text style={s.muted}>아직 받은 보고가 없습니다.</Text>}
+        {hostReports.map((e) => (
           <Card key={e.id}>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <Text style={s.heading}>

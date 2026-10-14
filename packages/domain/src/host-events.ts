@@ -40,7 +40,18 @@ export interface HostEvent extends HostEventInput {
   createdAt: string;
   updatedAt: string;
   error?: string;
+  /** "task" reports are posted by OpenMuse itself when a chat-delegated task ends. */
+  origin?: "host" | "task";
+  taskId?: string;
 }
+export const taskReportLabels = {
+  completed: "완료",
+  question: "확인 필요",
+  error: "실패",
+  progress: "진행",
+} as const;
 export function hostEventMessage(event: HostEvent) {
+  if (event.origin === "task")
+    return `[백그라운드 작업 보고 · ${taskReportLabels[event.type]}]${event.task ? `\n작업: ${event.task}` : ""}\n\n${event.message}`;
   return `[원격 호스트 보고 · ${hostEventLabels[event.type]}]\n호스트: ${event.hostName}\n에이전트: ${event.source}${event.task ? `\n작업: ${event.task}` : ""}\n\n${event.message}`;
 }

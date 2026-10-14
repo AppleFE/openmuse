@@ -146,7 +146,7 @@ export type EventDraft = z.infer<typeof eventDraftSchema>;
 export type ProposalInput = z.infer<typeof proposalSchema>;
 export interface ActionProposal {
   conversationId?: string;
-  approvalMethod?: "user" | "session-bypass";
+  approvalMethod?: "user" | "session-bypass" | "owner-bypass";
   target?: CalendarEvent;
   targetVersion?: string;
   taskId?: string;

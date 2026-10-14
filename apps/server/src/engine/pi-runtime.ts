@@ -33,7 +33,14 @@ import type { Store } from "../db.ts";
 import { Skills } from "../skills.ts";
 import { UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
-import { emptyPiRecoveryPrompt, piAssistantFailure } from "./pi-response.ts";
+import type { ResolvedRuntimeSettings } from "./jev-settings.ts";
+import {
+  emptyPiRecoveryPrompt,
+  piAssistantFailure,
+  piMaxEmptyRecoveries,
+  piRetrySettings,
+  piWatchdog,
+} from "./pi-response.ts";
 import { createPiTools } from "./pi-tools.ts";
 import type {
   CodingRuntimeHook,
@@ -71,6 +78,8 @@ export interface PiSessionInput {
   maxToolCalls: number;
   onToolCall(): number | Promise<number>;
   onPolicyFallback(): void;
+  /** Progress signal for the idle watchdog (model output and tool execution events). */
+  onActivity?(event: { type?: string }): void;
 }
 export type PiSessionFactory = (input: PiSessionInput) => Promise<PiSession>;
 
@@ -539,8 +548,20 @@ export class PiRuntimeHook implements CodingRuntimeHook {
 
   async execute(request: RoleRuntimeRequest & RoleRuntimePreparation) {
     const settings = await this.jev.settings.resolve(request.owner);
-    const timeout = AbortSignal.timeout(settings.pi.timeoutMs);
-    const signal = AbortSignal.any([request.signal, timeout]);
+    const timeout = piWatchdog(settings.pi.timeoutMs);
+    try {
+      return await this.executeWithin(request, settings, timeout);
+    } finally {
+      timeout.dispose();
+    }
+  }
+
+  private async executeWithin(
+    request: RoleRuntimeRequest & RoleRuntimePreparation,
+    settings: ResolvedRuntimeSettings,
+    timeout: ReturnType<typeof piWatchdog>,
+  ) {
+    const signal = AbortSignal.any([request.signal, timeout.signal]);
     const runtimeRequest = { ...request, signal };
     const diet = await this.jev.contextProfile(runtimeRequest);
     let localBudget =
@@ -572,6 +593,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     let iteration = existing?.iteration ?? 0;
     let output = existing?.output ?? "";
     let recoverEmpty = false;
+    let emptyRecoveries = 0;
     let toolCheckpoint = Promise.resolve();
     let session: PiSession;
     session = await this.sessionFactory({
@@ -603,14 +625,15 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       onPolicyFallback: () => {
         localBudget = true;
       },
+      onActivity: (event) => timeout.touch(event),
     });
     const abort = () => void session.abort();
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     try {
-      while (iteration < hardIterations) {
+      while (iteration < hardIterations + emptyRecoveries) {
         if (signal.aborted)
-          throw new Error(timeout.aborted ? "Embedded pi timed out" : "Team role interrupted");
+          throw new Error(timeout.aborted ? timeout.message() : "Team role interrupted");
         const nextIteration = iteration + 1;
         const previousToolCalls = toolCalls;
         await this.db.put(request.owner, "pi-runtime", {
@@ -633,15 +656,16 @@ export class PiRuntimeHook implements CodingRuntimeHook {
         );
         recoverEmpty = false;
         if (signal.aborted)
-          throw new Error(timeout.aborted ? "Embedded pi timed out" : "Team role interrupted");
+          throw new Error(timeout.aborted ? timeout.message() : "Team role interrupted");
         iteration = nextIteration;
         const providerFailure = session.getLastAssistantFailure?.();
         if (providerFailure) throw new Error(providerFailure);
         output = clipped(session.getLastAssistantText()?.trim() ?? "", 128 * 1024);
         if (!output) {
           if (toolCalls <= previousToolCalls) {
-            if (iteration !== 1 || iteration >= hardIterations)
+            if (emptyRecoveries >= piMaxEmptyRecoveries)
               throw new Error("Embedded pi returned no assistant output after bounded recovery");
+            emptyRecoveries += 1;
             recoverEmpty = true;
           }
           await toolCheckpoint;
@@ -762,7 +786,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
       ),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: true },
-        retry: { enabled: false },
+        retry: piRetrySettings,
       }),
       sessionManager: manager,
     });
@@ -772,6 +796,7 @@ export class PiRuntimeHook implements CodingRuntimeHook {
     let turnText: string | undefined;
     let turnFailure: string | undefined;
     const unsubscribe = session.subscribe((event) => {
+      input.onActivity?.(event);
       if (event.type === "message_start" && event.message.role === "assistant") {
         started = Date.now();
         firstTokenAt = 0;

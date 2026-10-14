@@ -69,6 +69,12 @@ export class AgentService {
   readonly knowledge: ThreadKnowledgeService;
   private maintenance?: ReturnType<typeof setInterval>;
   private refreshing = false;
+  private readonly outcomeListeners = new Set<(owner: string, task: AgentTask) => Promise<void>>();
+  /** Observe committed task outcomes, e.g. to report a delegated task back into its chat. */
+  onTaskOutcome(listener: (owner: string, task: AgentTask) => Promise<void>) {
+    this.outcomeListeners.add(listener);
+    return () => this.outcomeListeners.delete(listener);
+  }
   constructor(
     readonly db: Store,
     readonly config: Config,
@@ -937,15 +943,13 @@ export class AgentService {
         "Google connection changed during this task. Start a new task using the current account.",
         409,
       );
-    const proposal = task.sourceThreadId
-      ? await this.actions.proposeForConversation(
-          owner,
-          task.sourceThreadId,
-          input,
-          `${task.id}:${key}`,
-          task.id,
-        )
-      : await this.actions.propose(owner, input, `${task.id}:${key}`, task.id);
+    const proposal = await this.actions.proposeForConversation(
+      owner,
+      task.sourceThreadId,
+      input,
+      `${task.id}:${key}`,
+      task.id,
+    );
     if (proposal.status === "succeeded") return proposal;
     if (proposal.status !== "awaiting_review" && proposal.status !== "executing")
       throw new AppError(
@@ -1133,6 +1137,8 @@ export class AgentService {
       .safeParse(task.state.notice);
     if ((task.status === "scheduled" || (task.status === "paused" && task.error)) && notice.success)
       await this.notify(owner, notice.data.title, notice.data.body, task.id, notice.data.key);
+    for (const listener of this.outcomeListeners)
+      await listener(owner, task).catch((error) => backgroundFailure("task chat report", error));
     // A watch pauses after repeated failures only once that task outcome has committed.
     if (task.kind === "monitor" && task.status === "paused" && task.error)
       await this.db.compareAndSwap(

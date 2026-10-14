@@ -268,7 +268,9 @@ function ConnectorActionCard({ result, loading }: { result: unknown; loading: bo
               : action.status === "succeeded"
                 ? action.approvalMethod === "session-bypass"
                   ? "이 대화의 자동 승인 설정으로 실행했습니다."
-                  : "작업 실행이 완료되었습니다."
+                  : action.approvalMethod === "owner-bypass"
+                    ? "전체 자동 승인 설정으로 실행했습니다."
+                    : "작업 실행이 완료되었습니다."
                 : action.status === "executing"
                   ? "작업을 실행하고 있습니다."
                   : "작업 상태와 실행 결과를 확인하세요."}

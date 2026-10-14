@@ -125,7 +125,21 @@ export class ActionService {
     await this.record(owner, saved, "Ready for your review");
     return saved;
   }
+  /** Owner-wide default. When enabled, every conversation, delegated task and schedule auto-approves. */
+  async ownerApprovalMode(owner: string): Promise<"review" | "bypass"> {
+    const saved = await this.db.get<{ mode?: string }>(owner, "approval-settings", "owner");
+    return saved?.mode === "bypass" ? "bypass" : "review";
+  }
+  async setOwnerApprovalMode(owner: string, mode: "review" | "bypass") {
+    await this.db.put(owner, "approval-settings", {
+      id: "owner",
+      mode,
+      updatedAt: new Date(this.now()).toISOString(),
+    });
+    return { mode };
+  }
   async approvalMode(owner: string, threadId?: string): Promise<"review" | "bypass"> {
+    if ((await this.ownerApprovalMode(owner)) === "bypass") return "bypass";
     if (!threadId) return "review";
     const thread = await this.db.get<{ approvalMode?: string; archived: boolean }>(
       owner,
@@ -136,7 +150,7 @@ export class ActionService {
   }
   async proposeForConversation(
     owner: string,
-    threadId: string,
+    threadId: string | undefined,
     raw: unknown,
     key?: string,
     taskId?: string,
@@ -144,7 +158,10 @@ export class ActionService {
   ) {
     signal?.throwIfAborted();
     const proposal = await this.propose(owner, raw, key, taskId, threadId);
+    if ((await this.ownerApprovalMode(owner)) === "bypass")
+      return this.decide(owner, proposal.id, proposal.hash, "approve", "owner-bypass", signal);
     if (
+      !threadId ||
       proposal.conversationId !== threadId ||
       (await this.approvalMode(owner, threadId)) !== "bypass"
     )
@@ -156,7 +173,7 @@ export class ActionService {
     id: string,
     hash: string,
     decision: "approve" | "deny",
-    method: "user" | "session-bypass" = "user",
+    method: "user" | "session-bypass" | "owner-bypass" = "user",
     signal?: AbortSignal,
   ): Promise<ActionProposal> {
     const proposal = await this.db.get<ActionProposal>(owner, "actions", id);
@@ -221,6 +238,7 @@ export class ActionService {
       decision === "deny" ? "denied" : "executing",
       new Date(this.now()).toISOString(),
       method === "session-bypass" ? proposal.conversationId : undefined,
+      method === "owner-bypass",
     );
     if (!claimed) {
       const current = await this.db.get<ActionProposal>(owner, "actions", id);
@@ -235,7 +253,9 @@ export class ActionService {
         ? "Declined; no changes made"
         : method === "session-bypass"
           ? "이 대화의 자동 승인 설정으로 실행 시작"
-          : "Approved; execution started",
+          : method === "owner-bypass"
+            ? "전체 자동 승인 설정으로 실행 시작"
+            : "Approved; execution started",
     );
     if (decision === "deny") return claimed;
     let finished: ActionProposal;

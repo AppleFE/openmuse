@@ -16,8 +16,15 @@ import type { Store } from "../db.ts";
 import { Skills } from "../skills.ts";
 import { type UsageRecord, UsageService } from "../usage.ts";
 import type { JevRuntime } from "./jev-runtime.ts";
+import type { ResolvedRuntimeSettings } from "./jev-settings.ts";
 import { type PiHostReport, syncPiHostReports } from "./pi-host-reports.ts";
-import { emptyPiRecoveryPrompt, piAssistantFailure } from "./pi-response.ts";
+import {
+  emptyPiRecoveryPrompt,
+  piAssistantFailure,
+  piMaxEmptyRecoveries,
+  piRetrySettings,
+  piWatchdog,
+} from "./pi-response.ts";
 import { configuredPiModel, emptyResourceLoader } from "./pi-runtime.ts";
 import { adaptCopilotTools } from "./pi-tools.ts";
 import type { RoleRuntimeRequest } from "./runtime-hooks.ts";
@@ -115,8 +122,20 @@ export class PiAgentRunner {
     if (!settings.pi.enabled) throw new Error("Embedded pi is disabled");
     if (!input.profile.capabilities.includes("coding"))
       throw new Error("The selected model is not configured for coding/tool execution");
-    const timeout = AbortSignal.timeout(settings.pi.timeoutMs);
-    const signal = AbortSignal.any([input.request.signal, timeout]);
+    const timeout = piWatchdog(settings.pi.timeoutMs);
+    try {
+      return await this.runWithin(input, settings, timeout);
+    } finally {
+      timeout.dispose();
+    }
+  }
+
+  private async runWithin(
+    input: PiAgentRunInput,
+    settings: ResolvedRuntimeSettings,
+    timeout: ReturnType<typeof piWatchdog>,
+  ): Promise<string> {
+    const signal = AbortSignal.any([input.request.signal, timeout.signal]);
     const runtimeRequest = { ...input.request, signal };
     if (signal.aborted) throw new Error("Task interrupted");
 
@@ -164,6 +183,7 @@ export class PiAgentRunner {
     let iteration = existing?.iteration ?? 0;
     let output = existing?.output ?? "";
     let recoverEmpty = false;
+    let emptyRecoveries = 0;
     let toolCheckpoint = Promise.resolve();
     let session: PiAgentSession;
     session = await this.sessionFactory({
@@ -204,6 +224,7 @@ export class PiAgentRunner {
     let turnText: string | undefined;
     let turnFailure: string | undefined;
     const unsubscribe = session.subscribe((event) => {
+      timeout.touch(event);
       if (event.type === "message_start" && event.message.role === "assistant") {
         generationStart = Date.now();
         firstTokenAt = 0;
@@ -263,9 +284,10 @@ export class PiAgentRunner {
         output,
         updatedAt: new Date().toISOString(),
       });
-      while (iteration < hardIterations) {
+      // Recovering an empty reply does not consume the owner's iteration budget.
+      while (iteration < hardIterations + emptyRecoveries) {
         if (signal.aborted)
-          throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
+          throw new Error(timeout.aborted ? timeout.message() : "Task interrupted");
         const previousToolCalls = toolCalls;
         turnText = undefined;
         turnFailure = undefined;
@@ -282,7 +304,7 @@ export class PiAgentRunner {
         );
         recoverEmpty = false;
         if (signal.aborted)
-          throw new Error(timeout.aborted ? "Embedded pi timed out" : "Task interrupted");
+          throw new Error(timeout.aborted ? timeout.message() : "Task interrupted");
         iteration += 1;
         const terminal = input.completion?.isTerminal() ?? false;
         if (turnFailure && !terminal) throw new Error(turnFailure);
@@ -295,10 +317,11 @@ export class PiAgentRunner {
           );
         if (!output) {
           if (toolCalls <= previousToolCalls) {
-            if (iteration !== 1 || iteration >= hardIterations)
+            if (emptyRecoveries >= piMaxEmptyRecoveries)
               throw new Error(
-                "Embedded pi returned no assistant output: 모델이 빈 응답을 반환했습니다. 도구 실행 기록을 확인하세요. 작업 완료로 처리하지 않았습니다.",
+                `Embedded pi returned no assistant output: 모델이 ${emptyRecoveries + 1}번 연속 빈 응답을 반환했습니다. 도구 실행 기록은 보존됩니다. 작업 완료로 처리하지 않았습니다.`,
               );
+            emptyRecoveries += 1;
             recoverEmpty = true;
           }
           // A tool-only turn is progress, not task completion. Resume the same session,
@@ -459,7 +482,7 @@ export class PiAgentRunner {
       ),
       settingsManager: SettingsManager.inMemory({
         compaction: { enabled: true },
-        retry: { enabled: false },
+        retry: piRetrySettings,
       }),
       sessionManager: manager,
     });

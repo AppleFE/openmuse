@@ -559,10 +559,13 @@ export async function executeModelTask(
   let text = "";
   let runError: string | undefined;
   await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      agent.abortRun();
-      reject(new Error("Model run timed out after five minutes"));
-    }, 300000);
+    const timeout = setTimeout(
+      () => {
+        agent.abortRun();
+        reject(new Error("Model run timed out after fifteen minutes"));
+      },
+      15 * 60 * 1000,
+    );
     const abort = () => {
       clearTimeout(timeout);
       agent.abortRun();

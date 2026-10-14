@@ -138,7 +138,7 @@ export function readConfig(): Config {
     agentBackend: backend,
     agentUrl: process.env.AGENT_URL,
     agentToken: process.env.AGENT_TOKEN,
-    chatRunTimeoutMs: Number(process.env.CHAT_RUN_TIMEOUT_MS ?? 10 * 60 * 1000),
+    chatRunTimeoutMs: Number(process.env.CHAT_RUN_TIMEOUT_MS ?? 60 * 60 * 1000),
     googleClientId: process.env.GOOGLE_CLIENT_ID,
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri: `${publicUrl}/api/google/callback`,
@@ -167,7 +167,7 @@ export function readConfig(): Config {
     );
   if (mode === "sample" && !["127.0.0.1", "localhost", "::1"].includes(config.host))
     throw new Error("Sample workspace is local-only. HOST must be a loopback address.");
-  const chatRunTimeoutMs = config.chatRunTimeoutMs ?? 10 * 60 * 1000;
+  const chatRunTimeoutMs = config.chatRunTimeoutMs ?? 60 * 60 * 1000;
   if (
     !Number.isFinite(chatRunTimeoutMs) ||
     chatRunTimeoutMs < 1_000 ||

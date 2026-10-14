@@ -1132,9 +1132,14 @@ for (const scenario of [
       if (scenario === "empty") await assert.rejects(run, /no assistant output/);
       else if (scenario === "tool-only-exhausted") await assert.rejects(run, /2-iteration limit/);
       else assert.equal(await run, "Actual recorded terminal receipt");
+      // A persistently empty reply is recovered twice without consuming the iteration budget.
       assert.equal(
         prompts,
-        ["tool-only-then-terminal", "tool-only-exhausted", "empty"].includes(scenario) ? 2 : 1,
+        scenario === "empty"
+          ? 3
+          : ["tool-only-then-terminal", "tool-only-exhausted"].includes(scenario)
+            ? 2
+            : 1,
       );
       const [checkpoint] = await db.list<{ status: string }>("owner", "pi-agent-runs");
       assert.equal(checkpoint.status, terminal ? "succeeded" : "failed");

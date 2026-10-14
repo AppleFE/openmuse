@@ -159,6 +159,7 @@ export class Store {
     status: string,
     now: string,
     bypassThreadId?: string,
+    ownerBypass = false,
   ): Promise<T | null> {
     const result = await this.db.query(
       `UPDATE records AS action SET data=jsonb_set(data,'{status}',$4::jsonb),updated_at=now()
@@ -170,11 +171,16 @@ export class Store {
            AND thread.data->>'approvalMode'='bypass' AND thread.data->>'archived'='false'
            AND action.data->>'conversationId'=thread.id
          ))
+         AND ($6::boolean IS NOT TRUE OR EXISTS (
+           SELECT 1 FROM records setting WHERE setting.owner=action.owner
+           AND setting.kind='approval-settings' AND setting.id='owner'
+           AND setting.data->>'mode'='bypass'
+         ))
        AND ($4::jsonb <> '"executing"'::jsonb OR data->>'taskId' IS NULL OR EXISTS (
          SELECT 1 FROM records task WHERE task.owner=action.owner AND task.kind='tasks'
          AND task.id=action.data->>'taskId' AND task.data->>'status' IN ('running','waiting_approval')
        )) RETURNING data`,
-      [owner, id, now, JSON.stringify(status), bypassThreadId ?? null],
+      [owner, id, now, JSON.stringify(status), bypassThreadId ?? null, ownerBypass],
     );
     return (result.rows[0]?.data as T | undefined) ?? null;
   }

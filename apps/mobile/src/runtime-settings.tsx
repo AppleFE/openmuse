@@ -250,7 +250,7 @@ export function RuntimeSettings() {
           keyboardType="number-pad"
         />
         <Field
-          label="역할 제한 시간(밀리초, 5000~900000)"
+          label="응답 없음 제한(밀리초, 5000~900000 · 진행 중이면 최대 60분)"
           value={piTimeoutMs}
           onChangeText={setPiTimeoutMs}
           keyboardType="number-pad"

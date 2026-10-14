@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { AbstractAgent, type BaseEvent, EventType, type RunAgentInput } from "@ag-ui/client";
 import { Hono } from "hono";
 import { Observable } from "rxjs";
+import type { AgentTask } from "../../../packages/domain/src/agent.ts";
 import {
   type HostEvent,
   hostEventInputSchema,
@@ -171,6 +172,61 @@ export class HostEventService {
     for (const expired of terminal.slice(999)) await this.db.remove(owner, kind, expired.id);
     return { event, duplicate: false };
   }
+  /**
+   * Post a chat-delegated task's outcome into its source conversation so the model replies there
+   * without the person opening Activity. Idempotent per outcome; startup recovery of old outcomes
+   * is ignored so enabling this never floods existing chats.
+   */
+  async acceptTask(owner: string, task: AgentTask) {
+    const threadId = task.sourceThreadId;
+    if (!threadId || this.closed) return;
+    const type =
+      task.status === "succeeded"
+        ? "completed"
+        : task.status === "failed"
+          ? "error"
+          : task.status === "waiting_input" || task.status === "waiting_approval"
+            ? "question"
+            : undefined;
+    if (!type || Date.now() - Date.parse(task.updatedAt) > 30 * 60000) return;
+    const key = `task:${task.id}:${task.status}:${task.attempts}:${task.actionId ?? ""}`;
+    const id = hash(`task\0${key}`);
+    if (await this.db.get<HostEvent>(owner, kind, id)) return;
+    const thread = await this.conversations.get(owner, threadId).catch(() => undefined);
+    if (!thread || thread.archived) return;
+    const body =
+      task.status === "succeeded"
+        ? task.result || "작업이 완료되었습니다."
+        : task.status === "failed"
+          ? `작업이 실패했습니다.\n${task.error ?? ""}`
+          : task.status === "waiting_input"
+            ? `추가 정보가 필요합니다.\n${task.question ?? ""}`
+            : "외부 작업 실행 전 승인을 기다리고 있습니다. 앱의 승인 요청을 확인하세요.";
+    const now = new Date().toISOString();
+    const event: HostEvent = {
+      key,
+      target: threadId,
+      type,
+      source: "openmuse",
+      task: task.title.trim().slice(0, 160) || undefined,
+      message: clipBytes(body.trim() || "작업 상태가 변경되었습니다.", 32000),
+      reply: true,
+      id,
+      connectorId: "task",
+      hostName: "OpenMuse",
+      threadId,
+      messageId: `task-report-${id}`,
+      runId: randomUUID(),
+      status: "queued",
+      createdAt: now,
+      updatedAt: now,
+      origin: "task",
+      taskId: task.id,
+    };
+    if (!(await this.db.insertIfAbsent(owner, kind, event))) return;
+    this.publish(owner, event);
+    this.wake(owner, threadId);
+  }
   private async update(owner: string, event: HostEvent, patch: Partial<HostEvent>) {
     const saved = await this.db.compareAndSwap<HostEvent>(
       owner,
@@ -207,13 +263,15 @@ export class HostEventService {
         const thread = await this.conversations.get(owner, threadId);
         if (thread.activeRunId) return;
         if (thread.archived) throw new AppError("대화가 보관되어 보고 전달을 중단했습니다", 409);
-        const host = await this.connectors.get(owner, event.connectorId);
-        if (
-          host.provider !== "remote_host" ||
-          (host.config.mode ?? "agent") !== "agent" ||
-          !host.hasSecret
-        )
-          throw new AppError("Host Agent 연결이 해제되었습니다", 409);
+        if (event.origin !== "task") {
+          const host = await this.connectors.get(owner, event.connectorId);
+          if (
+            host.provider !== "remote_host" ||
+            (host.config.mode ?? "agent") !== "agent" ||
+            !host.hasSecret
+          )
+            throw new AppError("Host Agent 연결이 해제되었습니다", 409);
+        }
         const agent = event.reply ? await this.makeAgent(owner) : new ReportOnlyAgent(owner);
         const running = await this.update(owner, event, { status: "running" });
         if (!running) continue;
@@ -230,7 +288,10 @@ export class HostEventService {
                   {
                     id: event.messageId,
                     role: "user",
-                    name: `원격 · ${event.hostName} · ${event.source}`.slice(0, 100),
+                    name:
+                      event.origin === "task"
+                        ? `작업 · ${event.task ?? "백그라운드 작업"}`.slice(0, 100)
+                        : `원격 · ${event.hostName} · ${event.source}`.slice(0, 100),
                     content: hostEventMessage(event),
                   },
                 ],
@@ -285,6 +346,13 @@ export class HostEventService {
     this.closeListeners.clear();
     this.listeners.clear();
   }
+}
+function clipBytes(value: string, max: number) {
+  const encoder = new TextEncoder();
+  if (encoder.encode(value).length <= max) return value;
+  let text = value.slice(0, max);
+  while (encoder.encode(`${text}\n[잘림]`).length > max) text = text.slice(0, -256);
+  return `${text}\n[잘림]`;
 }
 function oldInput(e: HostEvent) {
   return {

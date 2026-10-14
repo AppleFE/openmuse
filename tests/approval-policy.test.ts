@@ -158,3 +158,88 @@ test("approval settings are authenticated, persistent, reject active edits and i
   );
   assert.equal(bound.sourceThreadId, "setting-fixture");
 });
+
+test("owner-wide bypass approves every conversation and threadless task, stays owner scoped and honors revocation", async (t) => {
+  const { db } = await browserFixture(t, async () => ({ data: {} }));
+  await db.put("alice", "conversation-threads", {
+    id: "manual",
+    approvalMode: "review",
+    archived: false,
+  });
+  let calls = 0;
+  const service = new ActionService(db, {
+    execute: async () => {
+      calls++;
+      return "receipt";
+    },
+    connected: async () => true,
+  });
+  assert.equal(
+    (await service.proposeForConversation("alice", undefined, email, "before")).status,
+    "awaiting_review",
+  );
+  await service.setOwnerApprovalMode("alice", "bypass");
+  assert.equal(await service.approvalMode("alice"), "bypass");
+  assert.equal(await service.approvalMode("bob"), "review");
+  const threadless = await service.proposeForConversation("alice", undefined, email, "threadless");
+  assert.equal(threadless.status, "succeeded");
+  assert.equal(threadless.approvalMethod, "owner-bypass");
+  const manual = await service.proposeForConversation("alice", "manual", email, "manual");
+  assert.equal(manual.status, "succeeded");
+  // A review created before bypass was enabled is approved when the same work is prepared again.
+  assert.equal(
+    (await service.proposeForConversation("alice", undefined, email, "before")).status,
+    "succeeded",
+  );
+  assert.equal(
+    (await service.proposeForConversation("bob", undefined, email, "bob")).status,
+    "awaiting_review",
+  );
+  assert.equal(calls, 3);
+  const revoke = new ActionService(db, {
+    execute: async () => {
+      calls++;
+      return "unexpected";
+    },
+    connected: async () => {
+      await service.setOwnerApprovalMode("alice", "review");
+      return true;
+    },
+  });
+  assert.equal(
+    (await revoke.proposeForConversation("alice", undefined, email, "revoked")).status,
+    "awaiting_review",
+  );
+  assert.equal(calls, 3);
+});
+
+test("owner approval settings route persists the owner-wide mode", async (t) => {
+  const fixture = await browserFixture(t, async () => ({ data: {} }));
+  const app = await createApp(fixture.db, fixture.config);
+  t.after(() => app.agent.stop());
+  const { token } = await app.auth.session();
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  assert.deepEqual(await (await app.app.request("/api/approval-settings", { headers })).json(), {
+    mode: "review",
+  });
+  const saved = await app.app.request("/api/approval-settings", {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ mode: "bypass" }),
+  });
+  assert.deepEqual(await saved.json(), { mode: "bypass" });
+  assert.deepEqual(await (await app.app.request("/api/approval-settings", { headers })).json(), {
+    mode: "bypass",
+  });
+  assert.equal(
+    (
+      await app.app.request("/api/approval-settings", {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ mode: "bypass", extra: true }),
+      })
+    ).status,
+    422,
+  );
+  assert.equal((await app.app.request("/api/approval-settings")).status, 401);
+});

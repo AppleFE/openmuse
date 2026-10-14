@@ -39,7 +39,10 @@ export function messageSpeakerLabel(message: {
 }) {
   if (
     message.role === "user" &&
-    !(typeof message.name === "string" && message.name.startsWith("원격 · "))
+    !(
+      typeof message.name === "string" &&
+      (message.name.startsWith("원격 · ") || message.name.startsWith("작업 · "))
+    )
   )
     return "";
   const label =

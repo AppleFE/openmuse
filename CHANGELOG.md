@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.9 — 2026-10-15
+
+- Add an owner-wide auto-approve setting (승인 설정 → 전체 자동 승인). When enabled, every conversation, delegated task and schedule executes browser/desktop input, connector writes and host commands without review, including tasks with no origin chat that previously always fell back to review. Pending reviews are approved when the same work is prepared again. Revocation is enforced atomically at execution time; provider permissions are not bypassed.
+- Make embedded Pi time out on inactivity instead of a fixed five-minute wall clock. Model output and tool events reset the owner's window (default 5 minutes); a running tool counts as progress, with a 60-minute cap per run. Raise the chat run cap from 10 to 60 minutes and the non-Pi task cap to 15 minutes. Timeout errors state which limit was reached.
+- Enable Pi's built-in retry (up to 3, exponential backoff) for transient provider errors. Retries only resend a failed model request; tools from that request were never executed. Authentication, quota and context errors are not retried.
+- Recover empty Pi replies up to twice on any turn without consuming the iteration budget, instead of only on the first turn.
+- Post the outcome of a chat-delegated task or chat-created schedule into its source chat when it succeeds, fails or needs input/approval; the model then replies there with the result. Reports are idempotent per outcome, skip archived chats, and outcomes older than 30 minutes found at startup are not posted.
+
 ## 0.12.8 — 2026-10-13
 
 - Inspect the current Pi assistant event rather than falling back to an earlier successful response when the latest turn is empty or aborted. Classify provider authentication, quota, context and connection failures without exposing raw provider payloads.

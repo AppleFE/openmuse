@@ -100,6 +100,7 @@ export async function createApp(
   const hostEvents = new HostEventService(db, connectors, conversations, (owner) =>
     makeConversationAgent(config, agent, owner),
   );
+  agent.onTaskOutcome((owner, task) => hostEvents.acceptTask(owner, task));
   await hostEvents.recover();
   const runtime = makeRuntime(config, agent, auth, conversations);
   const app = new Hono<{ Variables: { owner: string } }>();
@@ -371,6 +372,16 @@ export async function createApp(
         await conversations.rename(c.get("owner"), c.req.param("id"), body.name),
       ),
     );
+  });
+  app.get("/api/approval-settings", async (c) =>
+    c.json({ mode: await actions.ownerApprovalMode(c.get("owner")) }),
+  );
+  app.put("/api/approval-settings", async (c) => {
+    const { mode } = z
+      .object({ mode: z.enum(["review", "bypass"]) })
+      .strict()
+      .parse(await c.req.json());
+    return c.json(await actions.setOwnerApprovalMode(c.get("owner"), mode));
   });
   app.get("/api/copilotkit/threads/:id/approval", async (c) => {
     const thread = await conversations.get(c.get("owner"), c.req.param("id"));

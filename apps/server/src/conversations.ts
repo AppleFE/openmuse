@@ -776,7 +776,7 @@ export class ConversationStoreRunner extends AgentRunner {
             current.resolveStop();
           }
         },
-        this.config.chatRunTimeoutMs ?? 10 * 60 * 1000,
+        this.config.chatRunTimeoutMs ?? 60 * 60 * 1000,
       );
       active = {
         owner,
