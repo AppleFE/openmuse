@@ -184,6 +184,8 @@ export interface Connection {
   name: string;
   status: "connected" | "disconnected" | "sample" | "unconfigured" | "unavailable";
   account?: string;
+  /** Why a configured connection cannot be used right now. */
+  message?: string;
   capabilities: string[];
 }
 export interface Workspace {

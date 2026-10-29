@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { createApp } from "../apps/server/src/app.ts";
 import type { Config } from "../apps/server/src/config.ts";
 import { createStore } from "../apps/server/src/db.ts";
 import { GoogleAuth } from "../apps/server/src/google-auth.ts";
@@ -238,4 +242,72 @@ test("an in-flight refresh cannot restore credentials after disconnect", async (
   release.resolve();
   await assert.rejects(refresh, /disconnected/i);
   assert.equal(await auth.tokens("refresh-disconnect"), null);
+});
+
+for (const failure of ["revoked", "missing"] as const) {
+  test(`an ${failure === "revoked" ? "expired" : "absent"} Google refresh token does not close the workspace`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "openmuse-google-expired-"));
+    const db = await createStore();
+    const config = oauthConfig();
+    const server = await createApp(db, { ...config, agentBackend: "sample", dataDir: directory });
+    t.after(async () => {
+      await server.agent.stop();
+      await db.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    assert.ok(config.encryptionKey);
+    await db.put("expired-owner", "credentials", {
+      id: "google",
+      connectionId: "stale-connection",
+      secret: encryptSecret(
+        JSON.stringify({
+          connectionId: "stale-connection",
+          accessToken: "stale-access",
+          ...(failure === "revoked" ? { refreshToken: "revoked-refresh" } : {}),
+          expiresAt: 0,
+          scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+          account: "me@example.com",
+        }),
+        config.encryptionKey,
+      ),
+    });
+    let calls = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      calls++;
+      return Response.json({ error: "invalid_grant" }, { status: 400 });
+    });
+    const snapshot = await server.workspace.snapshot("expired-owner");
+    const google = snapshot.connections.find((connection) => connection.id === "google");
+    assert.deepEqual([snapshot.mail, snapshot.events], [[], []]);
+    assert.equal(google?.status, "unavailable");
+    assert.equal(google?.message, "Google session expired. Connect again.");
+    assert.equal(google?.account, "me@example.com");
+    assert.equal(snapshot.profile.email, "me@example.com");
+    if (failure === "missing") assert.equal(calls, 0);
+    else assert.ok(calls > 0);
+  });
+}
+
+test("a temporary Google token outage is not reported as an expired session", async (t) => {
+  const db = await createStore();
+  t.after(() => db.close());
+  const config = oauthConfig();
+  assert.ok(config.encryptionKey);
+  await db.put("outage-owner", "credentials", {
+    id: "google",
+    connectionId: "connection",
+    secret: encryptSecret(
+      JSON.stringify({
+        connectionId: "connection",
+        accessToken: "old",
+        refreshToken: "refresh",
+        expiresAt: 0,
+        scopes: [],
+        account: "me@example.com",
+      }),
+      config.encryptionKey,
+    ),
+  });
+  t.mock.method(globalThis, "fetch", async () => new Response("busy", { status: 503 }));
+  await assert.rejects(new GoogleAuth(db, config).accessToken("outage-owner"), /unavailable/);
 });

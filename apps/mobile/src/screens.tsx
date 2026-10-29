@@ -1280,10 +1280,15 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                     <Text
                       style={{
                         fontSize: 13,
-                        color: row.group === "google" ? colors.blueDark : colors.muted,
+                        color:
+                          row.group !== "google"
+                            ? colors.muted
+                            : google?.message
+                              ? colors.danger
+                              : colors.blueDark,
                       }}
                     >
-                      {row.group === "google" ? "연결" : "설정"}
+                      {row.group !== "google" ? "설정" : google?.message ? "다시 연결" : "연결"}
                     </Text>
                   )}
                 </Pressable>
@@ -1310,7 +1315,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
                   <Chip key={cap}>{capabilityLabel(cap)}</Chip>
                 ))}
               </View>
-              <ErrorNotice error={error} />
+              <ErrorNotice error={error || google?.message} />
               {desktopBridge && (
                 <Card style={{ gap: 10 }}>
                   <Text style={s.heading}>Google OAuth 설정</Text>
@@ -1354,7 +1359,7 @@ export function ConnectionsScreen({ query = "" }: { query?: string }) {
               <Button busy={busy} onPress={() => void connect("write")}>
                 전송과 수정 사용
               </Button>
-              {connected && (
+              {(connected || !!google?.account) && (
                 <Button busy={busy} danger onPress={() => void disconnect()}>
                   Google 연결 해제
                 </Button>

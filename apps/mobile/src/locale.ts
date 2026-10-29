@@ -200,6 +200,10 @@ export function uiLabel(value: string) {
 }
 
 const errors: Record<string, string> = {
+  "Google session expired. Connect again.":
+    "Google 연결이 만료되었습니다. 연동 → Google에서 다시 연결하세요.",
+  "Google is unavailable right now. Refresh to try again.":
+    "지금은 Google에 연결할 수 없습니다. 잠시 후 새로고침하세요.",
   "Connect Proxmox before preparing an action": "작업을 준비하기 전에 Proxmox를 연결하세요.",
   "Proxmox is disconnected. Reconnect before approving this action.":
     "Proxmox 연결이 끊겼습니다. 다시 연결한 뒤 작업을 승인하세요.",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.10 — 2026-10-29
+
+- Open the workspace when the Google session has expired or Google is unreachable. Previously `/api/workspace` failed with "Google session expired. Connect again." and the app stayed on the loading screen. Mail and calendar are now empty for that load, the Google connection is reported as `unavailable` with the reason, and the app shows it once and marks Google as "다시 연결" under 연동. A session whose refresh fails can still be disconnected.
+- Report a temporary Google token endpoint failure (HTTP 429 or 5xx) as unavailable instead of as an expired session.
+
 ## 0.12.9 — 2026-10-15
 
 - Add an owner-wide auto-approve setting (승인 설정 → 전체 자동 승인). When enabled, every conversation, delegated task and schedule executes browser/desktop input, connector writes and host commands without review, including tasks with no origin chat that previously always fell back to review. Pending reviews are approved when the same work is prepared again. Revocation is enforced atomically at execution time; provider permissions are not bypassed.

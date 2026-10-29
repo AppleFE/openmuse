@@ -9,7 +9,7 @@ import type {
   ProposalInput,
   Workspace,
 } from "../../../packages/domain/src/index.ts";
-import { GoogleClient } from "../../../packages/integrations/src/google.ts";
+import { GoogleApiError, GoogleClient } from "../../../packages/integrations/src/google.ts";
 import { createSamplePdf } from "../../../packages/integrations/src/pdf.ts";
 import type { ActionService } from "./actions.ts";
 import { agentConfigured } from "./agent.ts";
@@ -18,6 +18,7 @@ import type { Store } from "./db.ts";
 import { AppError } from "./errors.ts";
 import type { Files } from "./files.ts";
 import type { GoogleAuth } from "./google-auth.ts";
+import { backgroundFailure } from "./log.ts";
 
 export class WorkspaceService {
   private seeding = new Map<string, Promise<void>>();
@@ -259,15 +260,28 @@ export class WorkspaceService {
     await this.db.put(owner, "settings", { id: "seeded", value: true });
   }
   async snapshot(owner: string, query?: string): Promise<Workspace> {
-    let mail: Mail[], events: CalendarEvent[];
+    let mail: Mail[], events: CalendarEvent[], googleProblem: string | undefined;
     const connected = await this.connected(owner);
     if (this.config.mode === "live" && connected) {
       const connection = await this.connection(owner);
       if (!connection) throw new AppError("Google is disconnected", 409);
       const google = this.google(owner, connection.id);
-      [mail, events] = await Promise.all([google.listMail(query), google.listEvents()]);
-      mail = await this.cacheMail(owner, mail, connection.id);
-      for (const event of events) await this.db.put(owner, "events", event);
+      try {
+        [mail, events] = await Promise.all([google.listMail(query), google.listEvents()]);
+        mail = await this.cacheMail(owner, mail, connection.id);
+        for (const event of events) await this.db.put(owner, "events", event);
+      } catch (error) {
+        // An expired or failing Google account must not keep the rest of the workspace closed.
+        backgroundFailure("workspace.google", error);
+        mail = [];
+        events = [];
+        googleProblem =
+          error instanceof AppError
+            ? error.message
+            : error instanceof GoogleApiError && (error.status === 401 || error.status === 403)
+              ? "Google session expired. Connect again."
+              : "Google is unavailable right now. Refresh to try again.";
+      }
     } else if (this.config.mode === "sample" && connected) {
       mail = await this.db.list<Mail>(owner, "mail");
       events = await this.db.list<CalendarEvent>(owner, "events");
@@ -299,10 +313,13 @@ export class WorkspaceService {
           status: connected
             ? this.config.mode === "sample"
               ? "sample"
-              : "connected"
+              : googleProblem
+                ? "unavailable"
+                : "connected"
             : "disconnected",
           account:
             tokens?.account ?? (this.config.mode === "sample" ? "alex@example.com" : undefined),
+          ...(googleProblem ? { message: googleProblem } : {}),
           capabilities:
             this.config.mode === "sample" ? ["Gmail", "Calendar"] : (tokens?.scopes ?? []),
         },

@@ -47,7 +47,7 @@ import { ComputerDraftProvider } from "./src/computer-drafts";
 import { DesktopGate } from "./src/desktop";
 import { Details } from "./src/details";
 import { HostEventsProvider } from "./src/host-events";
-import { UI_LOCALE, uiLabel } from "./src/locale";
+import { errorLabel, UI_LOCALE, uiLabel } from "./src/locale";
 import { BrowserScreen, CalendarScreen, FilesScreen, MailScreen } from "./src/screens";
 import { ThemeProvider, useTheme } from "./src/theme";
 import { ThreadsProvider, ThreadsSheet, useMuseThread } from "./src/threads";
@@ -206,10 +206,15 @@ function WorkspaceApp({ token, onUnauthorized }: { token: string; onUnauthorized
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState<{ id: number; text: string }>();
+  const googleNotice = useRef("");
   const refresh = useCallback(async () => {
     const snapshot = await api.request<Workspace>("/api/workspace");
     setWorkspace(snapshot);
     setError("");
+    // Tell the user once why mail and calendar are empty instead of blocking the workspace.
+    const problem = snapshot.connections.find((c) => c.id === "google")?.message ?? "";
+    if (problem && problem !== googleNotice.current) setToast(errorLabel(problem));
+    googleNotice.current = problem;
   }, [api]);
   useEffect(() => {
     void refresh().catch((e) => setError(String(e)));

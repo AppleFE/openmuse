@@ -278,6 +278,9 @@ export class GoogleAuth {
       }),
       signal: AbortSignal.timeout(15000),
     });
+    // Google answers 400 invalid_grant for revoked or expired refresh tokens; 5xx is temporary.
+    if (response.status >= 500 || response.status === 429)
+      throw new AppError("Google is unavailable right now. Refresh to try again.", 502);
     if (!response.ok) throw new AppError("Google session expired. Connect again.", 401);
     const token = tokenSchema.parse(await response.json());
     const refreshed = {
